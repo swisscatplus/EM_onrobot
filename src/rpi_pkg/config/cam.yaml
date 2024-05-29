@@ -1,0 +1,16 @@
+robot_id: 'robot_1'
+
+cam_params:
+  focal_length: 30.0 #cm
+  dist_cam_robot_center: 0.073 #meters
+  aruco_square_size: 0.038 #meters
+  allowed_ids: [173, 131]
+
+# Define here the ids and respective positions of the aruco codes
+aruco_params:
+  173:
+    t_x: 0.123
+    t_y: 0.456
+  131:
+    t_x: 1.234
+    t_y: 2.345
