@@ -10,14 +10,19 @@ def generate_launch_description():
             executable = 'rpi_com_motors',
             output = 'screen',
         )
-
-    imu_node = Node(
-            package = 'bno055',
-            executable = 'bno055',
-            parameters = [imu_config],
-    )
+    cam_node = Node(
+            package = 'rpi_pkg',
+            executable = 'rpi_cam',
+            output = 'screen',
+        )
+    
+    # imu_node = Node(
+    #         package = 'bno055',
+    #         executable = 'bno055',
+    #         parameters = [imu_config],
+    # )
 
     return LaunchDescription([
         rpi_node,
-        imu_node,
+        cam_node,
     ])
