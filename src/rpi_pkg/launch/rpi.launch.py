@@ -4,7 +4,6 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    imu_config = os.path.join(get_package_share_directory('bno055'),'config','bno055_params.yaml')
     rpi_node = Node(
             package = 'rpi_pkg',
             executable = 'rpi_com_motors',
