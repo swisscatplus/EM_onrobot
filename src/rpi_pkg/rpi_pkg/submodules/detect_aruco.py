@@ -95,9 +95,9 @@ class CameraVisionStation:
         # Translate camera center to the origin of the ArUco marker in circuit frame
         dx = self.pixels_to_m*(camera_center[0] - aruco_center[0])* np.cos(aruco_angle)
         dy = self.pixels_to_m*(camera_center[1] - aruco_center[1]) * np.sin(aruco_angle)
-        print('dx: {0}, dy: {1}'.format(dx, dy))
-        print('aruco_angle: {0}'.format(aruco_angle))
-        print('===================================')
+        # print('dx: {0}, dy: {1}'.format(dx, dy))
+        # print('aruco_angle: {0}'.format(aruco_angle))
+        # print('===================================')
         # Rotate around the ArUco marker and add the marker position in the circuit frame
         robot_tx = aruco_tx + dx
         robot_ty = aruco_ty + dy
@@ -105,7 +105,7 @@ class CameraVisionStation:
         # Calculate the robot's orientation in the circuit frame
         robot_angle = camera_angle + aruco_angle
         
-        return robot_tx, robot_ty, robot_angle
+        return robot_tx, robot_ty, -robot_angle
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
