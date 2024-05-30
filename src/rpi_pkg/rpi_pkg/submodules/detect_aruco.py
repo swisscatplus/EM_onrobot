@@ -93,8 +93,8 @@ class CameraVisionStation:
 
     def transform_to_circuit_frame(self, camera_center, aruco_center, aruco_tx, aruco_ty, aruco_angle, camera_angle=0.0):
         # Translate camera center to the origin of the ArUco marker in circuit frame
-        dx = self.pixels_to_m*(camera_center[0] - aruco_center[0])* np.cos(aruco_angle)
-        dy = self.pixels_to_m*(camera_center[1] - aruco_center[1]) * np.sin(aruco_angle)
+        dx = self.pixels_to_m*(np.abs(camera_center[0] - aruco_center[0]))* np.cos(aruco_angle)
+        dy = self.pixels_to_m*(np.abs(camera_center[1] - aruco_center[1])) * np.sin(aruco_angle)
         # print('dx: {0}, dy: {1}'.format(dx, dy))
         # print('aruco_angle: {0}'.format(aruco_angle))
         # print('===================================')
