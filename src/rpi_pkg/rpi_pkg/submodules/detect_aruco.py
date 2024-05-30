@@ -71,7 +71,7 @@ class CameraVisionStation:
                                     [0, 0, 0]])
         
         homogeneous_matrix = np.concatenate((rotation_matrix, translation_vector.reshape(-1,1)), axis=1)
-        print('hm :', homogeneous_matrix)
+        # print('hm :', homogeneous_matrix)
         self.logger.debug('homogeneous_matrix {}'.format(homogeneous_matrix))
         coord_circuit_frame= homogeneous_matrix @ coord_cam_frame
         return coord_circuit_frame[:2]
@@ -112,17 +112,17 @@ class CameraVisionStation:
                 delta_center_x = (center_code[0] - pxl_center_cam[0]) * pixels_to_m
                 delta_center_y = (center_code[1] - pxl_center_cam[1]) * pixels_to_m
                 delta_center = (delta_center_x, -delta_center_y)
-                print('ID', markerIds[i, 0])
-                print('delta_center [m]: {0}'.format(delta_center))
+                # print('ID', markerIds[i, 0])
+                # print('delta_center [m]: {0}'.format(delta_center))
 
                 rad_angle = np.deg2rad(angle)
-                print('angle [deg]: {0}'.format(angle))
+                # print('angle [deg]: {0}'.format(angle))
                 # Calculate the translation vector for the camera position
                 t_cam = [
                     self.aruco_ids[markerIds[i, 0]]['t_x'] - delta_center[0],
                     self.aruco_ids[markerIds[i, 0]]['t_y'] - delta_center[1]
                 ]
-                print('t_cam', t_cam)
+                # print('t_cam', t_cam)
 
                 # Transform the camera frame coordinates to the circuit frame
                 coord_circuit_frame = self.transfo_cam2circuit(t_cam)
@@ -134,8 +134,8 @@ class CameraVisionStation:
                 ) * self.cam_config['dist_cam_robot_center']
                 aruco_infos.append((robot_center, -rad_angle))
 
-                print('cam_center', coord_circuit_frame[:2])
-                print('robot_center: {0}, robot_angle {1}'.format(robot_center, angle))
+                # print('cam_center', coord_circuit_frame[:2])
+                # print('robot_center: {0}, robot_angle {1}'.format(robot_center, angle))
                 if set_visual_interface:
                     # Draw arrow from bottom to top center
                     cv.arrowedLine(frame, bottom_center, top_center, (0, 0, 255), 4)
