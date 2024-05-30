@@ -65,7 +65,7 @@ class RobotCamPublisher(Node):
           robot_pose = self.cam.get_robot_poses(frame, markerCorners, markerIds)
           if robot_pose is not None:
                 pose = PoseWithCovarianceStamped()
-                pose.header.frame_id = 'joint_cam'
+                pose.header.frame_id = 'odom'
                 pose.header.stamp = self.get_clock().now().to_msg()
                 pose.pose.pose.position.x = robot_pose[0][0]
                 pose.pose.pose.position.y = robot_pose[0][1]
