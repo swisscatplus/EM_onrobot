@@ -1,6 +1,11 @@
-FROM yanniscod/rpi_vision:latest
+FROM yanniscod/vision:v1
 
-WORKDIR /home/SwissCat-on_robot
+WORKDIR /home
+
+# clone using id and token, token may be not reusable and need to be updated
+RUN git clone https://Yanniscod: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@github.com/Yanniscod/SwissCat-on_robot.git
+
+RUN cd SwissCat-on_robot/
 
 # Install dependencies and build the workspace
 RUN colcon build
