@@ -27,7 +27,7 @@ dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
 
-class CameraRobot:
+class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
