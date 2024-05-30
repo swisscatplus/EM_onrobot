@@ -5,4 +5,3 @@ source /home/SwissCat-on_robot/install/setup.bash
 
 # Run the ROS2 node
 exec "$@"
-

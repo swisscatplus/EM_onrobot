@@ -3,9 +3,11 @@ FROM yanniscod/vision:v1
 WORKDIR /home
 
 # clone using id and token, token may be not reusable and need to be updated
-RUN git clone https://Yanniscod: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@github.com/Yanniscod/SwissCat-on_robot.git
+RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCa>
 
-RUN cd SwissCat-on_robot/
+RUN pip install pyserial
+
+WORKDIR /home/SwissCat-on_robot/
 
 # Install dependencies and build the workspace
 RUN colcon build
@@ -17,5 +19,4 @@ COPY ros_entrypoint.sh /home/SwissCat-on_robot/ros_entrypoint.sh
 ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
 
 # Default command to run ROS2 node
-CMD ["ros2", "run", "rpi_pkg", "rpi_cam"]
-
+CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py"]
