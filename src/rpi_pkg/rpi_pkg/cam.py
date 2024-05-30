@@ -70,7 +70,7 @@ class RobotCamPublisher(Node):
                 pose.pose.pose.position.x = robot_pose[0][0]
                 pose.pose.pose.position.y = robot_pose[0][1]
                 pose.pose.pose.orientation.x, pose.pose.pose.orientation.y, pose.pose.pose.orientation.z, pose.pose.pose.orientation.w  = quaternion_from_euler(0, 0, robot_pose[1])
-                pose.pose.covariance = [0.01, 0, 0, 0, 0, 0, 0, 0.01, 0, 0, 0, 0, 0, 0, 0, 0.01, 0, 0, 0, 0, 0, 0, 0, 0.01, 0, 0, 0, 0, 0, 0, 0, 0.01, 0, 0, 0, 0, 0, 0, 0, 0.01]
+                pose.pose.covariance = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
                 self.get_logger().debug('ID:' +  str(pose.pose.pose.orientation)) #
                 self.get_logger().debug('robot_pose:' +  str(pose))
                 self.cam_publisher.publish(pose)
