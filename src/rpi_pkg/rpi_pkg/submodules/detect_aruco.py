@@ -65,8 +65,8 @@ class CameraVisionStation:
 
         # theta = self.mat_config['theta']
         theta=0.0
-        rotation_matrix = np.array([[np.cos(theta), -np.sin(theta), 0], 
-                                    [np.sin(theta), np.cos(theta), 0], 
+        rotation_matrix = np.array([[1, 0, 0], 
+                                    [0, 1, 0], 
                                     [0, 0, 1],
                                     [0, 0, 0]])
         
@@ -112,24 +112,20 @@ class CameraVisionStation:
                 delta_center_x = (center_code[0] - pxl_center_cam[0]) * pixels_to_m
                 delta_center_y = (center_code[1] - pxl_center_cam[1]) * pixels_to_m
                 delta_center = (delta_center_x, -delta_center_y)
-                # print('ID', markerIds[i, 0])
-                # print('delta_center [m]: {0}'.format(delta_center))
 
                 rad_angle = np.deg2rad(angle)
-                # print('angle [deg]: {0}'.format(angle))
-                # Calculate the translation vector for the camera position
                 t_cam = [
                     self.aruco_ids[markerIds[i, 0]]['t_x'] - delta_center[0],
                     self.aruco_ids[markerIds[i, 0]]['t_y'] - delta_center[1]
                 ]
-                # print('t_cam', t_cam)
 
                 # Transform the camera frame coordinates to the circuit frame
-                coord_circuit_frame = self.transfo_cam2circuit(t_cam)
+                # coord_circuit_frame = self.transfo_cam2circuit(t_cam)
 
-                print('ccf :', coord_circuit_frame)
+                # print('ccf :', coord_circuit_frame)
+                print('t_cam :', t_cam)
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
-                robot_center = coord_circuit_frame[:2] + np.array(
+                robot_center = t_cam[:2] + np.array(
                     [np.cos(rad_angle), np.sin(rad_angle)], dtype=object
                 ) * self.cam_config['dist_cam_robot_center']
                 aruco_infos.append((robot_center, -rad_angle))
