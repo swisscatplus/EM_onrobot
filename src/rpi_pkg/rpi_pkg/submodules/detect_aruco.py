@@ -1,26 +1,33 @@
 #!/usr/bin/python3
-
-import time
 import cv2 as cv
 import numpy as np
-import yaml
 import logging
-from picamera2 import Picamera2
-from libcamera import controls
+import yaml
+import os
 
+################# CONFIG #################
+# local config to run the code independently
+camera_port = 0 # worked for me, use 0 if you want to use the embedded wembcam of the computer, or try other numbers
 window_name = 'Robot poses'
 verbose = False
-# ##########################################
+# station_id = 'station_1'
 
-# ARUCO_DICT = {
-# 	"DICT_ARUCO_ORIGINAL": cv.aruco.DICT_ARUCO_ORIGINAL
-# }
+# directory_path = os.path.dirname(os.path.abspath(__file__))
+# config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam.yaml')
+
+def get_cam_config(config_file_path=None):
+    with open(config_file_path, 'r') as file:
+        data = yaml.safe_load(file)
+    return data
+
+# config = get_cam_config(config_file_path=config_file_path)
+# ########################################
 
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
 
-class CameraVisionStation:
+class CameraRobot:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
@@ -28,21 +35,15 @@ class CameraVisionStation:
         """
         Class constructor to set up the right camera
         """
-        # self.station_id = station_id
-        # self.station_config = config['rpi_cam_parameters'][self.station_id] # structure of camera_config: {'height': 100, 't_x': 10, 't_y': 20, 'r_z': 30}
+
         self.cam_config = config['cam_params']
         self.focal_length = self.cam_config['focal_length']
-        # self.mat_config = self.station_config['transformation_matrix']
-        self.aruco_ids = config['aruco_params'] # gets an array of known ids on circuit, to avoid detecting random ids due to noise
+        self.aruco_ids = config['aruco_params']
 
-        # Create a logger
+        self.pixels_to_m = None
+
         self.configure_logger()
-        
-    def get_cam_config(self):
-      with open(self.config_file_path, 'r') as file:
-          data = yaml.safe_load(file)
-      return data['rpi_cam_parameters'], data['robot_params']
-    
+
     def pixels_to_meters(self, markerCorners):
         # Compute distances of all sides in pixels, should be replaced by constant but since we don't have yet the real value, we compute it
         distances = []
@@ -63,17 +64,21 @@ class CameraVisionStation:
         coord_cam_frame = np.array([0.0, 0.0, 0.0, 1.0], dtype=object)
         translation_vector = np.array([t_vec[0], t_vec[1], 0.0, 1.0], dtype=object) # assuming no translation in z
 
-        # theta = self.mat_config['theta']
-        theta=0.0
+        # theta=0.0
+        # rotation_matrix = np.array([[np.cos(theta), -np.sin(theta), 0], 
+        #                             [np.sin(theta), np.cos(theta), 0], 
+        #                             [0, 0, 1],
+        #                             [0, 0, 0]])
         rotation_matrix = np.array([[1, 0, 0], 
                                     [0, 1, 0], 
                                     [0, 0, 1],
                                     [0, 0, 0]])
         
         homogeneous_matrix = np.concatenate((rotation_matrix, translation_vector.reshape(-1,1)), axis=1)
-        # print('hm :', homogeneous_matrix)
+        
         self.logger.debug('homogeneous_matrix {}'.format(homogeneous_matrix))
         coord_circuit_frame= homogeneous_matrix @ coord_cam_frame
+        
         return coord_circuit_frame[:2]
     
     def configure_logger(self):
@@ -86,10 +91,27 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def get_robot_poses(self, frame, markerCorners, markerIds=None, set_visual_interface=False):
+    def transform_to_circuit_frame(self, camera_center, aruco_center, aruco_tx, aruco_ty, aruco_angle, camera_angle=0.0):
+        # Translate camera center to the origin of the ArUco marker in circuit frame
+        dx = self.pixels_to_m*(camera_center[0] - aruco_center[0])* np.cos(aruco_angle)
+        dy = self.pixels_to_m*(camera_center[1] - aruco_center[1]) * np.sin(aruco_angle)
+        print('dx: {0}, dy: {1}'.format(dx, dy))
+        print('aruco_angle: {0}'.format(aruco_angle))
+        print('===================================')
+        # Rotate around the ArUco marker and add the marker position in the circuit frame
+        robot_tx = aruco_tx + dx
+        robot_ty = aruco_ty + dy
+        
+        # Calculate the robot's orientation in the circuit frame
+        robot_angle = camera_angle + aruco_angle
+        
+        return robot_tx, robot_ty, robot_angle
+
+    # Function to process the frame and detect ArUco markers
+    def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
         pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
-        pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
+        self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         robot_pose = None
         aruco_infos = []
 
@@ -104,31 +126,21 @@ class CameraVisionStation:
                 mean_center = np.mean(markerCorners[i][0], axis=0)
                 center_code = tuple(map(int, mean_center))
 
+
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * 180 / np.pi
+                rad_angle = np.deg2rad(angle+90)
+                # print(type(pxl_center_cam[0]))
+                # print(pxl_center_cam[0] - )
+                # print(pxl_center_cam, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle)    
+                coord_circuit_frame = self.transform_to_circuit_frame(pxl_center_cam, center_code, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle, 0.0)
 
-                # Calculate the displacement of the ArUco center from the camera center in meters
-                delta_center_x = (center_code[0] - pxl_center_cam[0]) * pixels_to_m
-                delta_center_y = (center_code[1] - pxl_center_cam[1]) * pixels_to_m
-                delta_center = (delta_center_x, -delta_center_y)
-
-                rad_angle = np.deg2rad(angle)
-                t_cam = [
-                    self.aruco_ids[markerIds[i, 0]]['t_x'] - delta_center[0],
-                    self.aruco_ids[markerIds[i, 0]]['t_y'] - delta_center[1]
-                ]
-
-                # Transform the camera frame coordinates to the circuit frame
-                # coord_circuit_frame = self.transfo_cam2circuit(t_cam)
-
-                # print('ccf :', coord_circuit_frame)
-                print('t_cam :', t_cam)
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
-                robot_center = t_cam[:2] + np.array(
+                robot_center = coord_circuit_frame[:2] - np.array(
                     [np.cos(rad_angle), np.sin(rad_angle)], dtype=object
                 ) * self.cam_config['dist_cam_robot_center']
-                aruco_infos.append((robot_center, -rad_angle))
+                aruco_infos.append((robot_center, coord_circuit_frame[2]))
 
                 # print('cam_center', coord_circuit_frame[:2])
                 # print('robot_center: {0}, robot_angle {1}'.format(robot_center, angle))
@@ -138,38 +150,42 @@ class CameraVisionStation:
                     # Draw marker ID and center
                     cv.circle(frame, center_code, 3, (255, 0, 0), -1)
                     # Display orientation and position at the bottom of the screen
-                    text = f"ID {markerIds[i][0]}: pxl pos: {bottom_center}, robot_pose: {robot_center}, ang: {angle:.1f} deg"
-                    cv.putText(frame, text, (10, frame.shape[0] - 20 - i * 25), cv.FONT_HERSHEY_COMPLEX, 0.43, (255, 255, 255), 1)
+                    text = f"ID {markerIds[i][0]}: ang: {angle:.1f} deg, robot_pose: {robot_center}"
+                    cv.putText(frame, text, (10, frame.shape[0] - 20 - i * 25), cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
 
             else:
                 self.logger.warn('Unknown marker ID detected: {0}, ignoring'.format(markerIds[i,0]))
-        if len(aruco_infos) > 0:        
+        if len(aruco_infos) > 0:  
+            # print('inside: ', aruco_infos)    
             robot_pose = np.mean(aruco_infos, axis=0)
 
         return robot_pose
 
-    
 def main():
-    # Grab images as numpy arrays and leave everything else to OpenCV.
-    cv.startWindowThread()
 
-    cam = CameraVisionStation(config=config)
-    picam2 = Picamera2()
-    picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
-    picam2.start()
-    # setting focal pint at 10cm (TO BE FINE TUNED)
-    picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 1.3}) 
+
+    directory_path = os.path.dirname(os.path.abspath(__file__))
+    config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam_on_robot.yaml')
+
+    config = get_cam_config(config_file_path=config_file_path)
+
+    cap = cv.VideoCapture(camera_port)
+    cap.set(cv.CAP_PROP_AUTOFOCUS, 0) #remove autofocus
+    cam = CameraRobot(config=config)
 
     while True:
-        frame = picam2.capture_array()
+        ret, frame = cap.read()
         
+        if not ret:
+            raise ("Can't receive frame (stream end?). Exiting ...")
+        # print(frame.shape) #(480, 640, 3)
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
         
         markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
 
         if markerIds is not None:
-            robot_poses = cam.get_robot_poses(frame, markerCorners, markerIds, set_visual_interface=True)
+            robot_poses = cam.get_robot_pose(frame, markerCorners, markerIds, set_visual_interface=True)
             if verbose:
                 cam.logger.info('robot_poses: ' + str(robot_poses))
                 cam.logger.info('len(robot_poses): ' + str(len(robot_poses)))
