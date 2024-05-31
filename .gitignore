@@ -5,6 +5,7 @@ install/
 build/
 bin/
 lib/
+calibration/
 msg_gen/
 .vscode/
 srv_gen/

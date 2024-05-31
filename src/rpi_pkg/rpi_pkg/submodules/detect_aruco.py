@@ -41,6 +41,8 @@ class CameraVisionStation:
         self.aruco_ids = config['aruco_params']
 
         self.pixels_to_m = None
+        self.pxl_max = None
+        self.init = True
 
         self.configure_logger()
 
@@ -59,27 +61,6 @@ class CameraVisionStation:
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
 
         return pixels_to_m
-        
-    def transfo_cam2circuit(self, t_vec):
-        coord_cam_frame = np.array([0.0, 0.0, 0.0, 1.0], dtype=object)
-        translation_vector = np.array([t_vec[0], t_vec[1], 0.0, 1.0], dtype=object) # assuming no translation in z
-
-        # theta=0.0
-        # rotation_matrix = np.array([[np.cos(theta), -np.sin(theta), 0], 
-        #                             [np.sin(theta), np.cos(theta), 0], 
-        #                             [0, 0, 1],
-        #                             [0, 0, 0]])
-        rotation_matrix = np.array([[1, 0, 0], 
-                                    [0, 1, 0], 
-                                    [0, 0, 1],
-                                    [0, 0, 0]])
-        
-        homogeneous_matrix = np.concatenate((rotation_matrix, translation_vector.reshape(-1,1)), axis=1)
-        
-        self.logger.debug('homogeneous_matrix {}'.format(homogeneous_matrix))
-        coord_circuit_frame= homogeneous_matrix @ coord_cam_frame
-        
-        return coord_circuit_frame[:2]
     
     def configure_logger(self):
         self.logger = logging.getLogger(__name__)
@@ -91,103 +72,85 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def transform_to_circuit_frame(self, camera_center, aruco_center, aruco_tx, aruco_ty, aruco_angle, camera_angle=0.0):
-        # Translate camera center to the origin of the ArUco marker in circuit frame
-        dx = self.pixels_to_m*(camera_center[0] - aruco_center[0])* np.cos(aruco_angle)
-        dy = self.pixels_to_m*(camera_center[1] - aruco_center[1]) * np.sin(aruco_angle)
-        print('dx_pxl: ', camera_center[0] - aruco_center[0])
-        print('dy_pxl: ', camera_center[1] - aruco_center[1])
-        print('pxl_to_m: ', self.pixels_to_m)
-        print('dx: ', dx)
-        print('dy: ', dy)
-        # Rotate around the ArUco marker and add the marker position in the circuit frame
-        robot_tx = aruco_tx + dx
-        robot_ty = aruco_ty + dy
+        def compute_camera_center(self, aruco_pxl_c, id, theta):
+        t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
+
+        delta_x = (aruco_pxl_c[0] - self.pxl_max[0] / 2) * self.pixels_to_m
+        delta_y = (float(self.pxl_max[1] / 2) - aruco_pxl_c[1]) * self.pixels_to_m
+
+        R = np.array([
+            [np.cos(theta), -np.sin(theta), 0.0],
+            [-np.sin(theta), -np.cos(theta), 0.0],
+            [0.0, 0.0, 1.0]
+        ])
         
-        # Calculate the robot's orientation in the circuit frame
-        robot_angle = camera_angle + aruco_angle
+        delta_XY = R @ np.array([-delta_y, delta_x, 0.0])
         
-        return robot_tx, robot_ty, robot_angle
+        X_camera = t_x - delta_XY[0]
+        Y_camera = t_y - delta_XY[1]
 
-    def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
-            t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
-            # Convert camera coordinates to Cartesian coordinates
-            y_cart = pxl_max_y - aruco_pxl_c[1]
-
-            # Compute the offset in the camera frame
-            delta_x = aruco_pxl_c[0] - pxl_max_x / 2
-            delta_y = y_cart - pxl_max_y / 2
-            delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
-            delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
-
-            # Rotation matrix for -theta
-            R = np.array([
-                [np.cos(theta), -np.sin(theta), 0.0],
-                [-np.sin(theta), -np.cos(theta), 0.0],
-                [0.0, 0.0, 1.0]
-            ])
-            # Apply the rotation
-            delta_XY = R @ np.array([-delta_y, delta_x, 0.0])
-            
-            # Compute the camera center in the circuit frame
-            X_camera = t_x - delta_XY[0]
-            Y_camera = t_y - delta_XY[1]
-
-            return X_camera, Y_camera
-
+        return X_camera, Y_camera
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
-        pxl_max_y, pxl_max_x, _ = frame.shape
-        # pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
-        self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
-        # robot_pose = None
+        if self.init:
+            max_x, max_y, _ = frame.shape
+            self.pxl_max = (max_x, max_y)
+            self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
+            self.init = False
+
         aruco_poses = []
-        robot_angle = []
-        robot_center = []
+        robot_angles = []
 
-        # Draw and process detected markers
         for i in range(len(markerIds)):
-            if markerIds[i, 0] == 0:
+            marker_id = markerIds[i, 0]
+            if marker_id == 0:
                 continue
-            if markerIds[i, 0] in self.aruco_ids:
-                # Calculate the centers of the bottom and top edges of the marker
-                bottom_center = tuple(map(int, np.mean(markerCorners[i][0][2:4], axis=0)))
-                top_center = tuple(map(int, np.mean(markerCorners[i][0][0:2], axis=0)))
-                mean_center = np.mean(markerCorners[i][0], axis=0)
-                center_code = tuple(map(int, mean_center))
+            
+            if marker_id in self.aruco_ids:
+                corners = markerCorners[i][0]
+                bottom_center = tuple(map(int, np.mean(corners[2:4], axis=0)))
+                top_center = tuple(map(int, np.mean(corners[0:2], axis=0)))
+                center_code = tuple(map(int, np.mean(corners, axis=0)))
 
-                # Calculate the angle of the marker
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * 180 / np.pi
-                rad_angle = np.deg2rad(angle+90)
+                rad_angle = np.deg2rad(angle + 90)
 
-                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
+                coord_cam_circuit = self.compute_camera_center(
+                    aruco_pxl_c=center_code, id=marker_id, theta=rad_angle
+                )
 
-                # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
-                robot_center = coord_cam_circuit[:2] - np.array([np.cos(-rad_angle), np.sin(-rad_angle)]) * self.cam_config['dist_cam_robot_center']
+                robot_center = coord_cam_circuit[:2] - np.array([
+                    np.cos(-rad_angle), np.sin(-rad_angle)
+                ]) * self.cam_config['dist_cam_robot_center']
                 aruco_poses.append(robot_center)
-                robot_angle.append(-rad_angle)
-                self.logger.debug('robot_center: {0}, robot_angle {1}'.format(robot_center, -rad_angle))
-                
-                if set_visual_interface:
-                    # Draw arrow from bottom to top center
-                    cv.arrowedLine(frame, bottom_center, top_center, (0, 0, 255), 4)
-                    # Draw marker ID and center
-                    cv.circle(frame, center_code, 3, (255, 0, 0), -1)
-                    # Display orientation and position at the bottom of the screen
-                    text = f"ID {markerIds[i][0]}: ang: {angle:.1f} deg, robot_pose: {robot_center}, cam_pose: {coord_cam_circuit[:2]}"
-                    cv.putText(frame, text, (10, frame.shape[0] - 20 - i * 25), cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
-                    cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
+                robot_angles.append(-rad_angle)
 
+                self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
+
+                if set_visual_interface:
+                    cv.arrowedLine(frame, bottom_center, top_center, (0, 0, 255), 4)
+                    cv.circle(frame, center_code, 3, (255, 0, 0), -1)
+                    text = (
+                        f"ID {marker_id}: ang: {angle:.1f} deg, "
+                        f"robot_pose: {robot_center}, cam_pose: {coord_cam_circuit[:2]}"
+                    )
+                    cv.putText(frame, text, (10, frame.shape[0] - 20 - i * 25), 
+                            cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
+                    cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             else:
-                self.logger.warn('Unknown marker ID detected: {0}, ignoring'.format(markerIds[i,0]))
-        if len(robot_center) > 0:  
+                self.logger.warn(f'Unknown marker ID detected: {marker_id}, ignoring')
+
+        if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
-            robot_angle = np.mean(robot_angle)
-            
+            robot_angle = np.mean(robot_angles)
+        else:
+            robot_center, robot_angle = None, None
+
         return robot_center, robot_angle
+
 
 def main():
 
@@ -199,14 +162,14 @@ def main():
 
     cap = cv.VideoCapture(camera_port)
     cap.set(cv.CAP_PROP_AUTOFOCUS, 0) #remove autofocus
-    cam = CameraRobot(config=config)
+    cam = CameraVisionStation(config=config)
 
     while True:
         ret, frame = cap.read()
         
         if not ret:
             raise ("Can't receive frame (stream end?). Exiting ...")
-        # print(frame.shape) #(480, 640, 3)
+        
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
         
         markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame

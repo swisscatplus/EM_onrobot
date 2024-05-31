@@ -75,7 +75,7 @@ class RobotCamPublisher(Node):
                                         0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
                                         0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 
                                         0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 
-                                        0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
+                                        0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
                 self.get_logger().debug('ID:' +  str(pose.pose.pose.orientation)) #
                 self.get_logger().debug('robot_pose:' +  str(pose))
                 self.cam_publisher.publish(pose)
