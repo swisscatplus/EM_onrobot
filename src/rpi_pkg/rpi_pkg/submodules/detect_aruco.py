@@ -127,7 +127,7 @@ class CameraVisionStation:
                 [0.0, 0.0, 1.0]
             ])
             # Apply the rotation
-            delta_XY = R @ np.array([delta_x, -delta_y, 0.0])
+            delta_XY = R @ np.array([delta_y, -delta_x, 0.0])
             
             # Compute the camera center in the circuit frame
             X_camera = t_x - delta_XY[0]
