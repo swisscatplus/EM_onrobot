@@ -188,9 +188,9 @@ class CameraVisionStation:
 
             else:
                 self.logger.warn('Unknown marker ID detected: {0}, ignoring'.format(markerIds[i,0]))
-        if len(aruco_infos) > 0:  
-            # print('inside: ', aruco_infos)    
-            robot_pose = np.mean(aruco_infos, axis=0)
+        # if len(aruco_infos) > 0:  
+        #     # print('inside: ', aruco_infos)    
+        #     robot_pose = np.mean(aruco_infos, axis=0)
 
         return robot_pose
 
