@@ -172,7 +172,7 @@ class CameraVisionStation:
 
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
                 robot_center = coord_cam_circuit[:2] - np.array(
-                    [np.cos(rad_angle), np.sin(rad_angle)], dtype=object
+                    [np.sin(rad_angle), np.cos(rad_angle)], dtype=object
                 ) * self.cam_config['dist_cam_robot_center']
                 aruco_infos.append((robot_center, -rad_angle))
 
