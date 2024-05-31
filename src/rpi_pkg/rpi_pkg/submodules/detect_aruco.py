@@ -142,7 +142,7 @@ class CameraVisionStation:
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
-        pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
+        # pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         robot_pose = None
         aruco_infos = []
@@ -171,9 +171,7 @@ class CameraVisionStation:
                 # coord_circuit_frame = self.transform_to_circuit_frame(pxl_center_cam, center_code, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle, 0.0)
 
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
-                robot_center = coord_cam_circuit[:2] + np.array(
-                    [-np.sin(rad_angle), np.cos(rad_angle)], dtype=object
-                ) * self.cam_config['dist_cam_robot_center']
+                robot_center = coord_cam_circuit[:2] 
                 aruco_infos.append((robot_center, -rad_angle))
 
                 # print('cam_center', coord_circuit_frame[:2])
