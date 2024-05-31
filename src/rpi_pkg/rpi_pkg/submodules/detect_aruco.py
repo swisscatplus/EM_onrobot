@@ -72,7 +72,7 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-        def compute_camera_center(self, aruco_pxl_c, id, theta):
+    def compute_camera_center(self, aruco_pxl_c, id, theta):
         t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
 
         delta_x = (aruco_pxl_c[0] - self.pxl_max[0] / 2) * self.pixels_to_m
