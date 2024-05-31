@@ -174,7 +174,7 @@ class CameraVisionStation:
                 robot_center = coord_cam_circuit[:2] - np.array(
                     [np.cos(rad_angle), np.sin(rad_angle)], dtype=object
                 ) * self.cam_config['dist_cam_robot_center']
-                aruco_infos.append((robot_center, rad_angle))
+                aruco_infos.append((robot_center, -rad_angle))
 
                 # print('cam_center', coord_circuit_frame[:2])
                 # print('robot_center: {0}, robot_angle {1}'.format(robot_center, angle))
