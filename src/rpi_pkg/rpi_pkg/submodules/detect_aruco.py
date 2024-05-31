@@ -100,8 +100,6 @@ class CameraVisionStation:
         print('pxl_to_m: ', self.pixels_to_m)
         print('dx: ', dx)
         print('dy: ', dy)
-        # print('aruco_angle: {0}'.format(aruco_angle))
-        # print('===================================')
         # Rotate around the ArUco marker and add the marker position in the circuit frame
         robot_tx = aruco_tx + dx
         robot_ty = aruco_ty + dy
@@ -109,7 +107,37 @@ class CameraVisionStation:
         # Calculate the robot's orientation in the circuit frame
         robot_angle = camera_angle + aruco_angle
         
-        return robot_tx, robot_ty, -robot_angle
+        return robot_tx, robot_ty, robot_angle
+
+    def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
+            t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
+            # Convert camera coordinates to Cartesian coordinates
+            y_cart = pxl_max_y - aruco_pxl_c[1]
+
+            # Compute the offset in the camera frame
+            delta_x = aruco_pxl_c[0] - pxl_max_x / 2
+            delta_y = y_cart - pxl_max_y / 2
+            delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
+            delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
+            # Rotation matrix for -theta
+            R = np.array([
+                [np.cos(theta), -np.sin(theta), 0.0],
+                [-np.sin(theta), -np.cos(theta), 0.0],
+                [0.0, 0.0, 1.0]
+            ])
+            # Apply the rotation
+            delta_XY = R @ np.array([delta_x, -delta_y, 0.0])
+            
+            # Compute the camera center in the circuit frame
+            X_camera = t_x - delta_XY[0]
+            Y_camera = t_y - delta_XY[1]
+            
+            # self.logger.info('aruco_pxl_c: {0}'.format(aruco_pxl_c))
+            # self.logger.info('delta_x: {0}, delta_y: {1}'.format(delta_x, delta_y))
+            # self.logger.info('delta_XY: {0}'.format(delta_XY))
+            # self.logger.info('X_camera: {0}, Y_camera: {1}'.format(X_camera, Y_camera))
+            return X_camera, Y_camera
+
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
@@ -130,21 +158,23 @@ class CameraVisionStation:
                 mean_center = np.mean(markerCorners[i][0], axis=0)
                 center_code = tuple(map(int, mean_center))
 
-
+                # Calculate the angle of the marker
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * 180 / np.pi
                 rad_angle = np.deg2rad(angle+90)
+
+                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
                 # print(type(pxl_center_cam[0]))
                 # print(pxl_center_cam[0] - )
                 # print(pxl_center_cam, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle)    
-                coord_circuit_frame = self.transform_to_circuit_frame(pxl_center_cam, center_code, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle, 0.0)
+                # coord_circuit_frame = self.transform_to_circuit_frame(pxl_center_cam, center_code, self.aruco_ids[markerIds[i, 0]]['t_x'], self.aruco_ids[markerIds[i, 0]]['t_y'], rad_angle, 0.0)
 
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
-                robot_center = coord_circuit_frame[:2] - np.array(
+                robot_center = coord_cam_circuit[:2] - np.array(
                     [np.cos(rad_angle), np.sin(rad_angle)], dtype=object
                 ) * self.cam_config['dist_cam_robot_center']
-                aruco_infos.append((robot_center, coord_circuit_frame[2]))
+                aruco_infos.append((robot_center, rad_angle))
 
                 # print('cam_center', coord_circuit_frame[:2])
                 # print('robot_center: {0}, robot_angle {1}'.format(robot_center, angle))
