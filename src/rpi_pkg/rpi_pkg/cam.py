@@ -62,14 +62,14 @@ class RobotCamPublisher(Node):
     markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
 
     if markerIds is not None:
-          robot_pose = self.cam.get_robot_pose(frame, markerCorners, markerIds)
-          if robot_pose is not None:
+          robot_pose, robot_angle = self.cam.get_robot_pose(frame, markerCorners, markerIds)
+          if len(robot_pose)>0:
                 pose = PoseWithCovarianceStamped()
                 pose.header.frame_id = 'odom'
                 pose.header.stamp = self.get_clock().now().to_msg()
-                pose.pose.pose.position.x = robot_pose[0][0]
-                pose.pose.pose.position.y = robot_pose[0][1]
-                pose.pose.pose.orientation.x, pose.pose.pose.orientation.y, pose.pose.pose.orientation.z, pose.pose.pose.orientation.w  = quaternion_from_euler(0, 0, robot_pose[1])
+                pose.pose.pose.position.x = robot_pose[0]
+                pose.pose.pose.position.y = robot_pose[1]
+                pose.pose.pose.orientation.x, pose.pose.pose.orientation.y, pose.pose.pose.orientation.z, pose.pose.pose.orientation.w  = quaternion_from_euler(0, 0, robot_angle)
                 pose.pose.covariance = [0.001, 0.0, 0.0, 0.0, 0.0, 0.0,
                                         0.0, 0.001, 0.0, 0.0, 0.0, 0.0,
                                         0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
