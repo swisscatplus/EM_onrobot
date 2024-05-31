@@ -119,7 +119,7 @@ class CameraVisionStation:
             delta_y = y_cart - pxl_max_y / 2
             delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
             delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
-            
+
             # Rotation matrix for -theta
             R = np.array([
                 [np.cos(theta), -np.sin(theta), 0.0],
@@ -141,8 +141,8 @@ class CameraVisionStation:
         pxl_max_y, pxl_max_x, _ = frame.shape
         # pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
-        robot_pose = None
-        aruco_infos = []
+        # robot_pose = None
+        aruco_poses = []
         robot_angle = []
         robot_center = []
 
@@ -167,7 +167,7 @@ class CameraVisionStation:
 
                 # Calculate the robot center position in the circuit frame, should be done by urdf once everything working
                 robot_center = coord_cam_circuit[:2] - np.array([np.cos(-rad_angle), np.sin(-rad_angle)]) * self.cam_config['dist_cam_robot_center']
-                robot_center.append(robot_center)
+                aruco_poses.append(robot_center)
                 robot_angle.append(-rad_angle)
                 self.logger.debug('robot_center: {0}, robot_angle {1}'.format(robot_center, -rad_angle))
                 
@@ -184,7 +184,7 @@ class CameraVisionStation:
             else:
                 self.logger.warn('Unknown marker ID detected: {0}, ignoring'.format(markerIds[i,0]))
         if len(robot_center) > 0:  
-            robot_center = np.mean(aruco_infos, axis=0)
+            robot_center = np.mean(aruco_poses, axis=0)
             robot_angle = np.mean(robot_angle)
             
         return robot_center, robot_angle
