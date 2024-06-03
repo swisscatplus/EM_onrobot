@@ -72,11 +72,16 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def compute_camera_center(self, aruco_pxl_c, id, theta):
+    def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
         t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
+        # Convert camera coordinates to Cartesian coordinates
+        y_cart = pxl_max_y - aruco_pxl_c[1]
 
-        delta_x = (aruco_pxl_c[0] - self.pxl_max[0] / 2) * self.pixels_to_m
-        delta_y = (float(self.pxl_max[1] / 2) - aruco_pxl_c[1]) * self.pixels_to_m
+        # Compute the offset in the camera frame
+        delta_x = aruco_pxl_c[0] - pxl_max_x / 2
+        delta_y = pxl_max_y / 2 - aruco_pxl_c[1]
+        delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
+        delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
 
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0.0],
@@ -85,7 +90,9 @@ class CameraVisionStation:
         ])
         
         delta_XY = R @ np.array([-delta_y, delta_x, 0.0])
-        
+        print('dx, dy: ', delta_x, delta_y)
+        print('DELTA: ', delta_XY)
+        print('=================================')
         X_camera = t_x - delta_XY[0]
         Y_camera = t_y - delta_XY[1]
 
@@ -93,11 +100,14 @@ class CameraVisionStation:
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
-        if self.init:
-            max_x, max_y, _ = frame.shape
-            self.pxl_max = (max_x, max_y)
-            self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
-            self.init = False
+        pxl_max_y, pxl_max_x, _ = frame.shape
+        # pxl_center_cam = (pxl_max_x // 2, pxl_max_y // 2)
+        self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
+        # if self.init:
+        #     max_x, max_y, _ = frame.shape
+        #     self.pxl_max = (max_x, max_y)
+        #     self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
+        #     self.init = False
 
         aruco_poses = []
         robot_angles = []
@@ -117,14 +127,15 @@ class CameraVisionStation:
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * 180 / np.pi
                 rad_angle = np.deg2rad(angle + 90)
+                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
+                # coord_cam_circuit = self.compute_camera_center(
+                #     aruco_pxl_c=center_code, id=marker_id, theta=rad_angle
+                # )
 
-                coord_cam_circuit = self.compute_camera_center(
-                    aruco_pxl_c=center_code, id=marker_id, theta=rad_angle
-                )
-
-                robot_center = coord_cam_circuit[:2] - np.array([
-                    np.cos(-rad_angle), np.sin(-rad_angle)
-                ]) * self.cam_config['dist_cam_robot_center']
+                robot_center = coord_cam_circuit[:2]
+                # - np.array([
+                #     np.cos(-rad_angle), np.sin(-rad_angle)
+                # ]) * self.cam_config['dist_cam_robot_center']
                 aruco_poses.append(robot_center)
                 robot_angles.append(-rad_angle)
 
@@ -151,12 +162,11 @@ class CameraVisionStation:
 
         return robot_center, robot_angle
 
-
 def main():
 
 
     directory_path = os.path.dirname(os.path.abspath(__file__))
-    config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam_on_robot.yaml')
+    config_file_path = '/home/coderey/Desktop/SwissCat-on_robot/src/rpi_pkg/config/cam.yaml'
 
     config = get_cam_config(config_file_path=config_file_path)
 

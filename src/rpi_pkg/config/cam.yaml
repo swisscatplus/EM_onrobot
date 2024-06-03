@@ -8,7 +8,7 @@ cam_params:
 
 # Define here the ids and respective positions of the aruco codes
 aruco_params:
-  173:
+  334:
     t_x: 0.123
     t_y: 0.456
   131:
