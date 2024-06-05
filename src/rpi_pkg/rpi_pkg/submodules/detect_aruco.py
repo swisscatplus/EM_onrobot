@@ -87,7 +87,7 @@ class CameraVisionStation:
             [0.0, 0.0, 1.0]
         ])
         
-        delta_XY = R @ np.array([-delta_y, delta_x, 0.0])
+        delta_XY = R @ np.array([delta_x, delta_y, 0.0])
         self.logger.debug(f'delta_XY: {delta_XY}')
         X_camera = t_x - delta_XY[0]
         Y_camera = t_y - delta_XY[1]
