@@ -118,9 +118,6 @@ class CameraVisionStation:
                 angle = np.arctan2(dy, dx) * 180 / np.pi
                 rad_angle = np.deg2rad(angle + 90)
                 coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
-                # coord_cam_circuit = self.compute_camera_center(
-                #     aruco_pxl_c=center_code, id=marker_id, theta=rad_angle
-                # )
 
                 robot_center = coord_cam_circuit[:2]- np.array([
                     np.cos(-rad_angle), np.sin(-rad_angle)
