@@ -45,7 +45,7 @@ class RobotCamPublisher(Node):
     self.picam2.start()
     self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['focal_length']}) 
 
-    self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, '/edi/cam', 10)
+    self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 10)
     
     self.timer = self.create_timer(timer_period, self.publish_frame)
   
@@ -66,7 +66,7 @@ class RobotCamPublisher(Node):
           # print('rob pose, rob angle: ', robot_pose, robot_angle)
           if robot_pose is not None:
                 pose = PoseWithCovarianceStamped()
-                pose.header.frame_id = 'odom'
+                pose.header.frame_id = 'camera'
                 pose.header.stamp = self.get_clock().now().to_msg()
                 pose.pose.pose.position.x = robot_pose[0]
                 pose.pose.pose.position.y = robot_pose[1]
@@ -83,14 +83,9 @@ class RobotCamPublisher(Node):
    
 def main(args=None):
   rclpy.init()
-  
   robot_cam_publisher = RobotCamPublisher()
-   
   rclpy.spin(robot_cam_publisher)
-   
   robot_cam_publisher.destroy_node()
-   
-  # Shutdown the ROS client library for Python
   rclpy.shutdown()
    
 if __name__ == '__main__':
