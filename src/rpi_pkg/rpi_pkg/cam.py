@@ -66,7 +66,7 @@ class RobotCamPublisher(Node):
           # print('rob pose, rob angle: ', robot_pose, robot_angle)
           if robot_pose is not None:
                 pose = PoseWithCovarianceStamped()
-                pose.header.frame_id = 'camera'
+                pose.header.frame_id = 'map'
                 pose.header.stamp = self.get_clock().now().to_msg()
                 pose.pose.pose.position.x = robot_pose[0]
                 pose.pose.pose.position.y = robot_pose[1]
