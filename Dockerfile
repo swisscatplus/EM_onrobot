@@ -3,7 +3,11 @@ FROM yanniscod/vision:latest
 WORKDIR /home
 
 # clone using id and token, token may be not reusable and need to be updated
+<<<<<<< HEAD
 RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot.git
+=======
+RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot>
+>>>>>>> d8ef911e52a252ee224596b83d4dc8914f92c405
 
 RUN pip install pyserial
 
