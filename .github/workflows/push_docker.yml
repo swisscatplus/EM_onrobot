@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: build
-        run: docker image build --file ./SwissCat-on_robot/Dockerfile --no-cache -t jcswisscat/em_onrobot:$(date +%s)
+        run: docker build --file ./Dockerfile --no-cache -t jcswisscat/em_onrobot:$(date +%s)
       - name: login
         uses: docker/login-action@v3
         with:
