@@ -1,4 +1,4 @@
-FROM jcswisscat/em_onrobot:latest
+FROM yanniscod/on_robot:latest
 
 WORKDIR /home
 #RUN git fetch && git pull
