@@ -20,6 +20,7 @@ jobs:
           username: "swisscat@epfl.ch"
           password: "ARiS3h!u5gj#j"
       - name: build
+        working-directory: ./SwissCat-on_robot
         run: docker build . --no-cache -t jcswisscat/em_onrobot:latest
       - name: ush
         run: docker push jcswisscat/em_onrobot:latest
