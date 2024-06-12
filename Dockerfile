@@ -1,4 +1,4 @@
-FROM yanniscod/on_robot:v2
+FROM yanniscod/vision:latest
 
 WORKDIR /home
 #RUN git fetch && git pull
