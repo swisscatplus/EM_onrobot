@@ -1,7 +1,7 @@
 FROM jcswisscat/em_onrobot:v0
 
 WORKDIR /home
-#RUN git fetch && git pull
+#RUN git fetch && gewit pull
 
 # clone using id and token, token may be not reusable and need to be updated
 RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot.git
