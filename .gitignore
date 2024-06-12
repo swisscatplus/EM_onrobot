@@ -51,6 +51,6 @@ qtcreator-*
 
 # Emacs
 .#*
-
+detect_aruco_pc.py
 # Catkin custom files
 CATKIN_IGNORE

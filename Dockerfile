@@ -1,4 +1,4 @@
-FROM yanniscod/on_robot:v2
+FROM jcswisscat/em_onrobot:v0
 
 WORKDIR /home
 #RUN git fetch && git pull
@@ -6,7 +6,7 @@ WORKDIR /home
 # clone using id and token, token may be not reusable and need to be updated
 RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot.git
 
-RUN pip install pyserial
+# RUN pip install pyserial
 WORKDIR /home/SwissCat-on_robot/
 
 # Install dependencies and build the workspace
