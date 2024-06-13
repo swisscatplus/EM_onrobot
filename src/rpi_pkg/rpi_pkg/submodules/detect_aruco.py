@@ -80,7 +80,7 @@ class CameraVisionStation:
         delta_y = pxl_max_y / 2 - aruco_pxl_c[1]
         delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
         delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
-        self.logger.info(f'delta_x: {delta_x}, delta_y: {delta_y}')
+        self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0.0],
             [-np.sin(theta), -np.cos(theta), 0.0],
@@ -88,7 +88,7 @@ class CameraVisionStation:
         ])
         
         delta_XY = R @ np.array([delta_x, delta_y, 0.0])
-        self.logger.info(f'delta_XY: {delta_XY}')
+        self.logger.debug(f'delta_XY: {delta_XY}')
         X_camera = t_x - delta_XY[0]
         Y_camera = t_y - delta_XY[1]
 
@@ -98,7 +98,7 @@ class CameraVisionStation:
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
-        self.logger.info(f'pixels_to_m: {self.pixels_to_m}')
+        self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
         robot_angles = []
 
