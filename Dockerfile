@@ -2,11 +2,13 @@ FROM jcswisscat/em_onrobot:latest
 
 WORKDIR /home
 
+# Remove the existing directory if it exists
+RUN rm -rf SwissCat-on_robot
 # clone using id and token, token may be not reusable and need to be updated
 RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot.git
 
+#RUN pip install serial
 RUN pip install pyserial
-
 WORKDIR /home/SwissCat-on_robot/
 
 # Install dependencies and build the workspace
