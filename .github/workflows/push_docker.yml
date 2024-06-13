@@ -23,4 +23,5 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: jcswisscat/em_rpi:latest
+          tags: jcswisscat/em_rpi:v0@sha256:baa91ecc9d39aa8aa94d17b1d284d6cbfa273fba79c4be0ee249c6b7cb83891f
+
