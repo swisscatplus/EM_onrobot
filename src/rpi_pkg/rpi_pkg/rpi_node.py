@@ -31,7 +31,7 @@ class RPI_Node(Node):
         qos_profile = QoSProfile(depth=QOS_DEPTH )
 
         # Open a serial connection to /dev/ttyACM0
-        # self.ser = serial.Serial('/dev/ttyACM0', BAUD_RATE, timeout=0.1)
+        self.ser = serial.Serial('/dev/ttyACM0', BAUD_RATE, timeout=0.1)
         
         # Publish encoder ticks counts
         self.left_ticks_pub = self.create_publisher(Int16, 'left_ticks_counts', 10)
