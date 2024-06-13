@@ -4,6 +4,14 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 
 def generate_launch_description():
+    pkg_name = 'mob_rob_loca'  
+
+    imu_config = os.path.join(
+        get_package_share_directory(pkg_name),
+        'config',
+        'bno055_params.yaml'
+        )
+
     rpi_node = Node(
             package = 'rpi_pkg',
             executable = 'rpi_com_motors',
@@ -13,9 +21,15 @@ def generate_launch_description():
             package = 'rpi_pkg',
             executable = 'rpi_cam',
             output = 'screen',
-        )
+        ) 
+    imu_node=Node(
+        package = 'bno055',
+        executable = 'bno055',
+        parameters = [imu_config]
+    )
 
     return LaunchDescription([
         rpi_node,
         cam_node,
+        # imu_node
     ])

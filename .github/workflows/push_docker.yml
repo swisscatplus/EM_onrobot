@@ -23,4 +23,4 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: jcswisscat/em_onrobot:latest
+          tags: jcswisscat/em_rpi:latest

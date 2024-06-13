@@ -7,6 +7,9 @@ docker buildx create   --name em_onrobot   --driver=docker-container
 
 docker buildx inspect --bootstrap local
 
-docker buildx build --platform linux/amd64,linux/arm64 --builder em_onrobot --output type=registry -t jcswisscat/em_rpi:latest .
+docker buildx build --no-cache --platform linux/amd64,linux/arm64 --builder em_onrobot --output type=registry -t jcswisscat/em_rpi:latest .
+
 
 ```
+
+https://www.docker.com/blog/multi-arch-images/
