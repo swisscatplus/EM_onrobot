@@ -34,9 +34,9 @@ class RPI_Node(Node):
         self.ser = serial.Serial('/dev/ttyACM0', BAUD_RATE, timeout=0.1)
         
         # Publish encoder ticks counts
-        self.left_ticks_pub = self.create_publisher(Int16, 'left_ticks_counts', qos_profile)
-        self.right_ticks_pub = self.create_publisher(Int16, 'right_ticks_counts', qos_profile)
-        self.subscription = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, qos_profile)
+        self.left_ticks_pub = self.create_publisher(Int16, 'left_ticks_counts', 10)
+        self.right_ticks_pub = self.create_publisher(Int16, 'right_ticks_counts', 10)
+        self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         
         self.subscription   # prevent warning unused variable
 
