@@ -36,7 +36,7 @@ class RPI_Node(Node):
         # Publish encoder ticks counts
         self.left_ticks_pub = self.create_publisher(Int16, 'left_ticks_counts', qos_profile)
         self.right_ticks_pub = self.create_publisher(Int16, 'right_ticks_counts', qos_profile)
-        self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, qos_profile)
+        self.subscription = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, qos_profile)
         
         self.subscription   # prevent warning unused variable
 
