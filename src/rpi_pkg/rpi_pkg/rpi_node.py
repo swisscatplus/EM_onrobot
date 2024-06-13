@@ -71,7 +71,7 @@ class RPI_Node(Node):
             self.right_ticks_pub.publish(self.right_tick_counts)
 
     def cmd_vel_callback(self, msg):
-        self.get_logger().debug("Received cmd_vel: {0} and {1}".format(msg.linear.x, msg.angular.z))
+        self.get_logger().info("Received cmd_vel: {0} and {1}".format(msg.linear.x, msg.angular.z))
 
         self.linear_x = msg.linear.x
         self.angular_z = msg.angular.z
