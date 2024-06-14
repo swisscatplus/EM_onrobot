@@ -28,8 +28,6 @@ class RPI_Node(Node):
         self.right_tick_counts.data = 0
         self.last_received_ticks = None
 
-        qos_profile = QoSProfile(depth=QOS_DEPTH )
-
         # Open a serial connection to /dev/ttyACM0
         self.ser = serial.Serial('/dev/ttyACM0', BAUD_RATE, timeout=0.1)
         
@@ -60,10 +58,6 @@ class RPI_Node(Node):
                 self.get_logger().debug("Wrong data type received for ticks counts: {0}".format(type(received_ticks_counts)))
         else:
             self.get_logger().debug("No ticks counts received.")
-
-        elapsed_time = time.time() - start_time
-        if VERBOSE:
-            self.get_logger().info("Main loop time: {0} [sec]".format(elapsed_time))
 
         if self.last_received_ticks is not None:
             self.get_logger().debug("Publishing ticks counts: {0} and {1}".format(self.left_tick_counts.data, self.right_tick_counts.data))
