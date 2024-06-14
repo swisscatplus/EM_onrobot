@@ -31,7 +31,7 @@ aruco_params:
   618:
     t_x: 4.402
     t_y: 7.358
-    yaw: 0.0
+    yaw: 0.1
   645:
     t_x: 4.36
     t_y: 5.463
@@ -39,5 +39,5 @@ aruco_params:
   614:
     t_x: 4.38
     t_y: 4.56
-    yaw: 0.0
+    yaw: 0.1
 
