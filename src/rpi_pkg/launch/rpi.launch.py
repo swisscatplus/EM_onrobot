@@ -31,5 +31,5 @@ def generate_launch_description():
     return LaunchDescription([
         rpi_node,
         cam_node,
-        imu_node
+        # imu_node
     ])
