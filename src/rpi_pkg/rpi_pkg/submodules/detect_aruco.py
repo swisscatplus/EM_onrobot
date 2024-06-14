@@ -73,7 +73,8 @@ class CameraVisionStation:
         self.logger.addHandler(ch)
 
     def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
-        t_x, t_y = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y']
+        t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
+        theta = theta + yaw
         self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
         # Compute the offset in the camera frame
         delta_x = aruco_pxl_c[0] - pxl_max_x / 2
