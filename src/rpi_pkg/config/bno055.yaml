@@ -8,7 +8,7 @@ bno055:
     data_query_frequency: 100
     calib_status_frequency: 0.1
     frame_id: "imu"
-    operation_mode: 0x0C
+    operation_mode: 0x00
     placement_axis_remap: "P0"
     acc_factor: 100.0
     mag_factor: 16000000.0
