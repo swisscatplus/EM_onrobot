@@ -7,13 +7,16 @@ bno055:
     uart_timeout: 0.1
     data_query_frequency: 100
     calib_status_frequency: 0.1
-    frame_id: "imu"
+    frame_id: "bno055"
     operation_mode: 0x0C
-    placement_axis_remap: "P0"
+    placement_axis_remap: "P1"
     acc_factor: 100.0
     mag_factor: 16000000.0
     gyr_factor: 900.0
-    set_offsets: true # set to true to use offsets below
-    offset_acc: [0xFFFC, 0x5, 0xFFEC]
-    offset_mag: [0xFEDE, 0x16B, 0x3D]
-    offset_gyr: [0xFFFE, 0xFFFF, 0x2]
+    grav_factor: 100.0
+    set_offsets: true # set to true to use offsets below, offsets obtained by ros service
+    offset_acc: [0x0007, 0xFFE4, 0xFFF7]
+    offset_mag: [0xFCD4, 0x0025, 0x0058]
+    offset_gyr: [0x0002, 0xFFFF, 0xFFFF]
+    radius_acc: 1000
+    radius_mag: 631
