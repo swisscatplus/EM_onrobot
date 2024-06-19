@@ -8,21 +8,9 @@ cam_params:
 # Define here the ids and respective positions of the aruco codes
 
 aruco_params:
-  334:
+  157: # testing
     t_x: 0.123
     t_y: 0.456
-    yaw: 0.0
-  131:
-    t_x: 1.234
-    t_y: 2.345
-    yaw: 0.0
-  416:
-    t_x: 2.33
-    t_y: 0.0
-    yaw: 0.0
-  34:
-    t_x: 2.33
-    t_y: 0.876
     yaw: 0.0
   11:
     t_x: 4.352

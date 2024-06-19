@@ -26,7 +26,7 @@ def get_cam_config(config_file_path=None):
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
-cmpt = 0
+# cmpt = 0
 
 class CameraVisionStation:
     """
@@ -43,12 +43,13 @@ class CameraVisionStation:
 
         self.pixels_to_m = None
         self.pxl_max = None
+        self.cmpt=0
         # self.init = True
 
         self.configure_logger()
 
     def pixels_to_meters(self, markerCorners):
-        cmpt += 1
+        self.cmpt += 1
         # Compute distances of all sides in pixels, should be replaced by a conostant computed in the init
         distances = []
         for corners in markerCorners:
@@ -61,8 +62,9 @@ class CameraVisionStation:
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
-        if cmpt % 15 == 0:
-            self.get_logger().info(f'pixels_to_m: {pixels_to_m}')
+        if self.cmpt % 15 == 0:
+            self.logger.info(f'avg_distance_pixels: {avg_distance_pixels}')
+            # self.get_logger().info(f'pixels_to_m: {pixels_to_m}')
         return pixels_to_m
     
     def configure_logger(self):
@@ -101,8 +103,8 @@ class CameraVisionStation:
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
-        if cmpt % 15 == 0:
-            self.get_logger().info(f'pixels_to_m: {frame.shape}')
+        if self.cmpt % 15 == 0:
+            self.logger.info(f'pixels_to_m: {frame.shape}')
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
