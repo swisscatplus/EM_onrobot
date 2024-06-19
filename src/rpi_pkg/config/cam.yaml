@@ -4,9 +4,9 @@ cam_params:
   focal_length: 2.32 # dist = 1/f
   dist_cam_robot_center: 0.098 #meters
   aruco_square_size: 0.038 #meters
+  conv_pxl2met: 0.0009487111
 
 # Define here the ids and respective positions of the aruco codes
-
 aruco_params:
   157: # testing
     t_x: 0.123

@@ -41,11 +41,11 @@ class CameraVisionStation:
         self.focal_length = self.cam_config['focal_length']
         self.aruco_ids = config['aruco_params']
 
-        self.pixels_to_m = None
+        # self.pixels_to_m = None
         self.pxl_max = None
         self.cmpt=0
         self.dist = []
-        # self.init = True
+        self.pxl2met = config['aruco_square_size']
 
         self.configure_logger()
 
@@ -87,8 +87,8 @@ class CameraVisionStation:
         # Compute the offset in the camera frame
         delta_x = aruco_pxl_c[0] - pxl_max_x / 2
         delta_y = pxl_max_y / 2 - aruco_pxl_c[1]
-        delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
-        delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
+        delta_x = delta_x * self.pxl2met  # Convert pixels to meters
+        delta_y = delta_y * self.pxl2met  # Convert pixels to meters
         self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0.0],
@@ -108,8 +108,8 @@ class CameraVisionStation:
         pxl_max_y, pxl_max_x, _ = frame.shape
         if self.cmpt % 15 == 0:
             self.logger.info(f'frame shape: {frame.shape}')
-        self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
-        self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
+        # self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
+        # self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
         robot_angles = []
 
