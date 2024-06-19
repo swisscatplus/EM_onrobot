@@ -7,8 +7,8 @@ import cv2 as cv # OpenCV library
 from tf_transformations import quaternion_from_euler
 from rpi_pkg.submodules.detect_aruco import CameraVisionStation, detector
 from launch_ros.substitutions import FindPackageShare
-# from picamera2 import Picamera2
-# from libcamera import controls
+from picamera2 import Picamera2
+from libcamera import controls
 import yaml
 import os
 import pickle
