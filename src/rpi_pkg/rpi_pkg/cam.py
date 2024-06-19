@@ -7,8 +7,8 @@ import cv2 as cv # OpenCV library
 from tf_transformations import quaternion_from_euler
 from rpi_pkg.submodules.detect_aruco import CameraVisionStation, detector
 from launch_ros.substitutions import FindPackageShare
-from picamera2 import Picamera2
-from libcamera import controls
+# from picamera2 import Picamera2
+# from libcamera import controls
 import yaml
 import os
 import pickle
@@ -23,6 +23,9 @@ timer_period = 0.1  # seconds
 
 pkg_share = FindPackageShare(package=package_name).find(package_name)
 config_file_path = os.path.join(pkg_share, params_path)
+print(pkg_share)
+calib_mat_file_path = os.path.join(pkg_share, 'config', 'cameraMatrix.pkl')
+calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
 
 class RobotCamPublisher(Node):
   """
@@ -39,7 +42,7 @@ class RobotCamPublisher(Node):
     self.config = self.get_cam_config(config_path)
 
     self.cam = CameraVisionStation(config=self.config)
-    self.size = (640, 480)
+    self.size = (640, 480) # size of the window
     self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
@@ -58,8 +61,8 @@ class RobotCamPublisher(Node):
     frame = self.picam2.capture_array()
       
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
-    cameraMatrix = pickle.load(open('cameraMatrix.pkl', 'rb'))
-    dist = pickle.load(open('dist.pkl', 'rb'))
+    cameraMatrix = pickle.load(open(calib_mat_file_path, 'rb'))
+    dist = pickle.load(open(calib_dist_file_path, 'rb'))
 
     #Calibration process
     newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, self.size, 1, self.size)
