@@ -6,8 +6,8 @@ import time
 picam2 = Picamera2()
 picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
 picam2.start()
-picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 5.0}) 
-
+picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 0.1}) 
+print(picam2)
 num = 110
 
 while True:
