@@ -98,7 +98,6 @@ class CameraVisionStation:
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
-        print('pxl_max_x, pxl_max_y: ', pxl_max_x, pxl_max_y)
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []

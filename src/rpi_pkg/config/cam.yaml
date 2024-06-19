@@ -6,6 +6,7 @@ cam_params:
   aruco_square_size: 0.038 #meters
 
 # Define here the ids and respective positions of the aruco codes
+
 aruco_params:
   334:
     t_x: 0.123

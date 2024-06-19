@@ -24,7 +24,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'rpi_com_motors = rpi_pkg.motors:main',
+            'rpi_com_motors = rpi_pkg.rpi_node:main',
             'rpi_cam = rpi_pkg.cam:main',
         ],
     },
