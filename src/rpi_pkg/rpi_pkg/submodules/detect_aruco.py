@@ -39,13 +39,13 @@ class CameraVisionStation:
 
         self.cam_config = config['cam_params']
         self.focal_length = self.cam_config['focal_length']
+        self.pxl2met = config['conv_pxl2met']
         self.aruco_ids = config['aruco_params']
 
         # self.pixels_to_m = None
         self.pxl_max = None
         self.cmpt=0
         self.dist = []
-        self.pxl2met = config['aruco_square_size']
 
         self.configure_logger()
 
