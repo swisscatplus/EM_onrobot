@@ -44,6 +44,7 @@ class CameraVisionStation:
         self.pixels_to_m = None
         self.pxl_max = None
         self.cmpt=0
+        self.dist = []
         # self.init = True
 
         self.configure_logger()
@@ -62,9 +63,11 @@ class CameraVisionStation:
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
-        if self.cmpt % 15 == 0:
+        if self.cmpt % 5 == 0:
             self.logger.info(f'avg_distance_pixels: {avg_distance_pixels}')
-            # self.get_logger().info(f'pixels_to_m: {pixels_to_m}')
+            self.dist.append(avg_distance_pixels)
+        if self.cmpt == 500:
+            self.logger.info(f'Median distance in pixels: {np.median(self.dist)}')
         return pixels_to_m
     
     def configure_logger(self):
@@ -104,7 +107,7 @@ class CameraVisionStation:
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
         pxl_max_y, pxl_max_x, _ = frame.shape
         if self.cmpt % 15 == 0:
-            self.logger.info(f'pixels_to_m: {frame.shape}')
+            self.logger.info(f'frame shape: {frame.shape}')
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
