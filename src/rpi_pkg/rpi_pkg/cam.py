@@ -16,7 +16,7 @@ import os
 # camera_id = 'station_1'
 package_name = 'rpi_pkg'
 params_path = 'config/cam.yaml'
-timer_period = 0.1  # seconds
+timer_period = 0.1  # 10 Hz
 
 # ##########################################
 
@@ -56,7 +56,7 @@ class RobotCamPublisher(Node):
   
   def publish_frame(self):
     frame = self.picam2.capture_array()
-      
+    self.get_logger().debug('Frame size: ' + str(frame.shape))
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
         
     markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
