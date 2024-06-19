@@ -9,7 +9,7 @@ import pickle
 
 ################ FIND CHESSBOARD CORNERS - OBJECT POINTS AND IMAGE POINTS #############################
 
-chessboardSize = (13, 12)
+chessboardSize = (12,11)
 frameSize = (640,480)
 
 # termination criteria
@@ -29,7 +29,6 @@ imgpoints = [] # 2d points in image plane.
 
 
 images = glob.glob('images/*.png')
-
 
 for image in images:
     img = cv.imread(image)

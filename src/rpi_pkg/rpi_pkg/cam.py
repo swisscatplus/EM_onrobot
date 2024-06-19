@@ -11,6 +11,7 @@ from picamera2 import Picamera2
 from libcamera import controls
 import yaml
 import os
+import pickle
 
 # ################# CONFIG #################
 # camera_id = 'station_1'
@@ -37,11 +38,10 @@ class RobotCamPublisher(Node):
     config_path = self.get_parameter('config_file_path').get_parameter_value().string_value
     self.config = self.get_cam_config(config_path)
 
-    #self.station_id = self.config['station_id']
     self.cam = CameraVisionStation(config=self.config)
-
+    self.size = (640, 480)
     self.picam2 = Picamera2()
-    self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+    self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
     self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['focal_length']}) 
 
@@ -58,8 +58,15 @@ class RobotCamPublisher(Node):
     frame = self.picam2.capture_array()
       
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
-        
-    markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
+    cameraMatrix = pickle.load(open('cameraMatrix.pkl', 'rb'))
+    dist = pickle.load(open('dist.pkl', 'rb'))
+
+    #Calibration process
+    newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, self.size, 1, self.size)
+    cal_frame = cv.undistort(gray_frame, cameraMatrix, dist, None, newCameraMatrix)
+    x, y, w, h = roi
+    cal_frame = cal_frame[y:y+h, x:x+w]
+    markerCorners, markerIds, _ = detector.detectMarkers(cal_frame)  # Detect markers in grayscale frame
 
     if markerIds is not None:
           robot_pose, robot_angle = self.cam.get_robot_pose(frame, markerCorners, markerIds)
