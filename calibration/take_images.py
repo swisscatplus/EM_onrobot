@@ -8,12 +8,11 @@ picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888',
 picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 2.32, "AfMetering": controls.AfMeteringEnum.Windows}) 
 picam2.start()
 
-print(picam2)
-num = 111
+num = 0
 
 while True:
     frame = picam2.capture_array()
-    time.sleep(5)
+    time.sleep(2)
     print('Firing in 1')
     time.sleep(1)
 
