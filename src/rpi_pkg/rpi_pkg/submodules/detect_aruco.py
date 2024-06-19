@@ -42,7 +42,6 @@ class CameraVisionStation:
 
         self.pixels_to_m = None
         self.pxl_max = None
-        # self.init = True
 
         self.configure_logger()
 
