@@ -42,10 +42,7 @@ class CameraVisionStation:
         self.pxl2met = self.cam_config['conv_pxl2met']
         self.aruco_ids = config['aruco_params']
 
-        # self.pixels_to_m = None
-        self.pxl_max = None
-        self.cmpt=0
-        self.dist = []
+        self.pxl_max = (480, 640)
 
         self.configure_logger()
 
@@ -63,11 +60,6 @@ class CameraVisionStation:
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
-        if self.cmpt % 5 == 0:
-            self.logger.info(f'avg_distance_pixels: {avg_distance_pixels}')
-            self.dist.append(avg_distance_pixels)
-        if self.cmpt == 500:
-            self.logger.info(f'Median distance in pixels: {np.median(self.dist)}')
         return pixels_to_m
     
     def configure_logger(self):
@@ -80,16 +72,18 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
+    def compute_camera_center(self, aruco_pxl_c, id, theta):
         t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
         theta = theta + yaw
         self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
+        
         # Compute the offset in the camera frame
-        delta_x = aruco_pxl_c[0] - pxl_max_x / 2
-        delta_y = pxl_max_y / 2 - aruco_pxl_c[1]
+        delta_x = aruco_pxl_c[0] - self.pxl_max[0] / 2
+        delta_y = self.pxl_max[1] / 2 - aruco_pxl_c[1]
         delta_x = delta_x * self.pxl2met  # Convert pixels to meters
         delta_y = delta_y * self.pxl2met  # Convert pixels to meters
         self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
+
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0.0],
             [-np.sin(theta), -np.cos(theta), 0.0],
@@ -105,9 +99,6 @@ class CameraVisionStation:
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
-        pxl_max_y, pxl_max_x, _ = frame.shape
-        if self.cmpt % 15 == 0:
-            self.logger.info(f'frame shape: {frame.shape}')
         # self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         # self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
@@ -128,7 +119,7 @@ class CameraVisionStation:
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * 180 / np.pi
                 rad_angle = np.deg2rad(angle + 180)
-                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
+                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle)
 
                 robot_center = coord_cam_circuit[:2]- np.array([
                     np.cos(-rad_angle), np.sin(-rad_angle)
