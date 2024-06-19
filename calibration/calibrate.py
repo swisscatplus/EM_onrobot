@@ -9,7 +9,7 @@ import pickle
 
 ################ FIND CHESSBOARD CORNERS - OBJECT POINTS AND IMAGE POINTS #############################
 
-chessboardSize = (12,11)
+chessboardSize = (13, 12)
 frameSize = (640,480)
 
 # termination criteria
@@ -30,8 +30,8 @@ imgpoints = [] # 2d points in image plane.
 
 images = glob.glob('images/*.png')
 
-for image in images:
 
+for image in images:
     img = cv.imread(image)
     gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
@@ -40,7 +40,7 @@ for image in images:
 
     # If found, add object points, image points (after refining them)
     if ret == True:
-
+        print(chessboardSize)
         objpoints.append(objp)
         corners2 = cv.cornerSubPix(gray, corners, (11,11), (-1,-1), criteria)
         imgpoints.append(corners)
@@ -73,8 +73,6 @@ pickle.dump(dist, open( "dist.pkl", "wb" ))
 img = cv.imread('images/img8.png') #random image
 h,  w = img.shape[:2]
 newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, (w,h), 1, (w,h))
-
-
 
 # Undistort
 dst = cv.undistort(img, cameraMatrix, dist, None, newCameraMatrix)
