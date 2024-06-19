@@ -61,15 +61,15 @@ class RobotCamPublisher(Node):
     frame = self.picam2.capture_array()
       
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
-    cameraMatrix = pickle.load(open(calib_mat_file_path, 'rb'))
-    dist = pickle.load(open(calib_dist_file_path, 'rb'))
+    # cameraMatrix = pickle.load(open(calib_mat_file_path, 'rb'))
+    # dist = pickle.load(open(calib_dist_file_path, 'rb'))
 
     #Calibration process
-    newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, self.size, 1, self.size)
-    cal_frame = cv.undistort(gray_frame, cameraMatrix, dist, None, newCameraMatrix)
+    # newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, self.size, 1, self.size)
+    # cal_frame = cv.undistort(gray_frame, cameraMatrix, dist, None, newCameraMatrix)
     # x, y, w, h = roi
     # cal_frame = cal_frame[y:y+h, x:x+w]
-    markerCorners, markerIds, _ = detector.detectMarkers(cal_frame)  # Detect markers in grayscale frame
+    markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
 
     if markerIds is not None:
           robot_pose, robot_angle = self.cam.get_robot_pose(frame, markerCorners, markerIds)
