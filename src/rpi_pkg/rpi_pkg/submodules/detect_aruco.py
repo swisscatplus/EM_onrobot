@@ -33,7 +33,7 @@ class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
-    def __init__(self, config=None, cam_frame=cam_frame):
+    def __init__(self, config=None, cam_frame=None):
         """
         Class constructor to set up the right camera
         """
