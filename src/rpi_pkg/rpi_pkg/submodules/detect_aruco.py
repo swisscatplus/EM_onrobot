@@ -62,7 +62,8 @@ class CameraVisionStation:
         if len(self.conv_list) == 300:
             mean = np.mean(self.conv_list)
             median = np.median(self.conv_list)
-            self.logger.info(f'pixels_to_meters: {mean}, {median}')
+            std = np.std(self.conv_list)
+            self.logger.info(f'pixels_to_meters: {mean}, {median}. {std}')
             self.conv_list = []
         return pixels_to_m
     
