@@ -19,7 +19,7 @@ To compute the encoder ticks, an arduino is used to retrieve and transfer them t
 As the goal is to easily deploy this project on the mobile robots, it was decided to create a Docker image of this code. The reasons are to have a much lighter memory usage of the robot, but also to make the camera and ros2 compatible as the RaspberryPi 5 cannot run Picamera2 while having an Ubuntu distribution. Therefore, all you need to do in order to push this code on your robot is to have Docker installed. 
 
 ### Docker
-
+The installation procedure of a docker image compatible for our project is described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/configuration/installation_procedure), from the installation of Docker to the base image to use. Be careful that the folder details the image built from this folder enables running ROS2 and using the camera on the same platform, but you still need to import the git repository. 
 #### Installation
 
 ### Calibration
