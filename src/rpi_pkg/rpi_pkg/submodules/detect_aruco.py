@@ -10,18 +10,12 @@ import os
 camera_port = 0 # worked for me, use 0 if you want to use the embedded wembcam of the computer, or try other numbers
 window_name = 'Robot poses'
 verbose = False
-# station_id = 'station_1'
-
-# directory_path = os.path.dirname(os.path.abspath(__file__))
-# config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam.yaml')
 
 def get_cam_config(config_file_path=None):
     with open(config_file_path, 'r') as file:
         data = yaml.safe_load(file)
     return data
 
-# config = get_cam_config(config_file_path=config_file_path)
-# ########################################
 
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
@@ -41,6 +35,7 @@ class CameraVisionStation:
         self.cam_config = config['cam_params']
         self.focal_length = self.cam_config['focal_length']
         self.aruco_ids = config['aruco_params']
+        self.pxl2meter = self.cam_config['pxl2meter']
         self.size = cam_frame
         self.pixels_to_m = None
         self.pxl_max = None
@@ -84,8 +79,8 @@ class CameraVisionStation:
         delta_y = self.size[1] / 2 - aruco_pxl_c[1]
 
         # Convert pixels to meters
-        delta_x = delta_x * self.pixels_to_m 
-        delta_y = delta_y * self.pixels_to_m
+        delta_x = delta_x * self.pxl2meter 
+        delta_y = delta_y * self.pxl2meter
         self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
 
         # Rotation matrix empirically defined
@@ -148,8 +143,8 @@ class CameraVisionStation:
                             cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             # not using else statemenent, the log was smh introducing noise in the position of the robot
-            else:
-                self.logger.warn(f"ID {marker_id} not in the list of aruco_ids")
+            # else:
+            #     self.logger.warn(f"ID {marker_id} not in the list of aruco_ids")
 
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
