@@ -39,9 +39,11 @@ class CameraVisionStation:
         self.size = cam_frame
         self.pixels_to_m = None
         self.pxl_max = None
-
+        
         self.configure_logger()
         self.logger.info(f'CameraVisionStation initialized with {self.pxl2meter} pxl2meter conv factor and {self.size} frame size.')
+
+        self.conv_list = []
 
     def pixels_to_meters(self, markerCorners):
         # Compute distances of all sides in pixels, should be replaced by a constant computed in the init
@@ -56,7 +58,12 @@ class CameraVisionStation:
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
-
+        self.conv_list.append(pixels_to_m)
+        if len(self.conv_list) == 300:
+            mean = np.mean(self.conv_list)
+            median = np.median(self.conv_list)
+            self.logger.info(f'pixels_to_meters: {mean}, {median}')
+            self.conv_list = []
         return pixels_to_m
     
     def configure_logger(self):
