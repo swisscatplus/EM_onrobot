@@ -7,10 +7,19 @@ import pickle
 ########### Simply erase the png's in the images/ folder, get yourself a checkerboard, run get_images.py  and press 'S' key to get the images. Then run this script to calibrate the camera. ###########
 ###########  Note that you may have to modifiy chessbooardsize (line 11).
 
-################ FIND CHESSBOARD CORNERS - OBJECT POINTS AND IMAGE POINTS #############################
 
-chessboardSize = (12,11)
+
+######################### TO MODIFY #########################
+chessboardSize = (12,11) # if you're not sure, just doa  for loop for x and y values to get which size matches your calibration board
 frameSize = (640,480)
+size_of_chessboard_squares_mm = 10
+##############################################################
+
+
+
+################ FIND CHESSBOARD CORNERS - OBJECT POINTS AND IMAGE POINTS #############################
+#-----------------------------------------------
+
 
 # termination criteria
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -19,7 +28,7 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 objp = np.zeros((chessboardSize[0] * chessboardSize[1], 3), np.float32)
 objp[:,:2] = np.mgrid[0:chessboardSize[0],0:chessboardSize[1]].T.reshape(-1,2)
 
-size_of_chessboard_squares_mm = 10
+
 objp = objp * size_of_chessboard_squares_mm
 
 

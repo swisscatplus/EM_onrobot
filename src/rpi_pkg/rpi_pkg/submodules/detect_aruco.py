@@ -140,7 +140,9 @@ class CameraVisionStation:
                             cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             # not using else statemenent, the log was smh introducing noise in the position of the robot
-
+            # uncomment following two lines if you want to see the aruco id
+            # else:
+            #     self.logger.warn(f"ArUco ID {marker_id} not in the list of known IDs.")
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
             robot_angle = np.mean(robot_angles)

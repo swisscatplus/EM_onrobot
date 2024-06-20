@@ -1,3 +1,7 @@
+# The offsets were defined after having calibrated the IMU, everything is explained on the bno055 github:
+# https://github.com/flynneva/bno055 as well as on their datasheet
+# https://cdn-shop.adafruit.com/datasheets/BST_BNO055_DS000_12.pdf
+# Some parameters, such as data_query_frequency, were empirically defined
 bno055:
   ros__parameters:
     ros_topic_prefix: "bno055/"
