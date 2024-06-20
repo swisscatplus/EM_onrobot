@@ -10,11 +10,18 @@ import os
 camera_port = 0 # worked for me, use 0 if you want to use the embedded wembcam of the computer, or try other numbers
 window_name = 'Robot poses'
 verbose = False
+# station_id = 'station_1'
+
+# directory_path = os.path.dirname(os.path.abspath(__file__))
+# config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam.yaml')
 
 def get_cam_config(config_file_path=None):
     with open(config_file_path, 'r') as file:
         data = yaml.safe_load(file)
     return data
+
+# config = get_cam_config(config_file_path=config_file_path)
+# ########################################
 
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
@@ -116,7 +123,7 @@ class CameraVisionStation:
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * CONV_RAD2DEG
-                rad_angle = np.deg2rad(angle)
+                rad_angle = np.deg2rad(angle + 180)
 
                 # Computes the camera center in the circuit frame
                 coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle)
@@ -127,7 +134,7 @@ class CameraVisionStation:
                 ]) * self.cam_config['dist_cam_robot_center']
 
                 aruco_poses.append(robot_center)
-                robot_angles.append(rad_angle)
+                robot_angles.append(-rad_angle) # needed to make the robot rotate in the good orientation
                 self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
 
                 if set_visual_interface:
