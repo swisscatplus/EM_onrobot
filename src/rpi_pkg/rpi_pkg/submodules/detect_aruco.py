@@ -10,18 +10,11 @@ import os
 camera_port = 0 # worked for me, use 0 if you want to use the embedded wembcam of the computer, or try other numbers
 window_name = 'Robot poses'
 verbose = False
-# station_id = 'station_1'
-
-# directory_path = os.path.dirname(os.path.abspath(__file__))
-# config_file_path = os.path.join(directory_path, '../..', 'config', 'rpi_cam.yaml')
 
 def get_cam_config(config_file_path=None):
     with open(config_file_path, 'r') as file:
         data = yaml.safe_load(file)
     return data
-
-# config = get_cam_config(config_file_path=config_file_path)
-# ########################################
 
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
@@ -33,7 +26,7 @@ class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
-    def __init__(self, config=None, cam_frame=None):
+    def __init__(self, config=None, cam_frame=(480, 640)):
         """
         Class constructor to set up the right camera
         """
@@ -123,7 +116,7 @@ class CameraVisionStation:
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
                 angle = np.arctan2(dy, dx) * CONV_RAD2DEG
-                rad_angle = np.deg2rad(angle + 180)
+                rad_angle = np.deg2rad(angle)
 
                 # Computes the camera center in the circuit frame
                 coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle)
@@ -134,8 +127,7 @@ class CameraVisionStation:
                 ]) * self.cam_config['dist_cam_robot_center']
 
                 aruco_poses.append(robot_center)
-                robot_angles.append(-rad_angle)
-                print('robot_angle', robot_angle)
+                robot_angles.append(rad_angle)
                 self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
 
                 if set_visual_interface:
@@ -149,6 +141,8 @@ class CameraVisionStation:
                             cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             # not using else statemenent, the log was smh introducing noise in the position of the robot
+            else:
+                self.logger.warn(f"ID {marker_id} not in the list of aruco_ids")
 
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
