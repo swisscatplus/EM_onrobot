@@ -14,7 +14,7 @@ def generate_launch_description():
 
     rpi_node = Node(
             package = 'rpi_pkg',
-            executable = 'rpi_com_motors',
+            executable = 'rpi_motors',
             output = 'screen',
         )
     cam_node = Node(

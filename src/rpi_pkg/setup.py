@@ -18,13 +18,13 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='swisscat',
-    maintainer_email='swisscat@todo.todo',
-    description='TODO: Package description',
+    maintainer_email='swisscat@epfl.ch',
+    description='Embedded communication of the position of the mobile robot',
     license='Apache 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'rpi_com_motors = rpi_pkg.rpi_node:main',
+            'rpi_motors = rpi_pkg.motors:main',
             'rpi_cam = rpi_pkg.cam:main',
         ],
     },

@@ -2,19 +2,6 @@
 import cv2 as cv
 import numpy as np
 import logging
-import yaml
-import os
-
-################# CONFIG #################
-# local config to run the code independently
-camera_port = 0 # worked for me, use 0 if you want to use the embedded wembcam of the computer, or try other numbers
-window_name = 'Robot poses'
-verbose = False
-
-def get_cam_config(config_file_path=None):
-    with open(config_file_path, 'r') as file:
-        data = yaml.safe_load(file)
-    return data
 
 
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
@@ -38,7 +25,6 @@ class CameraVisionStation:
         self.pxl2meter = None #self.cam_config['conv_pxl2met']
         self.size = cam_frame
         self.pixels_to_m = None
-        self.pxl_max = None
         
         self.configure_logger()
         self.logger.info(f'CameraVisionStation initialized with {self.pxl2meter} pxl2meter conv factor and {self.size} frame size.')
@@ -46,7 +32,9 @@ class CameraVisionStation:
         self.conv_list = []
 
     def pixels_to_meters(self, markerCorners):
-        # Compute distances of all sides in pixels, should be replaced by a constant computed in the init
+        """
+        Computes distances of all sides in pixels, should be replaced by a constant computed in the constructor.
+        """
         distances = []
         for corners in markerCorners:
             for i in range(4):
@@ -58,13 +46,13 @@ class CameraVisionStation:
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
         pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
-        self.conv_list.append(pixels_to_m)
-        if len(self.conv_list) == 300:
-            mean = np.mean(self.conv_list)
-            median = np.median(self.conv_list)
-            std = np.std(self.conv_list)
-            self.logger.info(f'pixels_to_meters: {mean}, {median}. {std}')
-            self.conv_list = []
+        # self.conv_list.append(pixels_to_m)
+        # if len(self.conv_list) == 300:
+        #     mean = np.mean(self.conv_list)
+        #     median = np.median(self.conv_list)
+        #     std = np.std(self.conv_list)
+        #     self.logger.info(f'pixels_to_meters: {mean}, {median}. {std}')
+        #     self.conv_list = []
         return pixels_to_m
     
     def configure_logger(self):
@@ -139,9 +127,7 @@ class CameraVisionStation:
 
                 aruco_poses.append(robot_center)
                 robot_angles.append(-rad_angle) # needed to make the robot rotate in the good orientation
-                # self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
-                self.logger.info(f'Center Cam Frame: {self.size[0]/2, self.size[1]/2}')
-                self.logger.info(f'ArUco pixel: {center_code}')
+                self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
 
                 if set_visual_interface:
                     cv.arrowedLine(frame, bottom_center, top_center, (0, 0, 255), 4)
@@ -154,8 +140,6 @@ class CameraVisionStation:
                             cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             # not using else statemenent, the log was smh introducing noise in the position of the robot
-            # else:
-            #     self.logger.warn(f"ID {marker_id} not in the list of aruco_ids")
 
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
@@ -164,41 +148,3 @@ class CameraVisionStation:
             robot_center, robot_angle = None, None
 
         return robot_center, robot_angle
-
-def main():
-    directory_path = os.path.dirname(os.path.abspath(__file__))
-    config_file_path = '/home/coderey/Desktop/SwissCat-on_robot/src/rpi_pkg/config/cam.yaml'
-
-    config = get_cam_config(config_file_path=config_file_path)
-
-    cap = cv.VideoCapture(camera_port)
-    cap.set(cv.CAP_PROP_AUTOFOCUS, 0) #remove autofocus
-    cam = CameraVisionStation(config=config)
-
-    while True:
-        ret, frame = cap.read()
-        
-        if not ret:
-            raise ("Can't receive frame (stream end?). Exiting ...")
-        
-        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
-        
-        markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
-
-        if markerIds is not None:
-            robot_poses = cam.get_robot_pose(frame, markerCorners, markerIds, set_visual_interface=True)
-            if verbose:
-                cam.logger.info('robot_poses: ' + str(robot_poses))
-                cam.logger.info('len(robot_poses): ' + str(len(robot_poses)))
-                cam.logger.info('---')
-                for robot_pose in robot_poses:
-                    cam.logger.info('robot_pose: ' + str(robot_pose))
-                    cam.logger.info('ID:' +  str(robot_pose[0]))
-                    cam.logger.info('-------------------------------')
-        cv.imshow(window_name, frame)
-
-        if cv.waitKey(1) == ord('q'):
-            break
-
-if __name__ == "__main__":
-    main()

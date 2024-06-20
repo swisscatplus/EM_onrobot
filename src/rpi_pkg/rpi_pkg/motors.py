@@ -18,7 +18,7 @@ class RPI_Node(Node):
 
     def __init__(self):
 
-        super().__init__('rpi_com_node')
+        super().__init__('rpi_motors_node')
 
         self.linear_x = 0.0
         self.angular_z = 0.0
