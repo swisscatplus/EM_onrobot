@@ -48,7 +48,7 @@ class CameraVisionStation:
         self.configure_logger()
 
     def pixels_to_meters(self, markerCorners):
-        # Compute distances of all sides in pixels, should be replaced by a conostant computed in the init
+        # Compute distances of all sides in pixels, should be replaced by a constant computed in the init
         distances = []
         for corners in markerCorners:
             for i in range(4):
@@ -74,15 +74,21 @@ class CameraVisionStation:
         self.logger.addHandler(ch)
 
     def compute_camera_center(self, aruco_pxl_c, id, theta):
+        # Gets the pose of the aruco in the circuit
         t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
         theta = theta + yaw
         self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
+
         # Compute the offset in the camera frame
         delta_x = aruco_pxl_c[0] - self.size[0] / 2
         delta_y = self.size[1] / 2 - aruco_pxl_c[1]
-        delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
-        delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
+
+        # Convert pixels to meters
+        delta_x = delta_x * self.pixels_to_m 
+        delta_y = delta_y * self.pixels_to_m
         self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
+
+        # Rotation matrix empirically defined
         R = np.array([
             [np.cos(theta), -np.sin(theta), 0.0],
             [-np.sin(theta), -np.cos(theta), 0.0],
@@ -91,6 +97,7 @@ class CameraVisionStation:
         
         delta_XY = R @ np.array([delta_x, delta_y, 0.0])
         self.logger.debug(f'delta_XY: {delta_XY}')
+        
         X_camera = t_x - delta_XY[0]
         Y_camera = t_y - delta_XY[1]
 
@@ -98,7 +105,6 @@ class CameraVisionStation:
 
     # Function to process the frame and detect ArUco markers
     def get_robot_pose(self, frame, markerCorners, markerIds, set_visual_interface=False):
-        pxl_max_y, pxl_max_x, _ = frame.shape
         self.pixels_to_m = self.pixels_to_meters(markerCorners)  # Constant conversion factor
         self.logger.debug(f'pixels_to_m: {self.pixels_to_m}')
         aruco_poses = []
