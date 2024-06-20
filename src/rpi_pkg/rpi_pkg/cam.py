@@ -43,6 +43,7 @@ class RobotCamPublisher(Node):
 
     self.size = (640, 480) # size of the window
     self.cam = CameraVisionStation(config=self.config, cam_frame=(447, 569))
+    self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
     self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['focal_length']}) 
