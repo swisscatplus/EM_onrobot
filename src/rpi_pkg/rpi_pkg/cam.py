@@ -41,8 +41,8 @@ class RobotCamPublisher(Node):
     config_path = self.get_parameter('config_file_path').get_parameter_value().string_value
     self.config = self.get_cam_config(config_path)
 
-    self.cam = CameraVisionStation(config=self.config)
     self.size = (640, 480) # size of the window
+    self.cam = CameraVisionStation(config=self.config, cam_frame=self.size)
     self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
@@ -73,7 +73,7 @@ class RobotCamPublisher(Node):
 
     if markerIds is not None:
           robot_pose, robot_angle = self.cam.get_robot_pose(frame, markerCorners, markerIds)
-          # print('rob pose, rob angle: ', robot_pose, robot_angle)
+          
           if robot_pose is not None:
                 pose = PoseWithCovarianceStamped()
                 pose.header.frame_id = 'map'

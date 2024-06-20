@@ -27,11 +27,13 @@ dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
 
+CONV_RAD2DEG = 180 / np.pi
+
 class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
-    def __init__(self, config=None):
+    def __init__(self, config=None, cam_frame=cam_frame):
         """
         Class constructor to set up the right camera
         """
@@ -39,7 +41,7 @@ class CameraVisionStation:
         self.cam_config = config['cam_params']
         self.focal_length = self.cam_config['focal_length']
         self.aruco_ids = config['aruco_params']
-
+        self.size = cam_frame
         self.pixels_to_m = None
         self.pxl_max = None
 
@@ -71,13 +73,13 @@ class CameraVisionStation:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def compute_camera_center(self, aruco_pxl_c, id, theta, pxl_max_x, pxl_max_y):
+    def compute_camera_center(self, aruco_pxl_c, id, theta):
         t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
         theta = theta + yaw
         self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
         # Compute the offset in the camera frame
-        delta_x = aruco_pxl_c[0] - pxl_max_x / 2
-        delta_y = pxl_max_y / 2 - aruco_pxl_c[1]
+        delta_x = aruco_pxl_c[0] - self.size[0] / 2
+        delta_y = self.size[1] / 2 - aruco_pxl_c[1]
         delta_x = delta_x * self.pixels_to_m  # Convert pixels to meters
         delta_y = delta_y * self.pixels_to_m  # Convert pixels to meters
         self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
@@ -104,27 +106,30 @@ class CameraVisionStation:
 
         for i in range(len(markerIds)):
             marker_id = markerIds[i, 0]
-            if marker_id == 0:
-                continue
-            
             if marker_id in self.aruco_ids:
+                # Gets center pixel of the aruco code detected
                 corners = markerCorners[i][0]
                 bottom_center = tuple(map(int, np.mean(corners[2:4], axis=0)))
                 top_center = tuple(map(int, np.mean(corners[0:2], axis=0)))
                 center_code = tuple(map(int, np.mean(corners, axis=0)))
 
+                # Gets its angle
                 dx = top_center[0] - bottom_center[0]
                 dy = top_center[1] - bottom_center[1]
-                angle = np.arctan2(dy, dx) * 180 / np.pi
+                angle = np.arctan2(dy, dx) * CONV_RAD2DEG
                 rad_angle = np.deg2rad(angle + 180)
-                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle, pxl_max_x=pxl_max_x, pxl_max_y=pxl_max_y)
 
+                # Computes the camera center in the circuit frame
+                coord_cam_circuit = self.compute_camera_center(aruco_pxl_c=center_code, id=markerIds[i, 0], theta=rad_angle)
+
+                # Computes robot center relative to the camera center
                 robot_center = coord_cam_circuit[:2]- np.array([
                     np.cos(-rad_angle), np.sin(-rad_angle)
                 ]) * self.cam_config['dist_cam_robot_center']
+
                 aruco_poses.append(robot_center)
                 robot_angles.append(-rad_angle)
-
+                print('robot_angle', robot_angle)
                 self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
 
                 if set_visual_interface:
@@ -137,8 +142,7 @@ class CameraVisionStation:
                     cv.putText(frame, text, (10, frame.shape[0] - 20 - i * 25), 
                             cv.FONT_HERSHEY_COMPLEX, 0.3, (255, 255, 255), 1)
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
-            else:
-                self.logger.warn(f'Unknown marker ID detected: {marker_id}, ignoring')
+            # not using else statemenent, the log was smh introducing noise in the position of the robot
 
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
