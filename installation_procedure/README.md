@@ -15,12 +15,8 @@ Do the following commands in the installation_procedure directory, which you dow
 2) 'sh 2_install_docker.sh'
 	-> you should get a "Hello from Docker! ..." message, showing that the installation worked
 3) 'sh 3_build_docker.sh' 
-	-> must be executed where the Dockerfile is # maybe use DockerHub, so only a pull would be required instead of fully building the image
+	-> must be executed where the Dockerfile is 
 4) 'sh 4_run_docker.sh'
-	-> starts an interactive session # maybe -it not required when deploying overall
+	-> starts an interactive session # if you want to have access to the terminal, useful to check the installation
 
-Then, in the container you should be inside the git folder created. 
-
-5) 'sh run_vision_cam.sh'
-	-> sources, builds and runs the ros2 application
 

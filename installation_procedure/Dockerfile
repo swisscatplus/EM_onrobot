@@ -52,7 +52,8 @@ RUN sudo ninja -C build install
 RUN pip install opencv-contrib-python \
     picamera2 \
     transforms3d \
-    pyserial
+    pyserial \
+    smbus
 
 RUN sudo apt update && sudo apt install -y --no-install-recommends \
      nano \

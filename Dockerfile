@@ -1,15 +1,14 @@
-FROM jcswisscat/em_onrobot:latest
+FROM yanniscod/em:v0
+
+ARG GIT_USER = Yanniscod
+ARG GIT_TOKEN = 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
 
 WORKDIR /home
 
-# Remove the existing directory if it exists
-RUN rm -rf SwissCat-on_robot
 # clone using id and token, token may be not reusable and need to be updated
-RUN git clone https://Yanniscod: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@github.com/swisscatplus/SwissCat-on_robot.git
+RUN git clone --recursive https://$GIT_USER:$GIT_TOKEN@github.com/swisscatplus/SwissCat-on_robot.git
 
-#RUN pip install serial
-RUN pip install pyserial
-WORKDIR /home/SwissCat-on_robot/
+WORKDIR /home/SwissCat-on_robot
 
 # Install dependencies and build the workspace
 RUN colcon build
@@ -21,5 +20,7 @@ COPY ros_entrypoint.sh /home/SwissCat-on_robot/ros_entrypoint.sh
 ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
 
 # Default command to run ROS2 node
-#CMD ["ros2", "run", "rpi_pkg","rpi_com_motors"]
 CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py"]
+#CMD ["bash"] # use this if you want to access the terminal, same as -it flag
+
+
