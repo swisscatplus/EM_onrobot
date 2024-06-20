@@ -1,15 +1,15 @@
 # Installation procedure
 
 ## Straight-forward solution: 
-One way much easier is to install is to pull the docker image built:
+Pull directly the docker image built, which enables running ROS2 and using the camera on the Raspberry Pi 5:
 `
 docker pull yanniscod/rpi_vision:v1
 `
 
-## Long solution but details how the docker image was built, provides dockerfile
-This is the detailed method that installs docker on the Raspberry Pi 5, builds the image needed to use ros2 and libcamera and provides shell commands to properly run the required node inside the container.
+## Long solution but details how the docker image was built, provides Dockerfile
+This detailed method installs docker on the Raspberry Pi 5, builds the image needed to use ros2 and libcamera and provides shell commands to run the required node inside the container properly.
 
-Do the following commands in the installation_procedure directory, which you downloaded from the github (you can git clone, the ros2 workspace is supposed to be run on the RPI)
+Do the following commands in the installation_procedure directory, which you downloaded from GitHub (you can git clone, the ros2 workspace is supposed to be run on the RPI)
 
 1) 'sh 1_setup_docker_apt.sh'
 2) 'sh 2_install_docker.sh'
