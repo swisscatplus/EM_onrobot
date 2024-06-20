@@ -81,7 +81,7 @@ class CameraVisionStation:
         # Gets the pose of the aruco in the circuit
         t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
         theta = theta + yaw
-        self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
+        # self.logger.debug(f"aruco_pxl_c: {aruco_pxl_c}, id: {id}, theta: {theta}")
 
         # Compute the offset in the camera frame
         delta_x = aruco_pxl_c[0] - self.size[0] / 2
@@ -90,7 +90,7 @@ class CameraVisionStation:
         # Convert pixels to meters
         delta_x = delta_x * self.pxl2meter 
         delta_y = delta_y * self.pxl2meter
-        self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
+        # self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
 
         # Rotation matrix empirically defined
         R = np.array([
@@ -100,7 +100,7 @@ class CameraVisionStation:
         ])
         
         delta_XY = R @ np.array([delta_x, delta_y, 0.0])
-        self.logger.debug(f'delta_XY: {delta_XY}')
+        # self.logger.debug(f'delta_XY: {delta_XY}')
         
         X_camera = t_x - delta_XY[0]
         Y_camera = t_y - delta_XY[1]
@@ -139,7 +139,9 @@ class CameraVisionStation:
 
                 aruco_poses.append(robot_center)
                 robot_angles.append(-rad_angle) # needed to make the robot rotate in the good orientation
-                self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
+                # self.logger.debug(f'robot_center: {robot_center}, robot_angle: {-rad_angle}')
+                self.logger.info(f'Center Cam Frame: {self.size[0]/2, self.size[1]/2}')
+                self.logger.info(f'ArUco pixel: {center_code}')
 
                 if set_visual_interface:
                     cv.arrowedLine(frame, bottom_center, top_center, (0, 0, 255), 4)

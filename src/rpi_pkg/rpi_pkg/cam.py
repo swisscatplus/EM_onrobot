@@ -23,7 +23,6 @@ timer_period = 0.1  # seconds
 
 pkg_share = FindPackageShare(package=package_name).find(package_name)
 config_file_path = os.path.join(pkg_share, params_path)
-print(pkg_share)
 calib_mat_file_path = os.path.join(pkg_share, 'config', 'cameraMatrix.pkl')
 calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
 
