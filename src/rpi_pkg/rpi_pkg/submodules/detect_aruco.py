@@ -27,7 +27,7 @@ class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
-    def __init__(self, config=None, cam_frame=(480, 640)):
+    def __init__(self, config=None, cam_frame=(447, 569)):
         """
         Class constructor to set up the right camera
         """
@@ -156,8 +156,6 @@ class CameraVisionStation:
         return robot_center, robot_angle
 
 def main():
-
-
     directory_path = os.path.dirname(os.path.abspath(__file__))
     config_file_path = '/home/coderey/Desktop/SwissCat-on_robot/src/rpi_pkg/config/cam.yaml'
 

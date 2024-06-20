@@ -42,7 +42,7 @@ class RobotCamPublisher(Node):
     self.config = self.get_cam_config(config_path)
 
     self.size = (640, 480) # size of the window
-    self.cam = CameraVisionStation(config=self.config, cam_frame=self.size)
+    self.cam = CameraVisionStation(config=self.config, cam_frame=(447, 569))
     self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
@@ -69,7 +69,7 @@ class RobotCamPublisher(Node):
     cal_frame = cv.undistort(gray_frame, cameraMatrix, dist, None, newCameraMatrix)
     x, y, w, h = roi
     cal_frame = cal_frame[y:y+h, x:x+w]
-    self.get_logger().info('cal_frame:' +  str(cal_frame.shape))
+    # self.get_logger().info('cal_frame:' +  str(cal_frame.shape)) (447, 569)
 
     markerCorners, markerIds, _ = detector.detectMarkers(cal_frame)  # Detect markers in grayscale frame
 
