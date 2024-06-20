@@ -41,6 +41,7 @@ class CameraVisionStation:
         self.pxl_max = None
 
         self.configure_logger()
+        self.logger.info(f'CameraVisionStation initialized with {self.pxl2meter} pxl2meter conv factor and {self.size} frame size.')
 
     def pixels_to_meters(self, markerCorners):
         # Compute distances of all sides in pixels, should be replaced by a constant computed in the init
