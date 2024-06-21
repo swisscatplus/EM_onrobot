@@ -1,7 +1,8 @@
-FROM yanniscod/em:v0
+FROM jcswisscat/em_onrobot:base
+
 # Please adapt the git config to your own, here https is used
-ARG GIT_USER = Yanniscod
-ARG GIT_TOKEN = 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
+ARG GIT_USER=Yanniscod
+ARG GIT_TOKEN=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
 
 WORKDIR /home
 
@@ -22,5 +23,3 @@ ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
 # Default command to run ROS2 node
 CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py"]
 #CMD ["bash"] # use this if you want to access the terminal, same as -it flag
-
-
