@@ -2,6 +2,9 @@
 
 This repo provides the code needed for obtaining an accurate positioning of a mobile wheeled robot and controlling it with a /cmd_vel topic. For sensors, it uses the odometry of the encoder ticks, a [bno055 IMU](https://www.bosch-sensortec.com/products/smart-sensor-systems/bno055/) and a [RaspberryPi Module 3 Wide camera](https://www.pi-shop.ch/raspberry-pi-camera-3-wide).
 
+## Table of Contents
+1. [Description](#description)<br>
+2. [Getting started](#getting-started)
 ## Description
 
 Simply put, a RaspberryPi 5 embedded on the robot, named Edison, is connected to the camera, the IMU and the motors and publishes the corresponding topics /edi/cam, /bno055/imu and /left_ticks_counts - /right_ticks_counts. These are converted in the server to proper types and covariances before being fused in an Extended Kalman Filter node and outputing a reliable odometry topic. The functioning of these topics are the following:
@@ -21,55 +24,55 @@ As the goal is to easily deploy this project on the mobile robots, it was decide
 ### Docker
 
 #### Installation
+If you wish to see the full installation procedure of a docker image compatible for our project, it's described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/configuration/installation_procedure). Be careful that the folder details the image built from this folder enables running ROS2 and using the camera on the same platform, but you still need to import the git repository. 
+
+You can also directly pull the image using:
+```
+docker pull jcswisscat/em_onrobot:base
+```
+#### Usage
+A [Dockerfile](https://github.com/swisscatplus/SwissCat-on_robot/edit/main/Dockerfile) is proposed to build an image with the github repository and automatically launch the code, build it using:
+```
+cd Swisscat-on_robot/
+docker build . -t username/img_name:tag
+
+# And then run it for your application:
+docker run -it --network host --privileged -v /dev/:/dev/ -v /run/udev:/run/udev username/img_name:tag
+```
+If you simply want to access the terminal within the Docker image and not run the ros2 launch file, use the Dockerfile command
+``
+CMD ["bash"]
+``
+
+The `ros_entrypoint.sh` is here used to source the ROS2 installation and the local packages, feel free to add whatever command you judge interesting.
 
 ### Calibration
-
-### Dependencies
-
-* Describe any prerequisites, libraries, OS version, etc., needed before installing program.
-* ex. Windows 10
-
-### Installing
-
-* How/where to download your program
-* Any modifications needed to be made to files/folders
+Upon adding new mobile robots, their cameras will need to be calibrated. This is done following the steps inside the [calibration folder]()
 
 ### Executing program
+As described above, the program will launch itself when running the Docker image. If you wish to test each node separately, build an image wth `CMD ["bash"]`, once inside run the node you want:
+```
+# Individual commands to run the nodes, rpi.launch.py launches all three
 
-* How to run the program
-* Step-by-step bullets
-```
-code blocks for commands
+ros2 run rpi_pkg rpi_motors # will publish the left and right encoder ticks
+
+ros2 run rpi_pkg rpi_cam # will publish the absolute position
+
+ros2 run bno055 bno055 # will publish all sorts of imu-related topics, we use /bno055/imu.
 ```
 
-## Help
-
-Any advise for common problems or issues.
-```
-command to run if program contains helper info
-```
+### To continue
+What should be further implemented is the namespace of each robot, so that the topics are published accordingly (/ns/topic). One option would be to put the namespace inside the config file, and then to append it to each topic.
+Furthermore, the node responsible for publishing the odometry should be replaced when the Dynamixel motors are implemented, as they provide their own ros2 driver.
 
 ## Authors
 
 Contributors names and contact info
 
-ex. Yannis Coderey 
-ex. [@Yanniscod]
+Yannis Coderey 
+[@Yanniscod]
 
 ## Version History
 
 * 0.1
     * Initial Release
-
-## License
-
---
-
-## Acknowledgments
-
-Inspiration, code snippets, etc.
-* [awesome-readme](https://github.com/matiassingers/awesome-readme)
-* [PurpleBooth](https://gist.github.com/PurpleBooth/109311bb0361f32d87a2)
-* [dbader](https://github.com/dbader/readme-template)
-* [zenorocha](https://gist.github.com/zenorocha/4526327)
-* [fvcproductions](https://gist.github.com/fvcproductions/1bfc2d4aecb01a834b46)
