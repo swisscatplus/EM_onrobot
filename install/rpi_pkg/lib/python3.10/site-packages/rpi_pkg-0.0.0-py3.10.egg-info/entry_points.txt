@@ -1,4 +1,0 @@
-[console_scripts]
-rpi_cam = rpi_pkg.cam:main
-rpi_motors = rpi_pkg.motors:main
-
