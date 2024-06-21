@@ -1,0 +1,28 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/coderey/EM_navigation/install/py_srvcli/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/mob_rob_loca_msgs/local/lib/python3.10/dist-packages",
+        "/home/coderey/EM_navigation/install/mob_rob_loca/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/bno055/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/example_interfaces/local/lib/python3.10/dist-packages",
+        "/home/coderey/Desktop/SwissCat-on_robot/install/rpi_pkg/lib/python3.10/site-packages",
+        "/home/coderey/Desktop/SwissCat-on_robot/install/bno055/lib/python3.10/site-packages",
+        "/home/coderey/Desktop/SwissCat-dev/rpi_cam_ws/install/cam_loca/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/coderey/EM_navigation/install/py_srvcli/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/mob_rob_loca_msgs/local/lib/python3.10/dist-packages",
+        "/home/coderey/EM_navigation/install/mob_rob_loca/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/bno055/lib/python3.10/site-packages",
+        "/home/coderey/EM_navigation/install/example_interfaces/local/lib/python3.10/dist-packages",
+        "/home/coderey/Desktop/SwissCat-on_robot/install/rpi_pkg/lib/python3.10/site-packages",
+        "/home/coderey/Desktop/SwissCat-on_robot/install/bno055/lib/python3.10/site-packages",
+        "/home/coderey/Desktop/SwissCat-dev/rpi_cam_ws/install/cam_loca/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3/dist-packages"
+    ]
+}
