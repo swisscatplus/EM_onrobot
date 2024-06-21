@@ -24,7 +24,7 @@ As the goal is to easily deploy this project on the mobile robots, it was decide
 ### Docker
 
 #### Installation
-If you wish to see the full installation procedure of a docker image compatible for our project, it's described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/configuration/installation_procedure). Be careful that the folder details the image built from this folder enables running ROS2 and using the camera on the same platform, but you still need to import the git repository. 
+If you wish to see the full installation procedure of a docker image compatible for our project, it's described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/config/installation_procedure). Be careful that the folder details the image built from this folder enables running ROS2 and using the camera on the same platform, but you still need to import the git repository. 
 
 You can also directly pull the image using:
 ```
