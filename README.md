@@ -50,6 +50,16 @@ The `ros_entrypoint.sh` is here used to source the ROS2 installation and the loc
 Upon adding new mobile robots, their cameras will need to be calibrated. This is done following the steps inside the [calibration folder]()
 
 ### Executing program
+- First, you have to ssh to the RPi, to run the shell script that will launch the container. For this, use
+  ```
+  ssh camera@192.168.0.236
+  # or if you configured in the /etc/hosts file, 192.168.0.236 camera, you can run:
+  ssh camera@camera
+  # I suggest adding an alias in the bashrc, such as 'sshcam', then you only need to run this cmd
+  sshcam
+  ```
+- then 
+  
 As described above, the program will launch itself when running the Docker image. If you wish to test each node separately, build an image wth `CMD ["bash"]`, once inside run the node you want:
 ```
 # Individual commands to run the nodes, rpi.launch.py launches all three
