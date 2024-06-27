@@ -47,7 +47,7 @@ class RobotCamPublisher(Node):
     self.picam2.start()
     self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['focal_length']}) 
 
-    self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 10)
+    self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
     
     self.timer = self.create_timer(timer_period, self.publish_frame)
   
