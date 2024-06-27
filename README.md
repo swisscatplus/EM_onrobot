@@ -77,7 +77,7 @@ git clone -b on_rpi git@github.com:swisscatplus/SwissCat-on_robot.git
 chmod u+x build.sh run.sh
 # make sure your Docker daemon is running
 
-# build image
+# build image, don't forget to change the name you want for it, by default it will be username/img_name:tag 
 ./build.sh
 # run it
 ./run.sh
