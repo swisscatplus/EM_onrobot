@@ -4,13 +4,7 @@ cam_params:
   focal_length: 2.32 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
   dist_cam_robot_center: 0.098 # dist between camera center and the center of the robot [m]
   aruco_square_size: 0.038 #size of aruco on circuit [m]
-  conv_pxl2met: 0.0009487111
-
 aruco_params:
-  # 334: # testing
-  #   t_x: 0.123
-  #   t_y: 0.456
-  #   yaw: 0.0
   11:
     t_x: 4.352
     t_y: 6.368

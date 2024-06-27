@@ -14,11 +14,9 @@ import os
 import pickle
 
 # ################# CONFIG #################
-# camera_id = 'station_1'
 package_name = 'rpi_pkg'
-params_path = 'config/cam.yaml'
-timer_period = 0.1  # seconds
-
+params_path = 'config/loca.yaml'
+timer_period = 0.2  # seconds, corresponds to publisher frequency
 # ##########################################
 
 pkg_share = FindPackageShare(package=package_name).find(package_name)
