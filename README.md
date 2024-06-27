@@ -61,8 +61,16 @@ ros2 run rpi_pkg rpi_cam # will publish the absolute position
 ros2 run bno055 bno055 # will publish all sorts of imu-related topics, we use /bno055/imu.
 ```
 
+### Custom SwissCat Set-up
+
+To make it all work, the actual setup needs to be the following:
+   - If we're still using the two batteries (5V and 12V), the 5V one needs to be connected to the RPi via its USB2 port. The other port provides less voltage to the RPi, resulting in the latter's ill-functioning.
+   - Be careful about the network, to be able to communicate from the PC to the RPi via ROS2, you need to fulfil these requirements:
+        - Match the ROS_DOMAIN_ID in the bashrc file: by default, the one from the RPi image is 10, you can always change it by adding the following line to the Dockerfile: `ENV ROS_DOMAIN_ID=##` or adapt it in your bashrc `export ROS_DOMAIN_ID=10`
+        - Be sure that both the PC and RPi are on the same network, meaning they should be connected to TP-Link_03DC. From the open space the RPi has trouble connecting to it,  just put it in the lab near the NMR (where the router actually is).
+
 ### To continue
-What should be further implemented is the namespace of each robot, so that the topics are published accordingly (/ns/topic). One option would be to put the namespace inside the config file, and then to append it to each topic.
+What should be further implemented is the namespace of each robot, so that the topics are published accordingly (/ns/topic). One option would be to put the namespace inside the config file and append it to each topic.
 Furthermore, the node responsible for publishing the odometry should be replaced when the Dynamixel motors are implemented, as they provide their own ros2 driver.
 
 ## Authors
