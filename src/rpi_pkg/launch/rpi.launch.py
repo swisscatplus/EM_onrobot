@@ -23,16 +23,19 @@ def generate_launch_description():
         )
 
     rpi_node = Node(
-            package = 'rpi_pkg',
-            executable = 'rpi_motors',
-            output = 'screen',
+        namespace=namespace,
+        package = 'rpi_pkg',
+        executable = 'rpi_motors',
+        output = 'screen',
         )
     cam_node = Node(
-            package = 'rpi_pkg',
-            executable = 'rpi_cam',
-            output = 'screen',
+        namespace=namespace,
+        package = 'rpi_pkg',
+        executable = 'rpi_cam',
+        output = 'screen',
         ) 
     imu_node=Node(
+        namespace=namespace,
         package = 'bno055',
         executable = 'bno055',
         parameters = [imu_config]
