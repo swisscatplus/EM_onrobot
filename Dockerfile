@@ -4,6 +4,8 @@ FROM jcswisscat/em_onrobot:base
 ARG GIT_USER=Yanniscod
 ARG GIT_TOKEN=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
 
+ENV namespace ''
+
 WORKDIR /home
 
 # clone using id and token, token may be not reusable and need to be updated
@@ -21,5 +23,5 @@ COPY ros_entrypoint.sh /home/SwissCat-on_robot/ros_entrypoint.sh
 ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
 
 # Default command to run ROS2 node
-CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py"]
+CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py", "namespace:={namespace}"]
 #CMD ["bash"] # use this if you want to access the terminal, same as -it flag
