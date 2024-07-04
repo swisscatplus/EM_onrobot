@@ -19,7 +19,7 @@ def generate_launch_description():
     imu_config = os.path.join(
         get_package_share_directory(pkg_name),
         'config',
-        'bno055_params.yaml'
+        'bno055.yaml'
         )
 
     rpi_node = Node(
