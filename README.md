@@ -55,7 +55,24 @@ To make it all work, the actual setup needs to be the following:
    - Be careful about the network, to be able to communicate from the PC to the RPi via ROS2, you need to fulfil these requirements:
         - Match the ROS_DOMAIN_ID in the bashrc file: by default, the one from the RPi image is 10, you can always change it by adding the following line to the Dockerfile: `ENV ROS_DOMAIN_ID=##` or adapt it in your bashrc `export ROS_DOMAIN_ID=10`
         - Be sure that both the PC and RPi are on the same network, meaning they should be connected to TP-Link_03DC. From the open space the RPi has trouble connecting to it,  just put it in the lab near the NMR (where the router is).
-        - 
+    
+### Recipes
+
+TBD Yannis
+
+1. [Deploy on a new robot + server update]<br>
+
+2. [List of used packages and topics]<br>
+
+3. [On EM Debug]<br>
+
+5. [Fleet Manager Debug]<br>
+
+6. [Add new modifications and deploy]<br>
+
+
+
+
 ### Executing program
 - First, you have to ssh to the RPi, to run the shell script that will launch the container. For this, use
   ```
