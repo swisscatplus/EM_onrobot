@@ -4,7 +4,7 @@ FROM jcswisscat/em_onrobot:base
 ARG GIT_USER=Yanniscod
 ARG GIT_TOKEN=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
 
-ENV namespace ''
+ENV namespace=
 
 WORKDIR /home
 
