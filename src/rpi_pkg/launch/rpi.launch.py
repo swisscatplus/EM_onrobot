@@ -24,13 +24,13 @@ def generate_launch_description():
 
     rpi_node = Node(
         namespace=namespace,
-        package = 'rpi_pkg',
+        package = pkg_name,
         executable = 'rpi_motors',
         output = 'screen',
         )
     cam_node = Node(
         namespace=namespace,
-        package = 'rpi_pkg',
+        package = pkg_name,
         executable = 'rpi_cam',
         output = 'screen',
         ) 
