@@ -12,6 +12,7 @@ from libcamera import controls
 import yaml
 import os
 import pickle
+import pathlib
 
 # ################# CONFIG #################
 package_name = 'rpi_pkg'
@@ -20,6 +21,7 @@ timer_period = 0.2  # seconds, corresponds to publisher frequency
 # ##########################################
 
 pkg_share = FindPackageShare(package=package_name).find(package_name)
+
 config_file_path = os.path.join(pkg_share, params_path)
 calib_mat_file_path = os.path.join(pkg_share, 'config', 'cameraMatrix.pkl')
 calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
@@ -34,8 +36,7 @@ class RobotCamPublisher(Node):
     """
     super().__init__('robot_cam_publisher')
     
-    # Declare and get parameters
-    self.declare_parameter('config_file', '/home/coderey/EM_navigation/install/mob_rob_loca/share/mob_rob_loca/config/loca.yaml')
+    self.declare_parameter('config_file', config_file_path)
     config_file = self.get_parameter('config_file').get_parameter_value().string_value
 
     # Load parameters from YAML file
@@ -57,11 +58,11 @@ class RobotCamPublisher(Node):
 
     self.size = (640, 480) # size of the frame
     self.cam = CameraVisionStation(cam_params=cam_params, aruco_params=aruco_params, cam_frame=self.size)
-    
+
     self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
-    self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['lens_position']}) 
+    self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": lens_position}) 
 
     self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
     
