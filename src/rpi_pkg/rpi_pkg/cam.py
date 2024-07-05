@@ -34,16 +34,34 @@ class RobotCamPublisher(Node):
     """
     super().__init__('robot_cam_publisher')
     
-    self.declare_parameter('config_file_path', config_file_path)
-    config_path = self.get_parameter('config_file_path').get_parameter_value().string_value
-    self.config = self.get_cam_config(config_path)
+    # Declare and get parameters
+    self.declare_parameter('config_file', '/home/coderey/EM_navigation/install/mob_rob_loca/share/mob_rob_loca/config/loca.yaml')
+    config_file = self.get_parameter('config_file').get_parameter_value().string_value
+
+    # Load parameters from YAML file
+    if os.path.exists(config_file):
+        with open(config_file, 'r') as file:
+            params = yaml.safe_load(file)
+            self.get_logger().info(f"Loaded parameters: {params}")
+
+        test_params = params.get('test', {}).get('ros__parameters', {})
+        # Example: Accessing specific parameters
+        cam_params = test_params.get('cam_params', {})
+        lens_position = cam_params.get('lens_position', 2.32)
+        aruco_params = test_params.get('aruco_params', {})
+
+        self.get_logger().info(f"lens position: {lens_position}")
+
+    else:
+        self.get_logger().error(f"Config file {config_file} does not exist")
 
     self.size = (640, 480) # size of the frame
-    self.cam = CameraVisionStation(config=self.config, cam_frame=self.size)
+    self.cam = CameraVisionStation(cam_params=cam_params, aruco_params=aruco_params, cam_frame=self.size)
+    
     self.picam2 = Picamera2()
     self.picam2.configure(self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
     self.picam2.start()
-    self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['focal_length']}) 
+    self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.config['cam_params']['lens_position']}) 
 
     self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
     

@@ -9,6 +9,9 @@ def generate_launch_description():
     pkg_name = 'rpi_pkg'  
 
     namespace = LaunchConfiguration('namespace')
+    cam_config = LaunchConfiguration('cam_config')
+
+    cam_config_path = os.path.join(pkg_name,'config','loca.yaml')
  
     namespace_arg = DeclareLaunchArgument(
         'namespace',
@@ -16,6 +19,12 @@ def generate_launch_description():
         description='Specifying namespace for individual robot'
     )
 
+    config_arg = DeclareLaunchArgument(
+            'cam_config',
+            default_value=cam_config_path,
+            description='Path to the config file'
+        )
+    
     imu_config = os.path.join(
         get_package_share_directory(pkg_name),
         'config',
@@ -33,6 +42,7 @@ def generate_launch_description():
         package = pkg_name,
         executable = 'rpi_cam',
         output = 'screen',
+        parameters=cam_config,
         ) 
     imu_node=Node(
         namespace=namespace,

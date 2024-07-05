@@ -3,7 +3,6 @@ import cv2 as cv
 import numpy as np
 import logging
 
-
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters =  cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, parameters)
@@ -14,19 +13,24 @@ class CameraVisionStation:
     """
     Create an ImagePublisher class, which is a subclass of the Node class.
     """
-    def __init__(self, config=None, cam_frame=(447, 569)):
+    def __init__(self, cam_params=None, aruco_params=None, cam_frame=(447, 569)):
         """
         Class constructor to set up the right camera
         """
 
-        self.cam_config = config['cam_params']
-        self.focal_length = self.cam_config['focal_length']
-        self.aruco_ids = config['aruco_params']
+        self.cam_config = cam_params
+        self.aruco_params = aruco_params
         self.pxl2meter = None
         self.size = cam_frame
         self.pixels_to_m = None
+        self.aruco_square_size = self.cam_config.get('aruco_square_size', 0.038)
+        self.dist_cam_robot_center = self.cam_config.get('dist_cam_robot_center', 0.098)
         
         self.configure_logger()
+
+        self.logger.info(f"Initialised with camera parameters: {self.cam_config}")
+        ids = list(self.aruco_params.keys())
+        self.logger.info(f"Aruco ids: {ids}")
 
         self.conv_list = []
 
@@ -45,7 +49,7 @@ class CameraVisionStation:
 
         # Compute average (or median) distance in pixels
         avg_distance_pixels = np.mean(distances)
-        pixels_to_m = self.cam_config['aruco_square_size'] / avg_distance_pixels
+        pixels_to_m = self.aruco_square_size / avg_distance_pixels
 
         return pixels_to_m
     
@@ -61,7 +65,7 @@ class CameraVisionStation:
 
     def compute_camera_center(self, aruco_pxl_c, id, theta):
         # Gets the pose of the aruco in the circuit
-        t_x, t_y, yaw = self.aruco_ids[id]['t_x'], self.aruco_ids[id]['t_y'], self.aruco_ids[id]['yaw']
+        t_x, t_y, yaw = self.aruco_params[id]['t_x'], self.aruco_params[id]['t_y'], self.aruco_params[id]['yaw']
         theta = theta + yaw
 
         # Compute the offset in the camera frame
@@ -71,7 +75,6 @@ class CameraVisionStation:
         # Convert pixels to meters
         delta_x = delta_x * self.pxl2meter 
         delta_y = delta_y * self.pxl2meter
-        # self.logger.debug(f'delta_x: {delta_x}, delta_y: {delta_y}')
 
         # Rotation matrix empirically defined
         R = np.array([
@@ -97,7 +100,7 @@ class CameraVisionStation:
 
         for i in range(len(markerIds)):
             marker_id = markerIds[i, 0]
-            if marker_id in self.aruco_ids:
+            if marker_id in self.aruco_params:
                 # Gets center pixel of the aruco code detected
                 corners = markerCorners[i][0]
                 bottom_center = tuple(map(int, np.mean(corners[2:4], axis=0)))
@@ -116,7 +119,7 @@ class CameraVisionStation:
                 # Computes robot center relative to the camera center
                 robot_center = coord_cam_circuit[:2]- np.array([
                     np.cos(-rad_angle), np.sin(-rad_angle)
-                ]) * self.cam_config['dist_cam_robot_center']
+                ]) * self.dist_cam_robot_center
 
                 aruco_poses.append(robot_center)
                 robot_angles.append(-rad_angle) # needed to make the robot rotate in the good orientation
@@ -134,8 +137,8 @@ class CameraVisionStation:
                     cv.circle(frame, (int(robot_center[0]), int(robot_center[1])), 3, (255, 0, 0), -1)
             # not using else statemenent, the log was smh introducing noise in the position of the robot
             # uncomment following two lines if you want to see the aruco id
-            # else:
-            #     self.logger.warn(f"ArUco ID {marker_id} not in the list of known IDs.")
+            else:
+                self.logger.warn(f"ArUco ID {marker_id} not in the list of known IDs.")
         if aruco_poses:
             robot_center = np.mean(aruco_poses, axis=0)
             robot_angle = np.mean(robot_angles)
