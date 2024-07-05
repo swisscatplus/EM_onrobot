@@ -32,7 +32,7 @@ class RobotCamPublisher(Node):
     """
     Class constructor to set up the node
     """
-    super().__init__('robot_cam_publisher')
+    super().__init__('rpi_cam')
     
     self.declare_parameter('config_file', config_file_path)
     config_file = self.get_parameter('config_file').get_parameter_value().string_value
@@ -43,14 +43,12 @@ class RobotCamPublisher(Node):
             params = yaml.safe_load(file)
             self.get_logger().info(f"Loaded parameters: {params}")
 
-        test_params = params.get('test', {}).get('ros__parameters', {})
-        # Example: Accessing specific parameters
-        cam_params = test_params.get('cam_params', {})
+        node_params = params.get(self.get_name(), {}).get('ros__parameters', {})
+        cam_params = node_params.get('cam_params', {})
         lens_position = cam_params.get('lens_position', 2.32)
-        aruco_params = test_params.get('aruco_params', {})
-
+        aruco_params = node_params.get('aruco_params', {})
         self.get_logger().info(f"lens position: {lens_position}")
-
+        
     else:
         self.get_logger().error(f"Config file {config_file} does not exist")
 
