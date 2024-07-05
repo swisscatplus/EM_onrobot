@@ -1,18 +1,16 @@
 import rclpy # Python Client Library for ROS 2
 from rclpy.node import Node # Handles the creation of nodes
-from geometry_msgs.msg import Pose, PoseWithCovarianceStamped # Message type for publishing robot pose
-from cv_bridge import CvBridge
-from sensor_msgs.msg import Image
-import cv2 as cv # OpenCV library
-from tf_transformations import quaternion_from_euler
-from rpi_pkg.submodules.detect_aruco import CameraVisionStation, detector
 from launch_ros.substitutions import FindPackageShare
+from geometry_msgs.msg import PoseWithCovarianceStamped # Message type for publishing robot pose
+from rclpy.executors import ExternalShutdownException
+from tf_transformations import quaternion_from_euler
+import cv2 as cv # OpenCV library
 from picamera2 import Picamera2
 from libcamera import controls
 import yaml
 import os
 import pickle
-import pathlib
+from rpi_pkg.submodules.detect_aruco import CameraVisionStation, detector
 
 # ################# CONFIG #################
 package_name = 'rpi_pkg'
@@ -113,9 +111,12 @@ class RobotCamPublisher(Node):
 def main(args=None):
   rclpy.init()
   robot_cam_publisher = RobotCamPublisher()
-  rclpy.spin(robot_cam_publisher)
-  robot_cam_publisher.destroy_node()
-  rclpy.shutdown()
+  try:
+    rclpy.spin(robot_cam_publisher)
+  except KeyboardInterrupt:
+     robot_cam_publisher.destroy_node()
+  except ExternalShutdownException:
+        sys.exit(1)
    
 if __name__ == '__main__':
   main()

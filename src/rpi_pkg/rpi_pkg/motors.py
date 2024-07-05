@@ -74,10 +74,10 @@ class RPI_Node(Node):
 def main(args=None):
     rclpy.init(args=args)
     vel_pub_node = RPI_Node()
-    vel_pub_node.get_logger().info("Initiates node")
-    rclpy.spin(vel_pub_node)
-    vel_pub_node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(vel_pub_node)
+    except KeyboardInterrupt:
+        vel_pub_node.destroy_node()
 
 if __name__ == '__main__':
     main()
