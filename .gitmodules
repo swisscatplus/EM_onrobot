@@ -1,3 +1,6 @@
 [submodule "src/bno055"]
 	path = src/bno055
-	url = https://github.com/flynneva/bno055.git
+	url = https://github.com/Yanniscod/bno055.git
+[submodule "src/src/bno055"]
+	path = src/src/bno055
+	url = git@github.com:Yanniscod/bno055.git

@@ -7,6 +7,7 @@ from tf_transformations import quaternion_from_euler
 import cv2 as cv # OpenCV library
 from picamera2 import Picamera2
 from libcamera import controls
+import sys
 import yaml
 import os
 import pickle
@@ -48,7 +49,7 @@ class RobotCamPublisher(Node):
         lens_position = cam_params.get('lens_position', 2.32)
         aruco_params = node_params.get('aruco_params', {})
         self.get_logger().info(f"lens position: {lens_position}")
-        
+
     else:
         self.get_logger().error(f"Config file {config_file} does not exist")
 
