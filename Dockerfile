@@ -24,4 +24,4 @@ ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
 
 # Default command to run ROS2 node
 CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py", "namespace:={namespace}"]
-#CMD ["bash"] # use this if you want to access the terminal, same as -it flag
+#CMD ["bash"] # use this if you want to access the terminal, same as -it flag. Don't forget to comment the if statement of the ros_entrypoint.sh to make it work.
