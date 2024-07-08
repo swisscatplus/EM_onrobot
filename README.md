@@ -1,11 +1,22 @@
-# SwissCat-on_robot - Localization of a mobile robot using Python and ROS2 
+<br />
+<div align="center">
+  <a href="https://github.com/swisscatplus/task-scheduler">
+    <img src="https://images.squarespace-cdn.com/content/v1/6012a0a1f4c67c587a8eff67/d7731755-2fa3-4548-bf1e-5a25182d67ae/Combined+Logo+CAT-ETH-EPFL+%282%29.png?format=1500w" alt="Logo" height="80">
+  </a>
+
+  <h1 align="center"> SwissCat-on_robot - Localization of a mobile robot using Python and ROS2 </h1>
+
+</div>
 
 This repo provides the code needed for obtaining an accurate positioning of a mobile wheeled robot and controlling it with a /cmd_vel topic. For sensors, it uses the odometry of the encoder ticks, a [bno055 IMU](https://www.bosch-sensortec.com/products/smart-sensor-systems/bno055/) and a [RaspberryPi Module 3 Wide camera](https://www.pi-shop.ch/raspberry-pi-camera-3-wide).
 
 ## Table of Contents
 1. [Description](#description)<br>
 2. [Getting started](#getting-started)<br>
-3. [Executing program](#executing-program)<br>
+3. [Deployment of a new robot](#deployment-of-a-new-robot)<br>
+4. [Packages and topics](#packages-and-topics)<br>
+5. [To improve](#to-improve)
+   
 ## Description
 
 Simply put, a RaspberryPi 5 embedded in the robot, named Edison, is connected to the camera, the IMU and the motors and publishes the corresponding topics /edi/cam, /bno055/imu and /left_ticks_counts - /right_ticks_counts. These are converted in the server to proper types and covariances before being fused in an Extended Kalman Filter node and outputting a reliable odometry topic. The functioning of these topics are the following:
@@ -48,9 +59,6 @@ CMD ["bash"]
 
 The `ros_entrypoint.sh` is here used to source the ROS2 installation and the local packages, feel free to add whatever command you judge interesting.
 
-### Calibration
-Upon adding new mobile robots, their cameras will need to be calibrated. This is done following the steps inside the [calibration folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/config/calibration)
-
 ### Custom SwissCat Set-up
 To make it all work, the actual setup needs to be the following:
    - If we're still using the two batteries (5V and 12V), the 5V one needs to be connected to the RPi via its USB2 port. The other port provides less voltage to the RPi, resulting in the ill-functioning of the device. Also, make sure the battery is well-charged, strange behaviour can happen when it's under 30-40% charge.
@@ -72,83 +80,76 @@ TBD Yannis
 
 6. [Add new modifications and deploy]<br>
 
-
 ## Deployment of a new robot
-The following is the pipeline to add a new robot to the fleet.
-- Then you have to ssh to the RPi, to run the shell script that will launch the container. For this, use
+This section focuses on describing the steps to perform to deploy a new robot into the fleet.
+1. First of all, you have to initialise the Raspberry with the Raspberry Pi OS using Imager. For more information, follow the guidelines [here](https://www.raspberrypi.com/documentation/computers/getting-started.html). Enable SSH and make sure you configured and wrote down the static IP of the RPi, again for more information see [this](https://phoenixnap.com/kb/raspberry-pi-static-ip). Make sure you configure on the same network on which you'll be running the main ROS application, with the same ROS_DOMAIN_ID as said in the above section.
+2. Once the RPi is configured, you'll have to SSH to the RPi.
    ```
-   # Let's suppose the static ip adress of our RPi is 192.168.0.236
+   # Let's suppose the static ip address of our RPi is 192.168.0.236
    ssh camera@192.168.0.236
    # or if you configured in the /etc/hosts file, 192.168.0.236 camera, you can run:
    ssh camera@camera
    # I suggest adding an alias in the bashrc, such as 'sshcam', then you only need to run this cmd
-   sshcam
+   # sshcam
    ```
-- Install docker by following the instructions described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/config/installation_procedure).
-- Pull the image using:
+3. Install docker by following the instructions described in the [installation folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/config/installation_procedure).
+4. Pull the image.
    ```
    docker pull jcswisscat/em_onrobot:base
    ```
-- If you don't have the repo, you should clone it. The branch [on_rpi](https://github.com/swisscatplus/SwissCat-on_robot/tree/on_rpi) contains the bare minimum for running the application.
+5. If you don't have the repo, you should clone it. The branch [on_rpi](https://github.com/swisscatplus/SwissCat-on_robot/tree/on_rpi) contains the bare minimum for running the application.
    ```
-   # we're cloning using the ssh command, thus you should have your own ssh key generated and linked to GitHub
-   # for more info, follow indications described at https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+   # we're cloning using the SSH command, thus you should have your own SSH key generated and linked to GitHub
+   # for more info, follow the indications described at https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
    git clone -b on_rpi git@github.com:swisscatplus/SwissCat-on_robot.git
    ```
-- Run the shell scripts to build and run your image
+6. Upon adding new mobile robots, their cameras will need to be calibrated. This is done following the steps inside the [calibration folder](https://github.com/swisscatplus/SwissCat-on_robot/tree/config/calibration)
+7. Run the shell scripts to build and run your image
    ```
    # enable permission to run
    chmod u+x build.sh run.sh
+   
    # make sure your Docker daemon is running
    
    # build image, don't forget to change the name you want for it, by default it will be username/img_name:tag
-   # make sure to specify the Git user and token ids inside the shell script
+   # make sure to specify the Git user and token ids inside the shell script, or as arguments to the shell command
    ./build.sh
-   # run it and specify namespace, if none is specified it will be ''
+   # run it and specify the namespace you want to give to the robot, if nothing is specified it will be ''
    ./run.sh namespace
    ```
-### Running on the robot
-Just run
-```
-./run.sh namespace
-```
-Where namespace is the namespace of the robot, for example, em1 or 1.
-That's it, you have a running container publishing your topics. If you want to have access to the terminal after running the image, run in detached mode, this means modifying run.sh by adding the -d flag.
+   That's it, you have a running container publishing your topics. If you want to have access to the terminal after running the image, run in detached mode, this means modifying run.sh by     adding the -d flag.
   
-As described above, the program will launch when running the Docker image. If you wish to test each node separately, build an image with `CMD ["bash"]`, once inside run the node you want:
+7. As described above, the program will launch when running the Docker image. If you wish to test each node separately, build an image with `CMD ["bash"]`, once inside run the node you       want:
 
-```
-# Individual commands to run the nodes, rpi.launch.py launches all three
-
-ros2 run rpi_pkg rpi_motors # will publish the left and right encoder ticks
-
-ros2 run rpi_pkg rpi_cam # will publish the absolute position
-
-ros2 run bno055 bno055 # will publish all sorts of imu-related topics, we use /bno055/imu.
-```
-## Deployment on new robot
-The pipeline to follow to add a new robot to the fleet is the following.
-### Configuration
-- Configure static ip adress of the raspberry to be able to ssh
-- install docker on the RPi
-- pull the image
-- git clone the on_rpi branch
-- docker build
+   ```
+   # Individual commands to run the nodes, rpi.launch.py launches all three
+   
+   ros2 run rpi_pkg rpi_motors # will publish the left and right encoder ticks
+   
+   ros2 run rpi_pkg rpi_cam # will publish the absolute position
+   
+   ros2 run bno055 bno055 # will publish all sorts of imu-related topics, we use /bno055/imu.
+   ```
 
 ## Packages and topics
+
+### Dependencies
+The package dependencies are seen in the [package.xml](https://github.com/swisscatplus/SwissCat-on_robot/blob/config/src/rpi_pkg/package.xml). For a complete list, they're shown inside the following bracket.
+<details open>
+  <summary>Show dependencies</summary>
+    - python3-serial <br>
+    - python3-smbus <br>
+    - geometry_msgs <br>
+    - rclpy <br>
+    - std_msgs <br>
+    - time <br>
+</details>
+
+### Topics
+- Input topics: /cmd_vel
+- Output topics: /left_tick_counts, /right_tick_counts, /edi/cam, /wheel/odom
 
 ## To improve
 What should be further implemented is the namespace of each robot, so that the topics are published accordingly (/ns/topic). One option would be to put the namespace inside the config file and append it to each topic.
 Furthermore, the node responsible for publishing the odometry should be replaced when the Dynamixel motors are implemented, as they provide their own ros2 driver.
 
-## Authors
-
-Contributors names and contact info
-
-Yannis Coderey 
-[@Yanniscod]
-
-## Version History
-
-* 0.1
-    * Initial Release
