@@ -15,7 +15,7 @@ from rpi_pkg.submodules.detect_aruco import CameraVisionStation, detector
 
 # ################# CONFIG #################
 package_name = 'rpi_pkg'
-params_path = 'config/loca.yaml'
+params_path = 'config/cam.yaml'
 timer_period = 0.2  # seconds, corresponds to publisher frequency
 # ##########################################
 
