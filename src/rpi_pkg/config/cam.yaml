@@ -1,0 +1,32 @@
+# These are the parameters used for the camera localisation. Upon adding a new aruco code on the circuit, simply add its id number and its location here.
+# To get the aruco id, uncomment detect_aruco.py lines 144-145 or adapt code for local pc (change from picamera to cv.videocapture method)
+rpi_cam: # needs to be the same name than the node where the config file is used
+  ros__parameters:
+    cam_params:
+      lens_position: 2.32 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
+      dist_cam_robot_center: 0.098 # dist between camera center and the center of the robot [m]
+      aruco_square_size: 0.038 #size of aruco on circuit [m]
+    aruco_params:
+      11:
+        t_x: 4.352
+        t_y: 6.368
+        yaw: 0.0
+      618:
+        t_x: 4.402
+        t_y: 7.358
+        yaw: 0.0
+      645:
+        t_x: 4.36
+        t_y: 5.463
+        yaw: 0.0
+      614:
+        t_x: 4.38
+        t_y: 4.56
+        yaw: 0.0
+      914:
+        t_x: 1.0
+        t_y: 1.0
+        yaw: 0.0
+
+
+

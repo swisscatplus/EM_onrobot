@@ -1,0 +1,26 @@
+# The offsets were defined after having calibrated the IMU, everything is explained on the bno055 github:
+# https://github.com/flynneva/bno055 as well as on their datasheet
+# https://cdn-shop.adafruit.com/datasheets/BST_BNO055_DS000_12.pdf
+# Some parameters, such as data_query_frequency, were empirically defined
+bno055:
+  ros__parameters:
+    ros_topic_prefix: "bno055/"
+    connection_type: "uart"
+    uart_port: "/dev/ttyUSB0"
+    uart_baudrate: 115200
+    uart_timeout: 0.1
+    data_query_frequency: 50
+    calib_status_frequency: 0.1
+    frame_id: "base_link"
+    operation_mode: 0x0C
+    placement_axis_remap: "P1"
+    acc_factor: 100.0
+    mag_factor: 16000000.0
+    gyr_factor: 900.0
+    grav_factor: 100.0
+    set_offsets: true # set to true to use offsets below, offsets obtained by ros service
+    offset_acc: [0x0007, 0xFFE4, 0xFFF7]
+    offset_mag: [0xFCD4, 0x0025, 0x0058]
+    offset_gyr: [0x0002, 0xFFFF, 0xFFFF]
+    radius_acc: 1000
+    radius_mag: 631
