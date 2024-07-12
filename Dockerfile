@@ -1,8 +1,8 @@
 FROM jcswisscat/em_onrobot:base
 
 # Please adapt the git config to your own, here https is used
-ARG GIT_USER=Yanniscod
-ARG GIT_TOKEN=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
+ARG GIT_USER=
+ARG GIT_TOKEN=
 
 ENV namespace=
 
