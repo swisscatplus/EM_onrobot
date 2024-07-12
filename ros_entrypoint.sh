@@ -4,6 +4,7 @@ source /opt/ros/humble/setup.bash
 source /home/SwissCat-on_robot/install/setup.bash
 
 # Run the ROS2 node
+# If you want to just have access to the terminal, uncomment this if statement
 if [ -z "$namespace" ]; then
   exec ros2 launch rpi_pkg rpi.launch.py
 else
