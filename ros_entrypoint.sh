@@ -10,3 +10,4 @@ else
   exec ros2 launch rpi_pkg rpi.launch.py namespace:=$namespace
 fi
 
+exec "$@"
