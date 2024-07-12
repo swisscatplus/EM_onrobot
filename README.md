@@ -25,7 +25,7 @@ This repo provides the code needed for obtaining an accurate positioning of a mo
 ## Description
 
 <details>
-<summary> Show detailed description</summary>
+<summary> <strong >Show detailed description </strong> </summary>
   
 Simply put, a RaspberryPi 5 embedded in the robot, named Edison, is connected to the camera, the IMU and the motors and publishes the corresponding topics /edi/cam, /bno055/imu and /left_ticks_counts - /right_ticks_counts. These are converted in the server to proper types and covariances before being fused in an Extended Kalman Filter node and outputting a reliable odometry topic. The functioning of these topics are the following:
 
