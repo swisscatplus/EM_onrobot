@@ -9,7 +9,7 @@ ENV namespace=
 WORKDIR /home
 
 # clone using id and token, token may be not reusable and need to be updated
-RUN git clone --recursive https://$GIT_USER:$GIT_TOKEN@github.com/swisscatplus/SwissCat-on_robot.git
+RUN git clone --recursive https://$GIT_USER:$GIT_TOKEN@github.com/swisscatplus/EM_onrobot.git
 
 WORKDIR /home/SwissCat-on_robot
 
