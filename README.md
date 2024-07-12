@@ -24,6 +24,9 @@ This repo provides the code needed for obtaining an accurate positioning of a mo
    
 ## Description
 
+<details>
+<summary> Show detailed description</summary>
+  
 Simply put, a RaspberryPi 5 embedded in the robot, named Edison, is connected to the camera, the IMU and the motors and publishes the corresponding topics /edi/cam, /bno055/imu and /left_ticks_counts - /right_ticks_counts. These are converted in the server to proper types and covariances before being fused in an Extended Kalman Filter node and outputting a reliable odometry topic. The functioning of these topics are the following:
 
 ### - Vision
@@ -34,7 +37,8 @@ The BNO055 IMU was used because of its high accuracy and easy deployment on the 
 
 ### - Odometry of the wheels
 To compute the encoder ticks, an Arduino is used to retrieve and transfer them to the RPi, using serial communication. The speed of both motors was empirically tuned to try and achieve the most reliable odometry. These left and right ticks are then directly published.
-
+</details>
+  
 ## Deployment of a new robot
 
 ### Before starting: custom SwissCat Set-up
