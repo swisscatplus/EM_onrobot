@@ -158,7 +158,7 @@ This section focuses on describing the steps to perform to deploy a new robot in
    
    That's it, you have a running container publishing your topics. If you want to have access to the terminal after running the image, run in detached mode, this means modifying run.sh by adding the -d flag.
 
-## How to run
+## How to use
 Once the whole installation is over, to run the docker container inside a Raspberry Pi is quite straight forward:
 1. ssh to the robot you want to use
    ```
