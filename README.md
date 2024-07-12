@@ -10,7 +10,7 @@
 
 This repo provides the code needed for obtaining an accurate positioning of a mobile wheeled robot and controlling it with a /cmd_vel topic. For sensors, it uses the odometry of the encoder ticks, a [bno055 IMU](https://www.bosch-sensortec.com/products/smart-sensor-systems/bno055/) and a [RaspberryPi Module 3 Wide camera](https://www.pi-shop.ch/raspberry-pi-camera-3-wide). It is designed to work jointly with [this code](https://github.com/swisscatplus/EM_fleetmanager).
 
-## Versions and software used
+## Requirements
   - Ubuntu 22.04
   - ROS2 Humble
   - Docker
