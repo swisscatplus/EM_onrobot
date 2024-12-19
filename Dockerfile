@@ -1,26 +1,31 @@
-FROM jcswisscat/em_onrobot:base
+# Use the official ROS 2 Humble image as the base
+FROM ros:humble-ros-core-jammy
 
-# Please adapt the git config to your own, here https is used
-ARG GIT_USER=
-ARG GIT_TOKEN=
+# Set environment variables for ROS 2
+ENV ROS_DISTRO=humble
 
-ENV namespace=
+# Update and install required tools
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-colcon-common-extensions \
+    ros-${ROS_DISTRO}-example-interfaces \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /home
+RUN pip install pyserial
 
-# clone using id and token, token may be not reusable and need to be updated
-RUN git clone --recursive https://$GIT_USER:$GIT_TOKEN@github.com/swisscatplus/SwissCat-on_robot.git
+# Set the working directory inside the container
+WORKDIR /ros2_ws
 
-WORKDIR /home/SwissCat-on_robot
+# Copy your ROS 2 package to the workspace
+COPY src/rpi_pkg src/rpi_pkg
 
-# Install dependencies and build the workspace
-RUN colcon build
+# Build the workspace
+RUN . /opt/ros/$ROS_DISTRO/setup.sh && \
+    colcon build
 
-# Copy the entrypoint script into the Docker image
-COPY ros_entrypoint.sh /home/SwissCat-on_robot/ros_entrypoint.sh
+# Source the ROS 2 setup and workspace setup when launching the container
+RUN echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
+RUN echo "source /ros2_ws/install/setup.bash" >> ~/.bashrc
 
-# Set the entrypoint script as the container's entrypoint
-ENTRYPOINT ["/home/SwissCat-on_robot/ros_entrypoint.sh"]
-
-# Default command to run ROS2 node
-CMD ["bash"]
+# Automatically source ROS 2 setup and launch the specified launch file
+CMD ["bash", "-c", "source /opt/ros/$ROS_DISTRO/setup.bash && source /ros2_ws/install/setup.bash && ros2 launch rpi_pkg rpi.launch.py"]
