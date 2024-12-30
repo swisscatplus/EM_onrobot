@@ -1,11 +1,19 @@
+<a name="readme-top"></a>
 <br />
 <div align="center">
-  <a href="https://github.com/swisscatplus/task-scheduler">
-    <img src="https://images.squarespace-cdn.com/content/v1/6012a0a1f4c67c587a8eff67/d7731755-2fa3-4548-bf1e-5a25182d67ae/Combined+Logo+CAT-ETH-EPFL+%282%29.png?format=1500w" alt="Logo" height="80">
+  <a href="https://github.com/swisscatplus/">
+    <img src="./images/logo.png" alt="Logo" width="80" height="80">
   </a>
 
-  <h1 align="center"> EM_onrobot - Localization of a mobile robot using Python and ROS2 </h1>
+  <h1 align="center">EM_onrobot - Localization of a mobile robot using Python and ROS2</h1>
 
+  <p align="center">
+    EM_onrobot - Localization of a mobile robot using Python and ROS2
+    <br />
+    <a href="https://github.com/swisscatplus/EM_onrobot"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+  </p>
 </div>
 
 This repo provides the code needed for obtaining an accurate positioning of a mobile wheeled robot and controlling it with a /cmd_vel topic. For sensors, it uses the odometry of the encoder ticks, a [bno055 IMU](https://www.bosch-sensortec.com/products/smart-sensor-systems/bno055/) and a [RaspberryPi Module 3 Wide camera](https://www.pi-shop.ch/raspberry-pi-camera-3-wide). It is designed to work jointly with [this code](https://github.com/swisscatplus/EM_fleetmanager).
