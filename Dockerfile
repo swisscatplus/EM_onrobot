@@ -21,10 +21,10 @@ RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     rm get-pip.py
 
 WORKDIR /ros2_ws
-COPY src/EM_OnRobot src/rpi_pkg
+COPY src/EM_OnRobot src/em_robot
 
 RUN source /opt/ros/${ROS_DISTRO}/setup.sh && \
-    colcon build --packages-select rpi_pkg
+    colcon build --packages-select em_robot
 
 
 # =====================================
@@ -40,4 +40,4 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["ros2", "launch", "rpi_pkg", "rpi.launch.py"]
+CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
