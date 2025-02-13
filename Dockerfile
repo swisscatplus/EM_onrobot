@@ -1,34 +1,29 @@
 # ==================================
-# ===== Stage 1: build l'application
+# Stage 1: build l'application
 # ==================================
 FROM ros:humble-ros-core-jammy AS builder
 SHELL ["/bin/bash", "-c"]
-
 ENV ROS_DISTRO=humble
 
+# (1) Installer Python 3.10 et colcon
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-distutils python3.12-dev \
-    python3-colcon-common-extensions \
+    python3.10 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.12 get-pip.py && \
-    rm get-pip.py
+# (2) Installer d’éventuelles libs Python (exemple : pyserial)
+RUN python3.10 -m pip install --no-cache-dir pyserial
 
+# (3) Copier et compiler ton package
 WORKDIR /ros2_ws
-COPY src/EM_OnRobot src/em_robot
+COPY src/em_robot src/em_robot
 
-RUN source /opt/ros/${ROS_DISTRO}/setup.sh && \
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     colcon build --packages-select em_robot
 
 
 # =====================================
-# ===== Stage 2: image finale (runtime)
+# Stage 2: image finale (runtime)
 # =====================================
 FROM ros:humble-ros-core-jammy AS runtime
 SHELL ["/bin/bash", "-c"]
