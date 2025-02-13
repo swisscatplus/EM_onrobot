@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.8 (RobotScheduler)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.8 (RobotScheduler)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (EM_onrobot)" project-jdk-type="Python SDK" />
 </project>
