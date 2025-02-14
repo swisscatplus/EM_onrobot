@@ -7,14 +7,12 @@ def generate_launch_description():
     movement_node = Node(
         package = pkg_name,
         executable = 'em_movement',
-        name='em_movement',
         output = 'screen',
     )
 
     localization_node = Node(
         package=pkg_name,
         executable='em_localization',
-        name='em_localization',
         output='screen',
     )
 
