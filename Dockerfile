@@ -1,21 +1,21 @@
 # ==================================
-# Stage 1: build l'application
+# Stage 1: build the application
 # ==================================
-FROM ros:humble-ros-core-jammy AS builder
+FROM ros:galactic-ros-core-focal AS builder
 SHELL ["/bin/bash", "-c"]
-ENV ROS_DISTRO=humble
+ENV ROS_DISTRO=galactic
 
-# (1) Installer Python 3.10 et colcon
+# (1) Install Python 3.8 and colcon (default for Focal) along with necessary ROS packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3-pip python3-colcon-common-extensions \
+    python3.8 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
-# (2) Installer d’éventuelles libs Python (exemple : pyserial)
-#RUN python3.10 -m pip install --no-cache-dir pyserial
+# (2) (Optional) Install additional Python libraries if needed (e.g., pyserial)
+# RUN python3.8 -m pip install --no-cache-dir pyserial
 
-# (3) Copier et compiler ton package
+# (3) Copy and build your package
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
 
@@ -24,17 +24,19 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
 
 
 # =====================================
-# Stage 2: image finale (runtime)
+# Stage 2: final image (runtime)
 # =====================================
-FROM ros:humble-ros-core-jammy AS runtime
+FROM ros:galactic-ros-core-focal AS runtime
 SHELL ["/bin/bash", "-c"]
-ENV ROS_DISTRO=humble
+ENV ROS_DISTRO=galactic
 
+# Copy the installed workspace from the builder stage
 COPY --from=builder /ros2_ws/install /ros2_ws/install
 
+# Copy the entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Set the entrypoint to source the environments and run the launch command
 ENTRYPOINT ["/entrypoint.sh"]
-#CMD ["bash"]
 CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
