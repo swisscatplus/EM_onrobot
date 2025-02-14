@@ -45,4 +45,4 @@ jobs:
           # For a 32-bit Pi (armv7), you might do "linux/arm/v7".
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/swisscatplus/EM_onrobot/em_robot:latest
+          tags: ghcr.io/swisscatplus/em_onrobot/em_robot:latest
