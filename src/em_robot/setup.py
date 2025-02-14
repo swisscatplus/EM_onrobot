@@ -24,8 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'em_movement = em_robot.movement:main',
-            'em_localization = em_robot.localization:main',
+            'em_movement = em_robot.em_movement:main',
+            'em_localization = em_robot.em_localization:main',
         ],
     },
 )
