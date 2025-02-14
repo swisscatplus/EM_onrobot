@@ -9,6 +9,7 @@ ENV ROS_DISTRO=humble
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces \
+    ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
 # (2) Installer d’éventuelles libs Python (exemple : pyserial)
