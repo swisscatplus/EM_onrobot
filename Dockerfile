@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # (2) Installer d’éventuelles libs Python (exemple : pyserial)
-RUN python3.10 -m pip install --no-cache-dir pyserial
+#RUN python3.10 -m pip install --no-cache-dir pyserial
 
 # (3) Copier et compiler ton package
 WORKDIR /ros2_ws
