@@ -36,4 +36,4 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
+#CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
