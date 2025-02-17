@@ -5,9 +5,9 @@ FROM ros:galactic-ros-core-focal AS builder
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=galactic
 
-# (1) Install Python 3.10 and colcon (default for Focal) along with necessary ROS packages
+# (1) Install Python 3.8 and colcon (default for Focal) along with necessary ROS packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3-pip python3-colcon-common-extensions \
+    python3.8 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
@@ -28,6 +28,12 @@ RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
 FROM ros:galactic-ros-core-focal AS runtime
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=galactic
+
+# Install Python 3.8, pip, and dynamixel_sdk in the runtime environment
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.8 python3-pip \
+    && rm -rf /var/lib/apt/lists/* && \
+    pip install dynamixel_sdk
 
 # Copy the installed workspace from the builder stage
 COPY --from=builder /ros2_ws/install /ros2_ws/install

@@ -49,7 +49,7 @@ class MovementNode(Node):
             'cmd_vel',
             self.cmd_vel_callback,
             10)
-        self.subscription  # Prevent unused variable warning
+        #self.subscription  # Prevent unused variable warning
 
     def cmd_vel_callback(self, msg: Twist):
         # Extract linear and angular velocities from the Twist message
