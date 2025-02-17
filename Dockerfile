@@ -29,11 +29,13 @@ FROM ros:galactic-ros-core-focal AS runtime
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=galactic
 
-# Install Python 3.8, pip, and dynamixel_sdk in the runtime environment
+# Install Python 3.8, pip3, and then upgrade pip and install dynamixel_sdk
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.8 python3-pip \
-    && rm -rf /var/lib/apt/lists/* && \
-    pip install dynamixel_sdk
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install dynamixel_sdk using pip3
+RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
 
 # Copy the installed workspace from the builder stage
 COPY --from=builder /ros2_ws/install /ros2_ws/install
@@ -45,3 +47,4 @@ RUN chmod +x /entrypoint.sh
 # Set the entrypoint to source the environments and run the launch command
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
+
