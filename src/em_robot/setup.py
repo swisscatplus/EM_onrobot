@@ -18,6 +18,10 @@ setup(
     install_requires=[
         'setuptools',
         'dynamixel_sdk',
+        'opencv-python',
+        'python3-picamera2',
+        'tf-transformations',
+        'pyyaml',
     ],
     zip_safe=True,
     maintainer='mariano',

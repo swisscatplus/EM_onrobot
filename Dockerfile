@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install dynamixel_sdk
+RUN pip install dynamixel_sdk opencv-python python3-picamera2 tf-transformations pyyaml
 
 # (3) Copy and build your package
 WORKDIR /ros2_ws
@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and install dynamixel_sdk using pip3
-RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
+RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk opencv-python python3-picamera2 tf-transformations pyyaml
 
 # Copy the installed workspace from the builder stage
 COPY --from=builder /ros2_ws/install /ros2_ws/install
