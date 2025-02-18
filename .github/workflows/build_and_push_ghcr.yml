@@ -3,6 +3,10 @@ name: Build and Push to GHCR
 on:
   push:
     branches: [ "clean-start" ]
+    paths:
+      - 'src/**'
+      - 'entrypoint.sh'
+      - 'Dockerfile'
 
 permissions:
   contents: read
