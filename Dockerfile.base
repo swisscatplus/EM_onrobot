@@ -1,21 +1,36 @@
-FROM ros:galactic-ros-core-focal
+FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
-ENV ROS_DISTRO=galactic
+ENV ROS_DISTRO=humble
 
-# Install system dependencies (including git and jinja2 for libcamera build)
+# Update and install all required system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools
+    build-essential \
+    ninja-build \
+    pkg-config \
+    meson \
+    cmake \
+    # Python and ROS tools
     python3.8 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
+    python3-yaml python3-ply \
+    git python3-jinja2 \
+    # General libraries for libcamera and multimedia support
     libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
-    meson cmake python3-yaml python3-ply \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev \
-    git python3-jinja2 && \
+    # Additional multimedia and image dependencies
+    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    gstreamer1.0-plugins-base && \
     rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip and install additional Python packages
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
 
-# Clone and build libcamera with Python bindings enabled
+##############################################
+# Clone and build libcamera with Python support
+##############################################
 RUN mkdir -p /packages && cd /packages && \
     git clone https://github.com/raspberrypi/libcamera.git
 
@@ -35,8 +50,7 @@ RUN meson setup build --buildtype=release \
     ninja -C build && \
     ninja -C build install
 
-##################################
+##############################################
 # Install Python packages including picamera2
-##################################
+##############################################
 RUN pip3 install opencv-contrib-python picamera2 transforms3d pyserial smbus
-
