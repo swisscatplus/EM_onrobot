@@ -52,4 +52,4 @@ RUN meson setup build --buildtype=release \
 ##############################################
 # Install Python packages including picamera2
 ##############################################
-RUN pip3 install opencv-contrib-python picamera2 transforms3d pyserial smbus
+RUN pip3 install picamera2 opencv-python
