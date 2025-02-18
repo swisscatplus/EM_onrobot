@@ -1,4 +1,4 @@
-FROM em_robot_base
+FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=galactic
 
