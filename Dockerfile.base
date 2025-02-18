@@ -15,4 +15,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
 
-# Optionally, set up any persistent environment variables or configurations
+# Clone and build libcamera with Python bindings enabled
+RUN mkdir -p /packages && cd /packages && \
+    git clone https://github.com/raspberrypi/libcamera.git
+
+WORKDIR /packages/libcamera
+
+RUN meson setup build --buildtype=release \
+    -Dpipelines=rpi/vc4,rpi/pisp \
+    -Dipas=rpi/vc4,rpi/pisp \
+    -Dv4l2=true \
+    -Dgstreamer=enabled \
+    -Dtest=false \
+    -Dlc-compliance=disabled \
+    -Dcam=disabled \
+    -Dqcam=disabled \
+    -Ddocumentation=disabled \
+    -Dpycamera=enabled && \
+    ninja -C build && \
+    ninja -C build install
+
+##################################
+# Install Python packages including picamera2
+##################################
+RUN pip3 install opencv-contrib-python picamera2 transforms3d pyserial smbus
+
