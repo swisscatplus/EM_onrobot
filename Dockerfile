@@ -12,6 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
+### libcamera installation procedure:
+RUN apt-get update && apt install -y libboost-dev \
+    libgnutls28-dev openssl libtiff5-dev pybind11-dev \
+    qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
+    meson cmake \
+    python3-yaml python3-ply \
+    libglib2.0-dev libgstreamer-plugins-base1.0-dev
+
+
 RUN pip install dynamixel_sdk
 
 # (3) Copy and build your package
@@ -33,15 +42,6 @@ ENV ROS_DISTRO=galactic
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.8 python3-pip \
     && rm -rf /var/lib/apt/lists/*
-
-### libcamera installation procedure:
-RUN apt-get update && apt install -y libboost-dev \
-    libgnutls28-dev openssl libtiff5-dev pybind11-dev \
-    qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
-    meson cmake \
-    python3-yaml python3-ply \
-    libglib2.0-dev libgstreamer-plugins-base1.0-dev
-
 
 # Upgrade pip and install dynamixel_sdk using pip3
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
