@@ -2,31 +2,30 @@ FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
-# Update and install all required system packages
+# Install system dependencies (including build tools, libraries, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build tools
     build-essential \
     ninja-build \
     pkg-config \
-    meson \
+    # Remove meson from apt-get and install a newer version with pip
     cmake \
-    # Python and ROS tools
-    python3.10 python3-pip python3-colcon-common-extensions \
+    python3 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
     python3-yaml python3-ply \
     git python3-jinja2 \
-    # General libraries for libcamera and multimedia support
     libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev \
-    # Additional multimedia and image dependencies
     libdrm-dev libexpat1-dev libjpeg-dev libpng-dev \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     gstreamer1.0-plugins-base && \
     rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip and install additional Python packages
+# Upgrade pip and install dynamixel_sdk
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
+
+# Upgrade Meson using pip to ensure version >= 0.63 (current version will be installed in /usr/local/bin)
+RUN pip3 install --upgrade meson
 
 ##############################################
 # Clone and build libcamera with Python support
