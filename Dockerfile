@@ -35,6 +35,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ### libcamera installation procedure:
+RUN sudo apt-get update && sudo apt install -y libboost-dev \
+    libgnutls28-dev openssl libtiff5-dev pybind11-dev \
+    qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
+    meson cmake \
+    python3-yaml python3-ply \
+    libglib2.0-dev libgstreamer-plugins-base1.0-dev
+
 
 # Upgrade pip and install dynamixel_sdk using pip3
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
