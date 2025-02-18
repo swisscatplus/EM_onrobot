@@ -46,7 +46,7 @@ jobs:
           context: .
           file: Dockerfile.base
           push: true
-          tags: ghcr.io/your_username/my-base-image:latest
+          tags: ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 
   # Step 3: Build and push the derived image (always)
   build-derived:

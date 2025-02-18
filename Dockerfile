@@ -1,4 +1,4 @@
-FROM my-base-image
+FROM em_robot_base
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=galactic
 
