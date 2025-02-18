@@ -18,11 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # fetch full history to compare commits accurately
+          fetch-depth: 0  # ensure full history is available
       - name: Check changes in Dockerfile.base
         id: filter
         uses: dorny/paths-filter@v2
         with:
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
           filters: |
             base:
               - 'Dockerfile.base'
