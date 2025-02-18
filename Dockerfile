@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ### libcamera installation procedure:
-RUN sudo apt-get update && sudo apt install -y libboost-dev \
+RUN apt-get update && apt install -y libboost-dev \
     libgnutls28-dev openssl libtiff5-dev pybind11-dev \
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
     meson cmake \
