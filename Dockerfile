@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
-#RUN pip install dynamixel_sdk
+RUN pip install dynamixel_sdk
 
 # (3) Copy and build your package
 WORKDIR /ros2_ws
@@ -33,6 +33,8 @@ ENV ROS_DISTRO=galactic
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.8 python3-pip \
     && rm -rf /var/lib/apt/lists/*
+
+### libcamera installation procedure:
 
 # Upgrade pip and install dynamixel_sdk using pip3
 RUN pip3 install --upgrade pip && pip3 install dynamixel_sdk
