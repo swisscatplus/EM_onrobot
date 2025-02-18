@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-rclpy \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install dynamixel_sdk
+#RUN pip install dynamixel_sdk
 
 # (3) Copy and build your package
 WORKDIR /ros2_ws
@@ -32,6 +32,10 @@ ENV ROS_DISTRO=galactic
 # Install Python 3.8, pip3, and then upgrade pip and install dynamixel_sdk
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.8 python3-pip \
+    libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
+    qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
+    meson cmake python3-yaml python3-ply \
+    libglib2.0-dev libgstreamer-plugins-base1.0-dev git ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and install dynamixel_sdk using pip3
