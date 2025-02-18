@@ -24,7 +24,7 @@ jobs:
         uses: dorny/paths-filter@v2
         with:
           base: ${{ github.event.before }}
-          head: ${{ github.event.after }}
+          ref: ${{ github.event.after }}
           filters: |
             base:
               - 'Dockerfile.base'
