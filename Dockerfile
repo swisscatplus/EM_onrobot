@@ -3,7 +3,7 @@ SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    pip3 install tf-transformations
+    pip3 install transforms3d
 
 
 # Build your ROS application
