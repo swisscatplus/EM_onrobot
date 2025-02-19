@@ -1,6 +1,6 @@
 FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
-ENV ROS_DISTRO=galactic
+ENV ROS_DISTRO=humble
 
 # Build your ROS application
 WORKDIR /ros2_ws
