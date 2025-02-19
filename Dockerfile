@@ -3,12 +3,13 @@ SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
 RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
-RUN apt install -y python3-libcamera
 
 # Build your ROS application
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot
+
+RUN pip install rpi-libcamera
 
 # Copy the entrypoint script
 COPY entrypoint.sh /entrypoint.sh
