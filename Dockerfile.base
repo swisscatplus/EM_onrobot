@@ -46,7 +46,7 @@ RUN meson setup build --buildtype=release \
     -Dqcam=disabled \
     -Ddocumentation=disabled \
     -Dpycamera=enabled && \
-    ninja -C build && \
+    ninja -C build -j1 && \
     ninja -C build install
 
 ##############################################
