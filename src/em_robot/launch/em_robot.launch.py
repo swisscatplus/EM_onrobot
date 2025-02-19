@@ -15,7 +15,7 @@ def generate_launch_description():
         executable='em_localization',
         output='screen',
     )
-
+# test
     return LaunchDescription([
         movement_node,
         #localization_node
