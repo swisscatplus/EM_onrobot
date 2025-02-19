@@ -49,6 +49,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.base
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 
@@ -70,5 +71,6 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          platforms: linux/arm64
           push: true
           tags: ghcr.io/swisscatplus/em_onrobot/em_robot:latest
