@@ -52,9 +52,8 @@ jobs:
           push: true
           tags: ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 
-  # Step 3: Build and push the derived image (always)
   build-derived:
-    needs: [filter, build-base]
+    needs: [filter]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
