@@ -3,6 +3,7 @@ SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
 RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
+RUN apt install -y python3-libcamera
 
 # Build your ROS application
 WORKDIR /ros2_ws
