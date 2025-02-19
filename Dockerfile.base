@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev \
-    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev \
+    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libcap-dev\
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     gstreamer1.0-plugins-base && \
     rm -rf /var/lib/apt/lists/*
