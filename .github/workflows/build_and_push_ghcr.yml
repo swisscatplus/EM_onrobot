@@ -31,7 +31,6 @@ jobs:
 
   # Step 2: Build and push the base image only if Dockerfile.base changed
   build-base:
-    if: ${{ needs.filter.outputs.base_changed == 'true' }}
     needs: filter
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +43,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push base image
+      - name: Build and push base image (if changes detected)
+        if: ${{ needs.filter.outputs.base_changed == 'true' }}
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -52,9 +52,12 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
+      - name: Dummy step for base image (no changes)
+        if: ${{ needs.filter.outputs.base_changed != 'true' }}
+        run: echo "Dockerfile.base did not change."
 
   build-derived:
-    needs: [filter]
+    needs: [filter, build-base]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -74,3 +77,4 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: ghcr.io/swisscatplus/em_onrobot/em_robot:latest
+
