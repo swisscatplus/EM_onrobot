@@ -30,28 +30,41 @@ RUN pip3 install --upgrade meson
 ##############################################
 # Clone and build libcamera with Python support
 ##############################################
-RUN mkdir -p /packages && cd /packages && \
-    git clone https://github.com/raspberrypi/libcamera.git
+RUN mkdir /packages
+WORKDIR /packages
+
+RUN git clone https://github.com/raspberrypi/libcamera.git
 
 WORKDIR /packages/libcamera
 
-RUN meson setup build --buildtype=release \
-    -Dpipelines=rpi/vc4,rpi/pisp \
-    -Dipas=rpi/vc4,rpi/pisp \
-    -Dv4l2=true \
-    -Dgstreamer=enabled \
-    -Dtest=false \
-    -Dlc-compliance=disabled \
-    -Dcam=disabled \
-    -Dqcam=disabled \
-    -Ddocumentation=disabled \
-    -Dpycamera=enabled && \
-    ninja -C build -j1 && \
-    ninja -C build install
+RUN meson setup build --buildtype=release -Dpipelines=rpi/vc4,rpi/pisp -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=disabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled
+
+RUN ninja -C build
+
+RUN sudo ninja -C build install
+###
+
+WORKDIR /packages
+
+### install libkms dependencies
+RUN sudo apt update && sudo apt install -y --no-install-recommends \
+     libfmt-dev libdrm-dev libfmt-dev \
+     libcap-dev
+
+# install kmsxx
+RUN git clone https://github.com/tomba/kmsxx.git
+
+WORKDIR /packages/kmsxx
+
+RUN git submodule update --init
+
+RUN meson build -Dpykms=enabled
+
+RUN sudo ninja -C build install
+
 
 ##############################################
 # Install Python packages including picamera2
 ##############################################
 RUN pip3 install picamera2 opencv-python
 
-###test
