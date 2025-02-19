@@ -2,6 +2,8 @@ FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
+RUN pip3 install tf_transformations
+
 # Build your ROS application
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
