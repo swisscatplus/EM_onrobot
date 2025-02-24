@@ -3,7 +3,7 @@ name: Build and Push Derived Image
 on:
   push:
     branches:
-      - "clean-start"
+      - "dev"
     paths:
       - 'src/**'
       - 'Dockerfile'
