@@ -2,6 +2,8 @@ FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
+RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
+
 ##############################
 # 1. Install system dependencies and build tools
 ##############################
@@ -46,8 +48,7 @@ RUN meson setup build --buildtype=release \
     -Dcam=disabled \
     -Dqcam=disabled \
     -Ddocumentation=disabled \
-    -Dpycamera=enabled \
-    -Dpykms=enabled
+    -Dpycamera=enabled
 RUN ninja -C build
 RUN ninja -C build install
 
@@ -67,8 +68,8 @@ RUN ninja -C build && ninja -C build install
 ##############################
 # 5. Install additional Python packages (picamera2 and opencv-python)
 ##############################
-RUN pip3 install picamera2 opencv-python
+RUN pip3 install picamera2 opencv-python rpi-libcamera
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
-# ENV PYTHONPATH=/usr/local/lib/python3.10/dist-packages:$PYTHONPATH
-# ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+ENV PYTHONPATH=/usr/local/lib/python3.10/dist-packages:$PYTHONPATH
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
