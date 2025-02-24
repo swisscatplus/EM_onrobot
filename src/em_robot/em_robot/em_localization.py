@@ -1,46 +1,23 @@
-# import rclpy
-# from rclpy.node import Node
-#
-# class LocalizationNode(Node):
-#     def __init__(self):
-#         super().__init__('localization_node')
-#         self.get_logger().info('LocalizationNode started')
-#
-# def main(args=None):
-#     rclpy.init(args=args)
-#     node = LocalizationNode()
-#     try:
-#         rclpy.spin(node)
-#     except KeyboardInterrupt:
-#         pass
-#     finally:
-#         node.destroy_node()
-#         rclpy.shutdown()
-
-
-import rclpy  # Python Client Library for ROS 2
-from rclpy.node import Node  # Handles the creation of nodes
-from launch_ros.substitutions import FindPackageShare
-from geometry_msgs.msg import PoseWithCovarianceStamped  # Message type for publishing robot pose
-from rclpy.executors import ExternalShutdownException
+import rclpy  # ROS 2 Python Client Library
+from rclpy.node import Node
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf_transformations import quaternion_from_euler
-import cv2 as cv  # OpenCV library
+import cv2 as cv
 from picamera2 import Picamera2
 from libcamera import controls
-import sys
 import yaml
 import os
 import pickle
-from .submodules.detect_aruco import CameraVisionStation, detector
+from submodules.detect_aruco import CameraVisionStation, detector
 
-# ################# CONFIG #################
+# ################# CONFIGURATION #################
 package_name = 'em_robot'
 params_path = 'config/cam.yaml'
-timer_period = 0.2  # seconds, corresponds to publisher frequency
-# ##########################################
+timer_period = 0.2  # (seconds) Frequency of the publisher
+# #################################################
 
-pkg_share = FindPackageShare(package=package_name).find(package_name)
-
+# Locate the configuration files
+pkg_share = os.path.join('/ros2_ws/install', package_name, 'share', package_name)
 config_file_path = os.path.join(pkg_share, params_path)
 calib_mat_file_path = os.path.join(pkg_share, 'config', 'cameraMatrix.pkl')
 calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
@@ -48,19 +25,18 @@ calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
 
 class LocalizationNode(Node):
     """
-    Create an ImagePublisher class, which is a subclass of the Node class.
+    ROS 2 Node responsible for capturing images, detecting ArUco markers,
+    and computing the robot's position.
     """
 
     def __init__(self):
-        """
-        Class constructor to set up the node
-        """
         super().__init__('localization_node')
+        self.get_logger().info("Initializing LocalizationNode...")
 
+        # Load camera parameters from YAML
         self.declare_parameter('config_file', config_file_path)
         config_file = self.get_parameter('config_file').get_parameter_value().string_value
 
-        # Load parameters from YAML file
         if os.path.exists(config_file):
             with open(config_file, 'r') as file:
                 params = yaml.safe_load(file)
@@ -70,78 +46,87 @@ class LocalizationNode(Node):
             cam_params = node_params.get('cam_params', {})
             lens_position = cam_params.get('lens_position', 2.32)
             aruco_params = node_params.get('aruco_params', {})
-            self.get_logger().info(f"lens position: {lens_position}")
+
+            self.get_logger().info(f"Camera Lens Position: {lens_position}")
+            self.get_logger().info(f"Aruco Parameters Loaded: {aruco_params}")
 
         else:
             self.get_logger().error(f"Config file {config_file} does not exist")
+            return
 
-        self.size = (640, 480)  # size of the frame
+        # Initialize the camera
+        self.size = (640, 480)  # Image resolution
+        self.get_logger().info("Initializing CameraVisionStation...")
         self.cam = CameraVisionStation(cam_params=cam_params, aruco_params=aruco_params, cam_frame=self.size)
 
+        self.get_logger().info("Starting Picamera2...")
         self.picam2 = Picamera2()
-        self.picam2.configure(
-            self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (self.size[0], self.size[1])}))
+        self.picam2.configure(self.picam2.create_preview_configuration(
+            main={"format": 'XRGB8888', "size": self.size}))
         self.picam2.start()
         self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": lens_position})
 
-        self.cam_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
+        # Publisher for the robot's pose
+        self.pose_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
+        self.get_logger().info("Pose publisher initialized on topic 'edi/cam'.")
 
-        self.timer = self.create_timer(timer_period, self.publish_frame)
+        # Timer to capture and process frames periodically
+        self.timer = self.create_timer(timer_period, self.process_frame)
 
-    def get_cam_config(self, config_file_path=None):
-        with open(config_file_path, 'r') as file:
-            data = yaml.safe_load(file)
-        return data
-
-    def publish_frame(self):
+    def process_frame(self):
+        """
+        Captures an image, detects ArUco markers, computes the robot pose,
+        and publishes the pose if detection is successful.
+        """
+        self.get_logger().debug("Capturing frame...")
         frame = self.picam2.capture_array()
+        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert to grayscale
 
-        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert frame to grayscale
+        # Detect ArUco markers in the frame
+        markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)
 
-        # Calibration process, commented because not so reliable, as tested
+        if markerIds is None:
+            self.get_logger().warn("No ArUco markers detected in frame.")
+            return
 
-        # Gets calibration data
-        # cameraMatrix = pickle.load(open(calib_mat_file_path, 'rb'))
-        # dist = pickle.load(open(calib_dist_file_path, 'rb'))
+        self.get_logger().info(f"Detected ArUco markers: {markerIds.flatten().tolist()}")
 
-        # newCameraMatrix, roi = cv.getOptimalNewCameraMatrix(cameraMatrix, dist, self.size, 1, self.size)
-        # cal_frame = cv.undistort(gray_frame, cameraMatrix, dist, None, newCameraMatrix)
-        # x, y, w, h = roi
-        # cal_frame = cal_frame[y:y+h, x:x+w]
+        # Compute the robot's pose
+        robot_pose, robot_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
 
-        markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)  # Detect markers in grayscale frame
+        if robot_pose is None:
+            self.get_logger().warn("Could not compute robot pose.")
+            return
 
-        if markerIds is not None:
-            robot_pose, robot_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
+        self.get_logger().info(f"Computed Robot Pose: X={robot_pose[0]:.4f}, Y={robot_pose[1]:.4f}, Angle={robot_angle:.4f} rad")
 
-            if robot_pose is not None:
-                pose = PoseWithCovarianceStamped()
-                pose.header.frame_id = 'map'
-                pose.header.stamp = self.get_clock().now().to_msg()
-                pose.pose.pose.position.x = robot_pose[0]
-                pose.pose.pose.position.y = robot_pose[1]
-                pose.pose.pose.orientation.x, pose.pose.pose.orientation.y, pose.pose.pose.orientation.z, pose.pose.pose.orientation.w = quaternion_from_euler(
-                    0, 0, robot_angle)
-                pose.pose.covariance = [0.001, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                        0.0, 0.001, 0.0, 0.0, 0.0, 0.0,
-                                        0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
-                                        0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-                                        0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-                                        0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
-                self.get_logger().debug('ID:' + str(pose.pose.pose.orientation))
-                self.get_logger().debug('robot_pose:' + str(pose))
-                self.cam_publisher.publish(pose)
+        # Publish pose to ROS
+        pose_msg = PoseWithCovarianceStamped()
+        pose_msg.header.frame_id = 'map'
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+        pose_msg.pose.pose.position.x = robot_pose[0]
+        pose_msg.pose.pose.position.y = robot_pose[1]
+
+        # Convert Euler angle to Quaternion
+        qx, qy, qz, qw = quaternion_from_euler(0, 0, robot_angle)
+        pose_msg.pose.pose.orientation.x = qx
+        pose_msg.pose.pose.orientation.y = qy
+        pose_msg.pose.pose.orientation.z = qz
+        pose_msg.pose.pose.orientation.w = qw
+
+        self.get_logger().info("Publishing robot pose...")
+        self.pose_publisher.publish(pose_msg)
 
 
 def main(args=None):
     rclpy.init()
-    robot_cam_publisher = LocalizationNode()
+    node = LocalizationNode()
     try:
-        rclpy.spin(robot_cam_publisher)
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        robot_cam_publisher.destroy_node()
-    except ExternalShutdownException:
-        sys.exit(1)
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
