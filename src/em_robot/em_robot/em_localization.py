@@ -8,7 +8,7 @@ from libcamera import controls
 import yaml
 import os
 import pickle
-from submodules.detect_aruco import CameraVisionStation, detector
+from .submodules.detect_aruco import CameraVisionStation, detector
 
 # ################# CONFIGURATION #################
 package_name = 'em_robot'
