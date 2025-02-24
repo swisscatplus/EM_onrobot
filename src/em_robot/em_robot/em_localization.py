@@ -31,7 +31,7 @@ import sys
 import yaml
 import os
 import pickle
-from submodules.detect_aruco import CameraVisionStation, detector
+from .submodules.detect_aruco import CameraVisionStation, detector
 
 # ################# CONFIG #################
 package_name = 'em_robot'
