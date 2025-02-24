@@ -2,9 +2,7 @@ FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
-RUN git submodule update --init
-RUN meson setup build -Dpykms=true
-RUN ninja -C build && ninja -C build install
+ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 
 # Build your ROS application
 WORKDIR /ros2_ws
