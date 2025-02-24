@@ -1,7 +1,7 @@
 # These are the parameters used for the camera localisation. Upon adding a new aruco code on the circuit, simply add its id number and its location here.
 # test
 # To get the aruco id, uncomment detect_aruco.py lines 144-145 or adapt code for local pc (change from picamera to cv.videocapture method)
-em_localization: # needs to be the same name than the node where the config file is used
+localization_node: # needs to be the same name than the node where the config file is used
   ros__parameters:
     cam_params:
       lens_position: 2.32 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
