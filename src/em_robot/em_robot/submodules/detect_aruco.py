@@ -90,7 +90,7 @@ class CameraVisionStation:
             dx, dy = top_center - bottom_center
             angle = np.arctan2(dy, dx) * CONV_RAD2DEG
             rad_angle = np.deg2rad(angle + 180 + 90)
-            self.logger.debug(f"Marker {marker_id} Angle: {angle:.2f} degrees ({rad_angle:.4f} rad)")
+            #self.logger.debug(f"Marker {marker_id} Angle: {angle:.2f} degrees ({rad_angle:.4f} rad)")
 
             # Compute robot position based on known ArUco map positions
             aruco_x, aruco_y = self.aruco_params[marker_id]['t_x'], self.aruco_params[marker_id]['t_y']
