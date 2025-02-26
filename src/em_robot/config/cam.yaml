@@ -4,9 +4,9 @@
 localization_node: # needs to be the same name than the node where the config file is used
   ros__parameters:
     cam_params:
-      lens_position: 2.32 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
+      lens_position: 1.59 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
       dist_cam_robot_center: 0 #0.098 # dist between camera center and the center of the robot [m]
-      aruco_square_size: 0.038 #size of aruco on circuit [m]
+      aruco_square_size: 0.036 #size of aruco on circuit [m]
     aruco_params:
       11:
         t_x: 4.352
@@ -17,8 +17,8 @@ localization_node: # needs to be the same name than the node where the config fi
         t_y: 7.358
         yaw: 0.0
       645:
-        t_x: 4.36
-        t_y: 5.463
+        t_x: 0.0
+        t_y: 0.0
         yaw: 0.0
       614:
         t_x: 4.38
@@ -27,8 +27,4 @@ localization_node: # needs to be the same name than the node where the config fi
       914:
         t_x: 1.0
         t_y: 1.0
-        yaw: 0.0
-      645:
-        t_x: 0.0
-        t_y: 0.0
         yaw: 0.0
