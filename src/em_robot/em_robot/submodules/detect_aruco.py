@@ -89,13 +89,13 @@ class CameraVisionStation:
             # Compute orientation
             dx, dy = top_center - bottom_center
             angle = np.arctan2(dy, dx) * CONV_RAD2DEG
-            rad_angle = np.deg2rad(angle + 180 + 90)
-            #self.logger.debug(f"Marker {marker_id} Angle: {angle:.2f} degrees ({rad_angle:.4f} rad)")
+            rad_angle = np.deg2rad(angle + 180)
+            self.logger.debug(f"Marker {marker_id} Angle: {angle:.2f} degrees ({rad_angle:.4f} rad)")
 
             # Compute robot position based on known ArUco map positions
             aruco_x, aruco_y = self.aruco_params[marker_id]['t_x'], self.aruco_params[marker_id]['t_y']
-            robot_x = aruco_x - np.cos(-rad_angle) * self.dist_cam_robot_center
-            robot_y = aruco_y - np.sin(-rad_angle) * self.dist_cam_robot_center
+            robot_x = aruco_x - np.cos(-rad_angle) * self.dist_cam_robot_center - dx
+            robot_y = aruco_y - np.sin(-rad_angle) * self.dist_cam_robot_center - dy
 
             robot_positions.append([robot_x, robot_y])
             robot_angles.append(-rad_angle)
