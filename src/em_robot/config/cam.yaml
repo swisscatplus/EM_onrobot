@@ -28,7 +28,7 @@ localization_node: # needs to be the same name than the node where the config fi
         t_x: 1.0
         t_y: 1.0
         yaw: 0.0
-      157:
+      645:
         t_x: 0.0
         t_y: 0.0
         yaw: 0.0
