@@ -57,22 +57,23 @@ class CameraVisionStation:
 
     def get_robot_pose(self, frame, markerCorners, markerIds):
         """
-        Computes the robot’s position and orientation based on detected ArUco markers.
+        Computes the ArUco code's position (from config) and its orientation.
+        This function:
+          - Detects the marker's center in the image.
+          - Computes the marker's orientation based on its top and bottom edges.
+          - Returns the marker's known map position and the computed orientation.
+
+        Returns:
+          (code_map_position, rad_angle) if a valid marker is found,
+          or (None, None) otherwise.
         """
         if markerIds is None or len(markerIds) == 0:
             self.logger.warning("No ArUco markers detected.")
             return None, None
 
-        self.logger.info(f"Detected {len(markerIds)} ArUco markers: {markerIds.flatten().tolist()}")
+        self.logger.info(f"Detected {len(markerIds)} ArUco marker(s): {markerIds.flatten().tolist()}")
 
-        self.pxl2meter = self.pixels_to_meters(markerCorners)
-        if self.pxl2meter is None:
-            self.logger.error("Pixel-to-meter conversion failed.")
-            return None, None
-
-        robot_positions = []
-        robot_angles = []
-
+        # Use the first valid marker detected
         for i in range(len(markerIds)):
             marker_id = markerIds[i, 0]
             if marker_id not in self.aruco_params:
@@ -81,32 +82,33 @@ class CameraVisionStation:
 
             self.logger.debug(f"Processing marker ID {marker_id}...")
 
-            # Extract marker corners
+            # Extract marker corners (assumes shape is (1,4,2))
             corners = markerCorners[i][0]
-            bottom_center = np.mean(corners[2:4], axis=0).astype(int)
-            top_center = np.mean(corners[0:2], axis=0).astype(int)
 
-            # Compute orientation
+            # Compute the marker's center by averaging all four corners
+            marker_center = np.mean(corners, axis=0)
+            self.logger.debug(f"Marker {marker_id} center (in pixels): {marker_center}")
+
+            # Compute orientation using top and bottom edge centers
+            top_center = np.mean(corners[0:2], axis=0)
+            bottom_center = np.mean(corners[2:4], axis=0)
             dx, dy = top_center - bottom_center
-            angle = np.arctan2(dy, dx) * CONV_RAD2DEG
-            rad_angle = np.deg2rad(angle + 180)
-            self.logger.debug(f"Marker {marker_id} Angle: {angle:.2f} degrees ({rad_angle:.4f} rad)")
 
-            # Compute robot position based on known ArUco map positions
-            aruco_x, aruco_y = self.aruco_params[marker_id]['t_x'], self.aruco_params[marker_id]['t_y']
-            robot_x = aruco_x - np.cos(-rad_angle) * self.dist_cam_robot_center - dx
-            robot_y = aruco_y - np.sin(-rad_angle) * self.dist_cam_robot_center - dy
+            # Calculate angle in degrees then convert to radians
+            angle_deg = np.arctan2(dy, dx) * CONV_RAD2DEG
+            rad_angle = np.deg2rad(angle_deg)
+            self.logger.info(f"Marker {marker_id}: Angle = {angle_deg:.2f}° ({rad_angle:.4f} rad)")
 
-            robot_positions.append([robot_x, robot_y])
-            robot_angles.append(-rad_angle)
+            # Retrieve the marker's known map position from configuration
+            code_map_position = np.array([
+                self.aruco_params[marker_id]['t_x'],
+                self.aruco_params[marker_id]['t_y']
+            ])
+            self.logger.info(f"Marker {marker_id} map position (from config): {code_map_position}")
 
-            self.logger.info(f"Computed Robot Position from Marker {marker_id}: X={robot_x:.4f}, Y={robot_y:.4f}")
+            # Return the known marker (code) position and the detected orientation
+            return code_map_position, rad_angle
 
-        if robot_positions:
-            mean_position = np.mean(robot_positions, axis=0)
-            mean_angle = np.mean(robot_angles)
-            self.logger.info(f"Final Estimated Robot Pose: X={mean_position[0]:.4f}, Y={mean_position[1]:.4f}, Angle={mean_angle:.4f} rad")
-            return mean_position, mean_angle
-
-        self.logger.error("No valid ArUco markers used for robot pose estimation.")
+        self.logger.error("No valid ArUco markers used for code detection.")
         return None, None
+
