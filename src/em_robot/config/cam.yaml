@@ -4,9 +4,15 @@
 localization_node: # needs to be the same name than the node where the config file is used
   ros__parameters:
     cam_params:
-      lens_position: 1.59 # dist = 1/f, the distance between camera and aruco code is approximately 0.43 [m] -> 1/0.43 = 2.32
-      dist_cam_robot_center: 0 #0.098 # dist between camera center and the center of the robot [m]
-      aruco_square_size: 0.036 #size of aruco on circuit [m]
+      lens_position: 1.59
+      dist_cam_robot_center: 0
+      aruco_square_size: 0.036
+      camera_height: 0.63       # Height of the camera from the ground in meters
+      fx: 800.0                 # Focal length in pixels along the x-axis
+      fy: 800.0                 # Focal length in pixels along the y-axis
+      principal_x:         # Optical center x (if not, image_width/2)
+      principal_y:         # Optical center y (if not, image_height/2)
+
     aruco_params:
       11:
         t_x: 4.352
