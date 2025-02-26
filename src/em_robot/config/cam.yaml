@@ -12,7 +12,7 @@ localization_node: # needs to be the same name than the node where the config fi
       fy: 800.0                 # Focal length in pixels along the y-axis
       principal_x: 320.0        # Optical center x (if not, image_width/2)
       principal_y: 240.0        # Optical center y (if not, image_height/2)
-      angle_offset: 1,5708
+      angle_offset: 1.5708
 
     aruco_params:
       11:
