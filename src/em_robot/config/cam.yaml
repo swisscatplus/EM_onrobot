@@ -10,8 +10,8 @@ localization_node: # needs to be the same name than the node where the config fi
       camera_height: 0.63        # Height of the camera from the ground in meters
       fx: 1965.73                 # Focal length in pixels along the x-axis
       fy: 1964.48                 # Focal length in pixels along the y-axis
-      principal_x:        # Optical center x (if not, image_width/2)
-      principal_y:         # Optical center y (if not, image_height/2)
+      #principal_x: 0.0      # Optical center x (if not, image_width/2)
+      #principal_y: 0.0        # Optical center y (if not, image_height/2)
       angle_offset: 1.5708
 
     aruco_params:
