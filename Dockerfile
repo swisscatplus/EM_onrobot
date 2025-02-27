@@ -15,5 +15,5 @@ RUN chmod +x /entrypoint.sh
 
 # Set the entrypoint and default command
 ENTRYPOINT ["/entrypoint.sh"]
-#CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
-CMD ["tail", "-f", "/dev/null"]
+CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
+#CMD ["tail", "-f", "/dev/null"]
