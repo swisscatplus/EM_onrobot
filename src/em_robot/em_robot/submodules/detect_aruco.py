@@ -27,7 +27,7 @@ class CameraVisionStation:
         self.dist_cam_robot_center = self.cam_config.get('dist_cam_robot_center', 0)
 
         self.size = cam_frame  # Original frame size (e.g., used during calibration).
-        self.img_scale = self.cam_config.get("img_scale", 1.0)  # Scaling factor for resizing.
+        self.img_scale = self.cam_config.get("img_scale", 0.25)  # Scaling factor for resizing.
 
         self.configure_logger()
         self.logger.info("CameraVisionStation initialized.")
