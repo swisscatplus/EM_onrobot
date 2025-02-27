@@ -55,7 +55,7 @@ class LocalizationNode(Node):
             return
 
         # Initialize the camera
-        self.size = (640, 480)  # Image resolution
+        self.size = (4608, 2592)  # Image resolution
         self.get_logger().info("Initializing CameraVisionStation...")
         self.cam = CameraVisionStation(cam_params=cam_params, aruco_params=aruco_params, cam_frame=self.size)
 
