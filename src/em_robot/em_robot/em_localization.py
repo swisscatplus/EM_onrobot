@@ -13,7 +13,7 @@ from .submodules.detect_aruco import CameraVisionStation, detector
 # ################# CONFIGURATION #################
 package_name = 'em_robot'
 params_path = 'config/cam.yaml'
-timer_period = 0.05  # (seconds) Frequency of the publisher
+timer_period = 0.2  # (seconds) Frequency of the publisher
 # #################################################
 
 # Locate the configuration files
