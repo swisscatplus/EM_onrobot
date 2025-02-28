@@ -2,6 +2,16 @@ import cv2 as cv
 import numpy as np
 import logging
 
+# Global variable to activate/deactivate logs
+ENABLE_LOGS = True
+
+# Dummy logger that does nothing when logs are disabled
+class DummyLogger:
+    def info(self, msg): pass
+    def debug(self, msg): pass
+    def warn(self, msg): pass
+    def error(self, msg): pass
+
 # ArUco marker detection setup
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 parameters = cv.aruco.DetectorParameters()
@@ -30,6 +40,10 @@ class CameraVisionStation:
         self.img_scale = self.cam_config.get("img_scale", 1.0)  # Scaling factor for resizing.
 
         self.configure_logger()
+        # Override logger with dummy if logs are disabled
+        if not ENABLE_LOGS:
+            self.logger = DummyLogger()
+
         self.logger.info("CameraVisionStation initialized.")
         self.logger.info(
             f"AruCo Square Size: {self.aruco_square_size} m, Camera-Robot Center Distance: {self.dist_cam_robot_center} m")

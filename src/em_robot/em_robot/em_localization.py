@@ -1,3 +1,18 @@
+# Global variable to activate/deactivate logs
+ENABLE_LOGS = True
+
+
+# Dummy logger that does nothing when logs are disabled
+class DummyLogger:
+    def info(self, msg): pass
+
+    def debug(self, msg): pass
+
+    def warn(self, msg): pass
+
+    def error(self, msg): pass
+
+
 import rclpy  # ROS 2 Python Client Library
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -31,6 +46,11 @@ class LocalizationNode(Node):
 
     def __init__(self):
         super().__init__('localization_node')
+
+        # If logging is disabled, override get_logger() with dummy logger
+        if not ENABLE_LOGS:
+            self.get_logger = lambda: DummyLogger()
+
         self.get_logger().info("Initializing LocalizationNode...")
 
         # Load camera parameters from YAML
@@ -98,7 +118,8 @@ class LocalizationNode(Node):
             self.get_logger().warn("Could not compute robot pose.")
             return
 
-        self.get_logger().info(f"Computed Robot Pose: X={robot_pose[0]:.4f}, Y={robot_pose[1]:.4f}, Angle={robot_angle:.4f} rad")
+        self.get_logger().info(
+            f"Computed Robot Pose: X={robot_pose[0]:.4f}, Y={robot_pose[1]:.4f}, Angle={robot_angle:.4f} rad")
 
         # Publish pose to ROS
         pose_msg = PoseWithCovarianceStamped()
