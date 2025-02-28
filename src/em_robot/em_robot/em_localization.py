@@ -10,7 +10,7 @@ from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
-from submodules.detect_aruco import CameraVisionStation, detector
+from .submodules.detect_aruco import CameraVisionStation, detector
 
 
 class LocalizationNode(Node):
