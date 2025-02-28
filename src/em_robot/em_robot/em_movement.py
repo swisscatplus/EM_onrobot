@@ -45,7 +45,7 @@ class MovementNode(Node):
 
         # Enable torque on both motors
         for dxl_id in [DXL_ID_1, DXL_ID_2]:
-            _, result, error = self.packetHandler.write1ByteTxRx(
+            result, error = self.packetHandler.write1ByteTxRx(
                 self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE
             )
             if result != COMM_SUCCESS or error != 0:

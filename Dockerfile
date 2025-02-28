@@ -4,6 +4,9 @@ ENV ROS_DISTRO=humble
 
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 
+# Install robot_localization package
+RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-robot-localization && rm -rf /var/lib/apt/lists/*
+
 # Build your ROS application
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
