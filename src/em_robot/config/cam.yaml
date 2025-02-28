@@ -1,18 +1,13 @@
-# These are the parameters used for the camera localisation. Upon adding a new aruco code on the circuit, simply add its id number and its location here.
-# test
-# To get the aruco id, uncomment detect_aruco.py lines 144-145 or adapt code for local pc (change from picamera to cv.videocapture method)
-localization_node: # needs to be the same name than the node where the config file is used
+localization_node:
   ros__parameters:
     cam_params:
-      lens_position: 1.59
-      dist_cam_robot_center: 0
-      aruco_square_size: 0.036
-      camera_height: 0.63        # Height of the camera from the ground in meters
-      fx: 2078                # Focal length in pixels along the x-axis
-      fy: 2068                # Focal length in pixels along the y-axis
-      #principal_x: 0.0      # Optical center x (if not, image_width/2)
-      #principal_y: 0.0        # Optical center y (if not, image_height/2)
-      angle_offset: 1.5708
+      size: [4608, 2592]          # Camera resolution [width, height]
+      camera_height: 0.63         # Height of the camera from the ground in meters
+      timer_period: 0.2           # Timer period in seconds for frame processing
+      aruco_square_size: 0.036    # Size of the ArUco marker in meters
+      fx: 2078                   # Focal length in pixels (x-axis)
+      fy: 2068                   # Focal length in pixels (y-axis)
+      angle_offset: 1.5708        # Angle offset in radians
 
     aruco_params:
       11:

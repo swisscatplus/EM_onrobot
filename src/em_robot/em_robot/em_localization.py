@@ -1,134 +1,108 @@
-# Global variable to activate/deactivate logs
-ENABLE_LOGS = True
-
-
-# Dummy logger that does nothing when logs are disabled
-class DummyLogger:
-    def info(self, msg): pass
-
-    def debug(self, msg): pass
-
-    def warn(self, msg): pass
-
-    def error(self, msg): pass
-
-
-import rclpy  # ROS 2 Python Client Library
+#!/usr/bin/env python3
+import os
+import yaml
+import cv2 as cv
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf_transformations import quaternion_from_euler
-import cv2 as cv
 from picamera2 import Picamera2
 from libcamera import controls
-import yaml
-import os
-import pickle
-from .submodules.detect_aruco import CameraVisionStation, detector
+from ament_index_python.packages import get_package_share_directory
 
-# ################# CONFIGURATION #################
-package_name = 'em_robot'
-params_path = 'config/cam.yaml'
-timer_period = 0.2  # (seconds) Frequency of the publisher
-# #################################################
-
-# Locate the configuration files
-pkg_share = os.path.join('/ros2_ws/install', package_name, 'share', package_name)
-config_file_path = os.path.join(pkg_share, params_path)
-calib_mat_file_path = os.path.join(pkg_share, 'config', 'cameraMatrix.pkl')
-calib_dist_file_path = os.path.join(pkg_share, 'config', 'dist.pkl')
+from submodules.detect_aruco import CameraVisionStation, detector
 
 
 class LocalizationNode(Node):
     """
-    ROS 2 Node responsible for capturing images, detecting ArUco markers,
-    and computing the robot's position.
+    ROS 2 Node for camera-based localization using ArUco markers.
     """
-
     def __init__(self):
         super().__init__('localization_node')
 
-        # If logging is disabled, override get_logger() with dummy logger
-        if not ENABLE_LOGS:
-            self.get_logger = lambda: DummyLogger()
+        # Load configuration parameters from YAML
+        package_name = 'em_robot'
+        config_filename = 'config/cam.yaml'
+        pkg_share = get_package_share_directory(package_name)
+        config_file_path = os.path.join(pkg_share, config_filename)
 
-        self.get_logger().info("Initializing LocalizationNode...")
+        self.get_logger().info(f"Loading configuration from {config_file_path}...")
+        if not os.path.exists(config_file_path):
+            self.get_logger().error(f"Configuration file not found: {config_file_path}")
+            raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
 
-        # Load camera parameters from YAML
-        self.declare_parameter('config_file', config_file_path)
-        config_file = self.get_parameter('config_file').get_parameter_value().string_value
+        with open(config_file_path, 'r') as file:
+            config = yaml.safe_load(file)
 
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as file:
-                params = yaml.safe_load(file)
-                self.get_logger().info(f"Loaded parameters: {params}")
+        # Extract ROS parameters for this node
+        node_config = config.get(self.get_name(), {}).get('ros__parameters', {})
+        cam_params = node_config.get('cam_params', {})
+        aruco_params = node_config.get('aruco_params', {})
 
-            node_params = params.get(self.get_name(), {}).get('ros__parameters', {})
-            cam_params = node_params.get('cam_params', {})
-            lens_position = cam_params.get('lens_position', 2.32)
-            aruco_params = node_params.get('aruco_params', {})
+        # Set camera resolution (default: 4608x2592)
+        size_list = cam_params.get('size', [4608, 2592])
+        self.size = tuple(size_list)
 
-            self.get_logger().info(f"Camera Lens Position: {lens_position}")
-            self.get_logger().info(f"Aruco Parameters Loaded: {aruco_params}")
+        # Read camera height and compute lens position as 1 / camera_height
+        self.camera_height = cam_params.get('camera_height', {})
+        self.lens_position = 1.0 / self.camera_height
 
-        else:
-            self.get_logger().error(f"Config file {config_file} does not exist")
-            return
+        self.get_logger().info(f"Camera parameters: {cam_params}")
+        self.get_logger().info(f"Aruco parameters: {aruco_params}")
+        self.get_logger().info(f"Calculated lens position: {self.lens_position:.4f}")
 
-        # Initialize the camera
-        self.size = (4608, 2592)  # Image resolution
+        # Initialize the vision station for ArUco detection
         self.get_logger().info("Initializing CameraVisionStation...")
-        self.cam = CameraVisionStation(cam_params=cam_params, aruco_params=aruco_params, cam_frame=self.size)
+        self.cam = CameraVisionStation(cam_params=cam_params,
+                                       aruco_params=aruco_params,
+                                       cam_frame=self.size)
 
+        # Initialize Picamera2 with the configured resolution
         self.get_logger().info("Starting Picamera2...")
         self.picam2 = Picamera2()
-        self.picam2.configure(self.picam2.create_preview_configuration(
-            main={"format": 'XRGB8888', "size": self.size}))
+        preview_config = self.picam2.create_preview_configuration(
+            main={"format": 'XRGB8888', "size": self.size}
+        )
+        self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": lens_position})
+        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
+                                  "LensPosition": self.lens_position})
 
-        # Publisher for the robot's pose
-        self.pose_publisher = self.create_publisher(PoseWithCovarianceStamped, 'edi/cam', 5)
-        self.get_logger().info("Pose publisher initialized on topic 'edi/cam'.")
+        # Create publisher for robot pose
+        self.pose_publisher = self.create_publisher(PoseWithCovarianceStamped, 'odomCam', 5)
+        self.get_logger().info("Pose publisher initialized on topic 'odomCam'.")
 
-        # Timer to capture and process frames periodically
+        # Set up a timer to process frames using the timer_period from YAML (default: 0.2 seconds)
+        timer_period = cam_params.get('timer_period', 0.2)
         self.timer = self.create_timer(timer_period, self.process_frame)
 
     def process_frame(self):
         """
-        Captures an image, detects ArUco markers, computes the robot pose,
-        and publishes the pose if detection is successful.
+        Captures an image, detects ArUco markers, computes the robot's pose,
+        and publishes it if detection is successful.
         """
         self.get_logger().debug("Capturing frame...")
         frame = self.picam2.capture_array()
-        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)  # Convert to grayscale
+        gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-        # Detect ArUco markers in the frame
+        # Detect ArUco markers (detailed logs are handled in the detector)
         markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)
-
         if markerIds is None:
-            self.get_logger().warn("No ArUco markers detected in frame.")
             return
-
-        self.get_logger().info(f"Detected ArUco markers: {markerIds.flatten().tolist()}")
 
         # Compute the robot's pose
         robot_pose, robot_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
-
         if robot_pose is None:
-            self.get_logger().warn("Could not compute robot pose.")
             return
 
-        self.get_logger().info(
-            f"Computed Robot Pose: X={robot_pose[0]:.4f}, Y={robot_pose[1]:.4f}, Angle={robot_angle:.4f} rad")
-
-        # Publish pose to ROS
+        # Create and populate the pose message
         pose_msg = PoseWithCovarianceStamped()
         pose_msg.header.frame_id = 'map'
         pose_msg.header.stamp = self.get_clock().now().to_msg()
         pose_msg.pose.pose.position.x = robot_pose[1]
         pose_msg.pose.pose.position.y = -robot_pose[0]
 
-        # Convert Euler angle to Quaternion
+        # Convert Euler angle to quaternion representation
         qx, qy, qz, qw = quaternion_from_euler(0, 0, robot_angle)
         pose_msg.pose.pose.orientation.x = qx
         pose_msg.pose.pose.orientation.y = qy
@@ -140,13 +114,14 @@ class LocalizationNode(Node):
 
 
 def main(args=None):
-    rclpy.init()
+    rclpy.init(args=args)
     node = LocalizationNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.destroy_node()
+        node.get_logger().info("Shutting down LocalizationNode...")
     finally:
+        node.destroy_node()
         rclpy.shutdown()
 
 
