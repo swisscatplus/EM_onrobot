@@ -99,8 +99,8 @@ class LocalizationNode(Node):
         pose_msg = PoseWithCovarianceStamped()
         pose_msg.header.frame_id = 'map'
         pose_msg.header.stamp = self.get_clock().now().to_msg()
-        pose_msg.pose.pose.position.x = robot_pose[1]
-        pose_msg.pose.pose.position.y = -robot_pose[0]
+        pose_msg.pose.pose.position.x = robot_pose[0]
+        pose_msg.pose.pose.position.y = robot_pose[1]
 
         # Convert Euler angle to quaternion representation
         qx, qy, qz, qw = quaternion_from_euler(0, 0, robot_angle)

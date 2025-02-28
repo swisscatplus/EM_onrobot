@@ -3,7 +3,7 @@ localization_node:
     cam_params:
       size: [4608, 2592]          # Camera resolution [width, height]
       camera_height: 0.63         # Height of the camera from the ground in meters
-      timer_period: 0.2           # Timer period in seconds for frame processing
+      timer_period: 0.5           # Timer period in seconds for frame processing
       aruco_square_size: 0.036    # Size of the ArUco marker in meters
       fx: 2078                   # Focal length in pixels (x-axis)
       fy: 2068                   # Focal length in pixels (y-axis)
