@@ -63,7 +63,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init
-RUN meson setup build -Dpykms=enable
+RUN meson setup build -Dpykms=enabled
 RUN ninja -C build && ninja -C build install
 
 ##############################
