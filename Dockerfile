@@ -13,11 +13,6 @@ COPY src/em_robot src/em_robot
 # Clone the robot_localization repository into your workspace (choose the ros2 branch)
 RUN git clone -b ros2 https://github.com/cra-ros-pkg/robot_localization.git src/robot_localization
 
-# Install dependencies for all packages in the workspace
-RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
-    rosdep update && \
-    rosdep install --from-paths src --ignore-src -r -y
-
 # Build the entire workspace (your app + robot_localization)
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --symlink-install
 
