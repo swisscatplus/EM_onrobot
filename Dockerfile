@@ -9,8 +9,7 @@ WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot
 
-# Install robot_localization package
-RUN apt-get update && apt-get install ros-${ROS_DISTRO}-robot-localization
+RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-robot-localization
 
 # Copy the entrypoint script
 COPY entrypoint.sh /entrypoint.sh
