@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     pkg-config \
     cmake \
+    ros-${ROS_DISTRO}-robot-localization \
     python3 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
     python3-yaml python3-ply \
