@@ -149,7 +149,7 @@ class MovementNode(Node):
             return
 
         # Calculate differences in encoder ticks
-        delta_r = current_position_r - self.prev_position_r
+        delta_r = -(current_position_r - self.prev_position_r)
         delta_l = current_position_l - self.prev_position_l
         self.get_logger().debug(f"Delta ticks: right={delta_r}, left={delta_l}")
 
