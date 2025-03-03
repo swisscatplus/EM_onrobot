@@ -2,6 +2,8 @@ FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
+
+
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 
 # Build your ROS application
