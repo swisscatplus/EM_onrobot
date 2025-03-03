@@ -7,29 +7,30 @@ from dynamixel_sdk import *  # Import DYNAMIXEL SDK library
 import math
 
 # --- Constants ---
-WHEEL_RADIUS = 0.035      # 35 mm = 0.035 m
-WHEEL_BASE   = 0.130      # 130 mm approx.
-ENCODER_RESOLUTION = 4096 # Ticks per revolution in extended position mode
+WHEEL_RADIUS = 0.035  # 35 mm = 0.035 m
+WHEEL_BASE = 0.130  # 129 mm = 0.129 m
+ENCODER_RESOLUTION = 4096  # Ticks per revolution for X-Series in extended position mode
 
-# Control Table Addresses (for X-Series, e.g., XC430-W150)
-ADDR_TORQUE_ENABLE    = 64
-ADDR_GOAL_POSITION    = 116  # Use this register in extended position mode
+# Control Table Addresses (for X-Series, including XC430-W150)
+ADDR_TORQUE_ENABLE = 64
+ADDR_GOAL_VELOCITY = 104
 ADDR_PRESENT_POSITION = 132
 
 # Default settings
-DXL_ID_1  = 1   # Right wheel motor ID
-DXL_ID_2  = 2   # Left wheel motor ID
-BAUDRATE  = 57600
+DXL_ID_1 = 1  # Right wheel motor ID
+DXL_ID_2 = 2  # Left wheel motor ID
+BAUDRATE = 57600
 DEVICENAME = '/dev/ttyUSB0'
 
 # Torque control
-TORQUE_ENABLE  = 1
+TORQUE_ENABLE = 1
 TORQUE_DISABLE = 0
+
 
 class MovementNode(Node):
     def __init__(self):
         super().__init__('movement_node')
-        self.get_logger().info('MovementNode started (Extended Position Mode)')
+        self.get_logger().info('MovementNode started')
 
         # Initialize PortHandler/PacketHandler
         self.portHandler = PortHandler(DEVICENAME)
@@ -49,19 +50,10 @@ class MovementNode(Node):
                 self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE
             )
             if result != COMM_SUCCESS or error != 0:
-                self.get_logger().error(f"Failed to enable torque on Dynamixel ID={dxl_id}")
+                self.get_logger().error(
+                    f"Failed to enable torque on Dynamixel ID={dxl_id} (result: {result}, error: {error})")
             else:
                 self.get_logger().info(f"Torque enabled on Dynamixel ID={dxl_id}")
-
-        # Initialize goal positions from current encoder reading
-        dxl_comm_result_r, dxl_error_r, current_position_r = self.packetHandler.read4ByteTxRx(
-            self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
-        )
-        dxl_comm_result_l, dxl_error_l, current_position_l = self.packetHandler.read4ByteTxRx(
-            self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
-        )
-        self.goal_position_r = current_position_r
-        self.goal_position_l = current_position_l
 
         # Create subscription to cmd_vel topic
         self.subscription = self.create_subscription(
@@ -71,9 +63,9 @@ class MovementNode(Node):
             10
         )
 
-        # Create publisher for odometry and timer for periodic updates (10 Hz)
+        # Create publisher for odometry and timer for periodic updates
         self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
-        self.odom_timer = self.create_timer(0.1, self.odom_callback)
+        self.odom_timer = self.create_timer(0.1, self.odom_callback)  # 10 Hz
 
         # Odometry state variables
         self.prev_position_r = None
@@ -85,114 +77,124 @@ class MovementNode(Node):
 
     def cmd_vel_callback(self, msg: Twist):
         """
-        Callback for cmd_vel subscription.
-        Converts linear and angular velocities to incremental position changes.
+        Callback for cmd_vel subscription:
+        Converts linear and angular velocity to the motor velocity commands.
         """
         linear_x = msg.linear.x
         angular_z = msg.angular.z
 
-        # Assume a control interval dt (matching the timer period, e.g., 0.1 s)
-        dt = 0.1
+        # Convert from (v, w) to each wheel's velocity in "Dynamixel speed units"
+        motor_speed_r = int(
+            (-linear_x - (angular_z * WHEEL_BASE / 2))
+            * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
+        )
+        motor_speed_l = int(
+            (linear_x - (angular_z * WHEEL_BASE / 2))
+            * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
+        )
 
-        # Compute the distance each wheel should move in dt.
-        # For a differential-drive robot:
-        #   Right wheel: -v - (w * wheel_base/2)
-        #   Left wheel:   v - (w * wheel_base/2)
-        dist_r = (-linear_x - (angular_z * WHEEL_BASE / 2)) * dt
-        dist_l = ( linear_x - (angular_z * WHEEL_BASE / 2)) * dt
-
-        # Convert the distance (m) to encoder ticks.
-        # Ticks per meter = ENCODER_RESOLUTION / (circumference)
-        ticks_per_meter = ENCODER_RESOLUTION / (2 * math.pi * WHEEL_RADIUS)
-        delta_ticks_r = int(dist_r * ticks_per_meter)
-        delta_ticks_l = int(dist_l * ticks_per_meter)
-
-        # Update goal positions
-        self.goal_position_r += delta_ticks_r
-        self.goal_position_l += delta_ticks_l
+        # Safeguard: limit the motor speeds
+        motor_speed_r = max(min(motor_speed_r, 410), -410)
+        motor_speed_l = max(min(motor_speed_l, 410), -410)
 
         self.get_logger().info(
-            f"cmd_vel: v={linear_x:.3f}, w={angular_z:.3f} -> Δticks: R={delta_ticks_r}, L={delta_ticks_l}"
-        )
-        self.get_logger().debug(
-            f"New goal positions: R={self.goal_position_r}, L={self.goal_position_l}"
+            f"cmd_vel: v={linear_x:.3f}, w={angular_z:.3f} -> R={motor_speed_r}, L={motor_speed_l}"
         )
 
-        # Write the new goal positions to the motors
-        result_r, error_r = self.packetHandler.write4ByteTxRx(
-            self.portHandler, DXL_ID_1, ADDR_GOAL_POSITION, self.goal_position_r
-        )
-        result_l, error_l = self.packetHandler.write4ByteTxRx(
-            self.portHandler, DXL_ID_2, ADDR_GOAL_POSITION, self.goal_position_l
-        )
+        # Send the goal velocities to the motors and log errors if any
+        result_r, error_r = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY,
+                                                              motor_speed_r)
         if result_r != COMM_SUCCESS or error_r != 0:
-            self.get_logger().error(f"Error writing goal position to right wheel: result={result_r}, error={error_r}")
+            self.get_logger().error(f"Error sending goal velocity to right wheel: result={result_r}, error={error_r}")
+        else:
+            self.get_logger().debug("Right wheel velocity command sent successfully.")
+
+        result_l, error_l = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY,
+                                                              motor_speed_l)
         if result_l != COMM_SUCCESS or error_l != 0:
-            self.get_logger().error(f"Error writing goal position to left wheel: result={result_l}, error={error_l}")
+            self.get_logger().error(f"Error sending goal velocity to left wheel: result={result_l}, error={error_l}")
+        else:
+            self.get_logger().debug("Left wheel velocity command sent successfully.")
 
     def odom_callback(self):
         """
-        Timer callback to read the present positions from the Dynamixels,
-        compute odometry, and publish it.
+        Called by the timer to read the present positions from the Dynamixels,
+        calculate odometry, and publish it.
         """
         now = self.get_clock().now()
 
-        # Read current wheel positions (encoder ticks)
+        # Read current wheel positions
         dxl_comm_result_r, dxl_error_r, current_position_r = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
         )
+        if dxl_comm_result_r != COMM_SUCCESS or dxl_error_r != 0:
+            self.get_logger().error(f"Error reading right wheel: comm_result={dxl_comm_result_r}, error={dxl_error_r}")
+        else:
+            self.get_logger().debug(f"Right wheel position: {current_position_r}")
+
         dxl_comm_result_l, dxl_error_l, current_position_l = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
         )
+        if dxl_comm_result_l != COMM_SUCCESS or dxl_error_l != 0:
+            self.get_logger().error(f"Error reading left wheel: comm_result={dxl_comm_result_l}, error={dxl_error_l}")
+        else:
+            self.get_logger().debug(f"Left wheel position: {current_position_l}")
 
-        # Initialize previous positions on first read
+        # If this is the first reading, just store and return
         if self.prev_position_r is None or self.prev_position_l is None:
             self.prev_position_r = current_position_r
             self.prev_position_l = current_position_l
             self.prev_time = now
+            self.get_logger().debug("Initialized previous positions.")
             return
 
-        # Compute differences in ticks since last callback
+        # Calculate differences in encoder ticks
         delta_r = current_position_r - self.prev_position_r
         delta_l = current_position_l - self.prev_position_l
+        self.get_logger().debug(f"Delta ticks: right={delta_r}, left={delta_l}")
 
-        # Convert tick differences to radians (each tick corresponds to an angle)
+        # Convert from ticks to radians
         rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
         rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
 
-        # Compute the distance traveled by each wheel
+        # Distance traveled by each wheel
         d_r = rad_r * WHEEL_RADIUS
         d_l = rad_l * WHEEL_RADIUS
+        self.get_logger().debug(f"Wheel distances: d_r={d_r:.4f} m, d_l={d_l:.4f} m")
 
-        # Differential drive odometry: average distance and change in heading
+        # Odometry computations
         d = (d_r + d_l) / 2.0
         dtheta = (d_r - d_l) / WHEEL_BASE
 
-        # Compute elapsed time
+        # Time elapsed
         dt = (now - self.prev_time).nanoseconds / 1e9
         if dt <= 0.0:
-            dt = 1e-6  # safeguard
+            dt = 1e-6  # safeguard against division by zero
+        self.get_logger().debug(f"Elapsed time: dt={dt:.4f} sec")
 
-        # Optionally, compute velocities (not used for integration here)
+        # Robot velocities
         vx = d / dt
         vth = dtheta / dt
+        self.get_logger().debug(f"Computed velocities: vx={vx:.4f} m/s, vth={vth:.4f} rad/s")
 
-        # Update robot pose using midpoint integration
+        # Update the robot pose (using midpoint integration)
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
+        self.get_logger().debug(f"Updated pose: x={self.x:.4f}, y={self.y:.4f}, theta={self.theta:.4f}")
 
-        # Construct and publish the Odometry message
+        # Construct the Odometry message
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
 
+        # Position
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
 
-        # Convert theta to quaternion
+        # Orientation as a quaternion
         qz = math.sin(self.theta / 2.0)
         qw = math.cos(self.theta / 2.0)
         odom_msg.pose.pose.orientation.x = 0.0
@@ -200,13 +202,16 @@ class MovementNode(Node):
         odom_msg.pose.pose.orientation.z = qz
         odom_msg.pose.pose.orientation.w = qw
 
+        # Linear and angular velocity
         odom_msg.twist.twist.linear.x = vx
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.angular.z = vth
 
+        # Publish odometry
         self.odom_pub.publish(odom_msg)
+        self.get_logger().debug("Published odometry message.")
 
-        # Update previous readings
+        # Update previous position/time
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
@@ -216,9 +221,16 @@ class MovementNode(Node):
         On shutdown, disable torque and close the port.
         """
         for dxl_id in [DXL_ID_1, DXL_ID_2]:
-            self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+            result, error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE,
+                                                              TORQUE_DISABLE)
+            if result != COMM_SUCCESS or error != 0:
+                self.get_logger().error(
+                    f"Error disabling torque on Dynamixel ID={dxl_id}: result={result}, error={error}")
+            else:
+                self.get_logger().info(f"Torque disabled on Dynamixel ID={dxl_id}")
         self.portHandler.closePort()
-        self.get_logger().info("Port closed, torque disabled.")
+        self.get_logger().info("Port closed.")
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -231,6 +243,7 @@ def main(args=None):
         node.stop_motors()
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
