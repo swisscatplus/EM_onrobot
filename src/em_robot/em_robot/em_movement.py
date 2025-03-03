@@ -123,12 +123,14 @@ class MovementNode(Node):
         """
         now = self.get_clock().now()
 
-        # Read current wheel positions
-        dxl_comm_result_r, dxl_error_r, current_position_r = self.packetHandler.read4ByteTxRx(
+        # Corrected unpacking: first value, then comm_result, then error
+        current_position_r, dxl_comm_result_r, dxl_error_r = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
         )
-
-        self.get_logger().debug(f"Right wheel position: {current_position_r}")
+        if dxl_comm_result_r != COMM_SUCCESS or dxl_error_r != 0:
+            self.get_logger().error(f"Error reading right wheel: comm_result={dxl_comm_result_r}, error={dxl_error_r}")
+        else:
+            self.get_logger().debug(f"Right wheel position: {current_position_r}")
 
         dxl_comm_result_l, dxl_error_l, current_position_l = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
