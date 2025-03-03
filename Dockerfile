@@ -4,10 +4,6 @@ ENV ROS_DISTRO=humble
 
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 
-# Ensure entire ros2_ws is copied
-WORKDIR /ros2_ws
-COPY --from=ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest /ros2_ws /ros2_ws
-
 # Copy only your specific package
 COPY src/em_robot src/em_robot
 
