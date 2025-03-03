@@ -33,6 +33,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         movement_node,
-        #localization_node,
-        ekf_node
+        localization_node,
+        #ekf_node
     ])
