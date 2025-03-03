@@ -132,7 +132,7 @@ class MovementNode(Node):
         else:
             self.get_logger().debug(f"Right wheel position: {current_position_r}")
 
-        dxl_comm_result_l, dxl_error_l, current_position_l = self.packetHandler.read4ByteTxRx(
+        current_position_l, dxl_comm_result_l, dxl_error_l = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
         )
         if dxl_comm_result_l != COMM_SUCCESS or dxl_error_l != 0:
