@@ -10,6 +10,9 @@ from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
+# Import math for cosine & sine
+import math
+
 from .submodules.detect_aruco import CameraVisionStation, detector
 
 
@@ -47,9 +50,14 @@ class LocalizationNode(Node):
         self.camera_height = cam_params.get('camera_height', {})
         self.lens_position = 1.0 / self.camera_height
 
+        # Camera offset from the center between wheels (in cm). Default 19.8 cm.
+        # Convert from centimeters to meters.
+        self.camera_offset = float(cam_params.get('camera_offset_cm', 19.8)) / 100.0
+
         self.get_logger().info(f"Camera parameters: {cam_params}")
         self.get_logger().info(f"Aruco parameters: {aruco_params}")
         self.get_logger().info(f"Calculated lens position: {self.lens_position:.4f}")
+        self.get_logger().info(f"Camera offset (m): {self.camera_offset:.3f}")
 
         # Initialize the vision station for ArUco detection
         self.get_logger().info("Initializing CameraVisionStation...")
@@ -90,26 +98,32 @@ class LocalizationNode(Node):
         if markerIds is None:
             return
 
-        # Compute the robot's pose
+        # Compute the robot's pose (currently measuring camera's position)
         robot_pose, robot_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
         if robot_pose is None:
             return
+
+        # Apply offset to get the actual robot center between the wheels.
+        # Because the camera is in the front by 'self.camera_offset' meters,
+        # shift the pose backwards along the heading direction.
+        center_x = robot_pose[0] - self.camera_offset * math.cos(robot_angle)
+        center_y = robot_pose[1] - self.camera_offset * math.sin(robot_angle)
 
         # Create and populate the pose message
         pose_msg = PoseWithCovarianceStamped()
         pose_msg.header.frame_id = 'map'
         pose_msg.header.stamp = self.get_clock().now().to_msg()
-        pose_msg.pose.pose.position.x = robot_pose[0]
-        pose_msg.pose.pose.position.y = robot_pose[1]
+        pose_msg.pose.pose.position.x = center_x
+        pose_msg.pose.pose.position.y = center_y
 
-        # Convert Euler angle to quaternion representation
+        # Convert Euler angle (robot_angle) to quaternion representation
         qx, qy, qz, qw = quaternion_from_euler(0, 0, robot_angle)
         pose_msg.pose.pose.orientation.x = qx
         pose_msg.pose.pose.orientation.y = qy
         pose_msg.pose.pose.orientation.z = qz
         pose_msg.pose.pose.orientation.w = qw
 
-        self.get_logger().info("Publishing robot pose...")
+        self.get_logger().info("Publishing robot pose (adjusted for camera offset)...")
         self.pose_publisher.publish(pose_msg)
 
 
