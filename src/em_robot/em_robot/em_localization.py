@@ -256,10 +256,10 @@ class MultipleMarkersTFNode(Node):
 
             # Skip markers not in our YAML
             if marker_id_str not in self.aruco_params:
-                self.get_logger().debug(f"Marker {marker_id_int} not in aruco_params. Skipping.")
+                self.get_logger().info(f"Marker {marker_id_int} not in aruco_params. Skipping.")
                 continue
 
-            self.get_logger().debug(f"Processing marker {marker_id_int}...")
+            self.get_logger().info(f"Processing marker {marker_id_int}...")
 
             # This function returns camera pose in marker frame
             cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
