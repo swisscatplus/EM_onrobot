@@ -67,7 +67,7 @@ class MultipleMarkersTFNode(Node):
          and also computes and publishes map->base_link as a PoseWithCovarianceStamped.
     """
     def __init__(self):
-        super().__init__('tf_localization_node')
+        super().__init__('localization_node')
 
         # --------------------------------------------------------
         # Load config from YAML
