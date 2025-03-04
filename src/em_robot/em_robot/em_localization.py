@@ -9,16 +9,19 @@ from tf_transformations import quaternion_from_euler
 from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
-
-# Import math for cosine & sine
 import math
 
+# Your ArUco detection code
 from .submodules.detect_aruco import CameraVisionStation, detector
 
 
 class LocalizationNode(Node):
     """
     ROS 2 Node for camera-based localization using ArUco markers.
+
+    This example flips the camera image horizontally before detection,
+    then publishes the camera pose in 'map' coordinates without further
+    manual axis swapping. We rely on TF to handle orientation.
     """
     def __init__(self):
         super().__init__('localization_node')
@@ -46,18 +49,13 @@ class LocalizationNode(Node):
         size_list = cam_params.get('size', [4608, 2592])
         self.size = tuple(size_list)
 
-        # Read camera height and compute lens position as 1 / camera_height
-        self.camera_height = cam_params.get('camera_height', {})
-        self.lens_position = 1.0 / self.camera_height
-
-        # Camera offset from the center between wheels (in cm). Default 19.8 cm.
-        # Convert from centimeters to meters.
-        self.camera_offset = float(cam_params.get('camera_offset_cm', 19.8)) / 100.0
+        # Read camera height and compute lens position
+        self.camera_height = cam_params.get('camera_height', 2.0)
+        self.lens_position = 1.0 / float(self.camera_height)
 
         self.get_logger().info(f"Camera parameters: {cam_params}")
         self.get_logger().info(f"Aruco parameters: {aruco_params}")
         self.get_logger().info(f"Calculated lens position: {self.lens_position:.4f}")
-        self.get_logger().info(f"Camera offset (m): {self.camera_offset:.3f}")
 
         # Initialize the vision station for ArUco detection
         self.get_logger().info("Initializing CameraVisionStation...")
@@ -73,57 +71,72 @@ class LocalizationNode(Node):
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,
-                                  "LensPosition": self.lens_position})
 
-        # Create publisher for robot pose
+        # Set manual focus based on lens position
+        self.picam2.set_controls({
+            "AfMode": controls.AfModeEnum.Manual,
+            "LensPosition": self.lens_position
+        })
+
+        # Create publisher for camera pose
         self.pose_publisher = self.create_publisher(PoseWithCovarianceStamped, 'odomCam', 5)
         self.get_logger().info("Pose publisher initialized on topic 'odomCam'.")
 
-        # Set up a timer to process frames using the timer_period from YAML (default: 0.2 seconds)
+        # Set up a timer to process frames (default: 0.2 seconds)
         timer_period = cam_params.get('timer_period', 0.2)
         self.timer = self.create_timer(timer_period, self.process_frame)
 
     def process_frame(self):
         """
-        Captures an image, detects ArUco markers, computes the robot's pose,
-        and publishes it if detection is successful.
+        Captures an image, flips it horizontally, detects ArUco markers,
+        computes the camera's pose in the map frame, and publishes it if
+        detection is successful.
         """
         self.get_logger().debug("Capturing frame...")
+        # Capture raw frame
         frame = self.picam2.capture_array()
+
+        # Convert to grayscale
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-        # Detect ArUco markers (detailed logs are handled in the detector)
+        # Flip horizontally (flipCode=1). If you need vertical instead, use flipCode=0.
+        gray_frame = cv.flip(gray_frame, 1)
+
+        # Detect ArUco markers
         markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)
         if markerIds is None:
+            return  # No markers detected
+
+        # Get the camera pose (x, y) and heading angle from your detection routine.
+        camera_pose, camera_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
+        if camera_pose is None:
             return
 
-        # Compute the robot's pose (currently measuring camera's position)
-        robot_pose, robot_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
-        if robot_pose is None:
-            return
+        # Here, we assume your 'get_robot_pose' now returns x=forward, y=left,
+        # or whatever convention you want, because we've handled the flip.
+        # We'll just pass them through as-is and rely on TF to interpret orientation.
 
-        # Apply offset to get the actual robot center between the wheels.
-        # Because the camera is in the front by 'self.camera_offset' meters,
-        # shift the pose backwards along the heading direction.
-        center_x = (robot_pose[1] - self.camera_offset * math.sin(robot_angle))
-        center_y = -(robot_pose[0] - self.camera_offset * math.cos(robot_angle))
+        map_x = camera_pose[0]
+        map_y = camera_pose[1]
 
-        # Create and populate the pose message
+        # Create and populate the pose message in the 'map' frame
         pose_msg = PoseWithCovarianceStamped()
         pose_msg.header.frame_id = 'map'
         pose_msg.header.stamp = self.get_clock().now().to_msg()
-        pose_msg.pose.pose.position.x = center_x
-        pose_msg.pose.pose.position.y = center_y
 
-        # Convert Euler angle (robot_angle) to quaternion representation
-        qx, qy, qz, qw = quaternion_from_euler(0, 0, robot_angle)
+        pose_msg.pose.pose.position.x = map_x
+        pose_msg.pose.pose.position.y = map_y
+
+        # Convert Euler angle to quaternion (roll=0, pitch=0, yaw=camera_angle)
+        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, camera_angle)
         pose_msg.pose.pose.orientation.x = qx
         pose_msg.pose.pose.orientation.y = qy
         pose_msg.pose.pose.orientation.z = qz
         pose_msg.pose.pose.orientation.w = qw
 
-        self.get_logger().info("Publishing robot pose (adjusted for camera offset)...")
+        self.get_logger().info(
+            f"Publishing CAMERA pose in 'map': x={map_x:.2f}, y={map_y:.2f}, angle={math.degrees(camera_angle):.1f}°"
+        )
         self.pose_publisher.publish(pose_msg)
 
 
