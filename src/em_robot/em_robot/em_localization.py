@@ -106,8 +106,8 @@ class LocalizationNode(Node):
         # Apply offset to get the actual robot center between the wheels.
         # Because the camera is in the front by 'self.camera_offset' meters,
         # shift the pose backwards along the heading direction.
-        center_x = robot_pose[0] - self.camera_offset * math.cos(robot_angle)
-        center_y = robot_pose[1] - self.camera_offset * math.sin(robot_angle)
+        center_x = (robot_pose[1] - self.camera_offset * math.sin(robot_angle))
+        center_y = -(robot_pose[0] - self.camera_offset * math.cos(robot_angle))
 
         # Create and populate the pose message
         pose_msg = PoseWithCovarianceStamped()
