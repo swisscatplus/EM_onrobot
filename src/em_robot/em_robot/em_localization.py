@@ -1,32 +1,41 @@
 #!/usr/bin/env python3
 import os
 import yaml
+import math
 import cv2 as cv
+
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from ament_index_python.packages import get_package_share_directory
+
+# TF
+import tf2_ros
+from geometry_msgs.msg import TransformStamped
 from tf_transformations import quaternion_from_euler
+
+# PiCamera2
 from picamera2 import Picamera2
 from libcamera import controls
-from ament_index_python.packages import get_package_share_directory
-import math
 
 # Your ArUco detection code
 from .submodules.detect_aruco import CameraVisionStation, detector
 
 
-class LocalizationNode(Node):
+class MultipleMarkersTFNode(Node):
     """
-    ROS 2 Node for camera-based localization using ArUco markers.
-
-    This example flips the camera image horizontally before detection,
-    then publishes the camera pose in 'map' coordinates without further
-    manual axis swapping. We rely on TF to handle orientation.
+    A node that:
+      1) Publishes a STATIC transform from 'map' to each ArUco marker (marker_<id>),
+         based on (t_x, t_y, yaw) given in the YAML file.
+      2) Detects markers in the camera image.
+      3) For each detected marker, publishes a DYNAMIC transform marker_<id> -> camera
+         using the pose returned by get_robot_pose().
     """
     def __init__(self):
-        super().__init__('localization_node')
+        super().__init__('tf_localization_node')
 
-        # Load configuration parameters from YAML
+        # --------------------------------------------------------
+        # Load config from YAML
+        # --------------------------------------------------------
         package_name = 'em_robot'
         config_filename = 'config/cam.yaml'
         pkg_share = get_package_share_directory(package_name)
@@ -38,119 +47,201 @@ class LocalizationNode(Node):
             raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
 
         with open(config_file_path, 'r') as file:
-            config = yaml.safe_load(file)
+            full_config = yaml.safe_load(file)
 
-        # Extract ROS parameters for this node
-        node_config = config.get(self.get_name(), {}).get('ros__parameters', {})
+        # Our node name in the YAML is 'localization_node'
+        node_config = full_config.get(self.get_name(), {}).get('ros__parameters', {})
         cam_params = node_config.get('cam_params', {})
-        aruco_params = node_config.get('aruco_params', {})
+        self.aruco_params = node_config.get('aruco_params', {})
 
-        # Set camera resolution (default: 4608x2592)
+        # Camera resolution
         size_list = cam_params.get('size', [4608, 2592])
         self.size = tuple(size_list)
 
-        # Read camera height and compute lens position
+        # Camera lens/manual focus
         self.camera_height = cam_params.get('camera_height', 2.0)
         self.lens_position = 1.0 / float(self.camera_height)
 
         self.get_logger().info(f"Camera parameters: {cam_params}")
-        self.get_logger().info(f"Aruco parameters: {aruco_params}")
+        self.get_logger().info(f"Aruco parameters: {self.aruco_params}")
         self.get_logger().info(f"Calculated lens position: {self.lens_position:.4f}")
 
-        # Initialize the vision station for ArUco detection
-        self.get_logger().info("Initializing CameraVisionStation...")
+        # --------------------------------------------------------
+        # Initialize PiCamera2
+        # --------------------------------------------------------
+        self.get_logger().info("Initializing CameraVisionStation and PiCamera2...")
         self.cam = CameraVisionStation(cam_params=cam_params,
-                                       aruco_params=aruco_params,
+                                       aruco_params=self.aruco_params,
                                        cam_frame=self.size)
 
-        # Initialize Picamera2 with the configured resolution
-        self.get_logger().info("Starting Picamera2...")
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
-
-        # Set manual focus based on lens position
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
             "LensPosition": self.lens_position
         })
 
-        # Create publisher for camera pose
-        self.pose_publisher = self.create_publisher(PoseWithCovarianceStamped, 'odomCam', 5)
-        self.get_logger().info("Pose publisher initialized on topic 'odomCam'.")
+        # --------------------------------------------------------
+        # TF Broadcasters
+        # --------------------------------------------------------
+        self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
-        # Set up a timer to process frames (default: 0.2 seconds)
-        timer_period = cam_params.get('timer_period', 0.2)
-        self.timer = self.create_timer(timer_period, self.process_frame)
+        # --------------------------------------------------------
+        # Publish all static transforms: map->marker_<id>
+        # --------------------------------------------------------
+        self.publish_all_static_map_to_marker()
 
-    def process_frame(self):
+        # --------------------------------------------------------
+        # Timer for ArUco detection
+        # --------------------------------------------------------
+        timer_period = cam_params.get('timer_period', 0.5)
+        self.timer = self.create_timer(timer_period, self.detect_and_broadcast)
+
+        self.get_logger().info("MultipleMarkersTFNode is up and running!")
+
+    def publish_all_static_map_to_marker(self):
         """
-        Captures an image, flips it horizontally, detects ArUco markers,
-        computes the camera's pose in the map frame, and publishes it if
-        detection is successful.
+        For each marker ID in 'aruco_params', publish a static transform:
+           map -> marker_<id>
+        using (t_x, t_y, yaw) from the YAML.
         """
-        self.get_logger().debug("Capturing frame...")
-        # Capture raw frame
+        transforms = []
+        now = self.get_clock().now().to_msg()
+
+        for marker_id_str, marker_info in self.aruco_params.items():
+            # marker_id_str might be "645", "11", etc.
+            # Convert to int if needed:
+            # marker_id = int(marker_id_str)
+            # But we can just keep it as string for naming.
+
+            t_x = marker_info.get('t_x', 0.0)
+            t_y = marker_info.get('t_y', 0.0)
+            yaw = marker_info.get('yaw', 0.0)
+
+            # Build a static transform from map->marker_XXX
+            t = TransformStamped()
+            t.header.stamp = now
+            t.header.frame_id = "map"
+            t.child_frame_id = f"marker_{marker_id_str}"
+
+            # translation
+            t.transform.translation.x = float(t_x)
+            t.transform.translation.y = float(t_y)
+            t.transform.translation.z = 0.0
+
+            # rotation about Z
+            q = quaternion_from_euler(0.0, 0.0, float(yaw))
+            t.transform.rotation.x = q[0]
+            t.transform.rotation.y = q[1]
+            t.transform.rotation.z = q[2]
+            t.transform.rotation.w = q[3]
+
+            transforms.append(t)
+
+            self.get_logger().info(
+                f"map->marker_{marker_id_str} at x={t_x}, y={t_y}, yaw={yaw}"
+            )
+
+        # Publish them all at once
+        self.static_broadcaster.sendTransform(transforms)
+        self.get_logger().info("Published all static transforms map->marker_<id>.")
+
+    def detect_and_broadcast(self):
+        """
+        1. Capture image
+        2. Detect any ArUco markers
+        3. For each detected marker ID (that we have in aruco_params),
+           compute 'camera pose in marker frame'
+        4. Publish a dynamic transform marker_<id> -> camera
+        """
         frame = self.picam2.capture_array()
-
-        # Convert to grayscale
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-        # Flip horizontally (flipCode=1). If you need vertical instead, use flipCode=0.
-        gray_frame = cv.flip(gray_frame, 1)
+        # If camera is physically upside down, you could rotate:
+        # gray_frame = cv.rotate(gray_frame, cv.ROTATE_180)
 
-        # Detect ArUco markers
-        markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)
-        if markerIds is None:
-            return  # No markers detected
+        marker_corners, marker_ids, _ = detector.detectMarkers(gray_frame)
+        if marker_ids is None:
+            return  # no markers
 
-        # Get the camera pose (x, y) and heading angle from your detection routine.
-        camera_pose, camera_angle = self.cam.get_robot_pose(gray_frame, markerCorners, markerIds)
-        if camera_pose is None:
-            return
+        # marker_ids is a numpy array of shape (N,1) if multiple markers are detected
+        for i, m_id in enumerate(marker_ids):
+            marker_id_int = int(m_id[0])  # each m_id is e.g. [645]
+            marker_id_str = str(marker_id_int)
 
-        # Here, we assume your 'get_robot_pose' now returns x=forward, y=left,
-        # or whatever convention you want, because we've handled the flip.
-        # We'll just pass them through as-is and rely on TF to interpret orientation.
+            # Only handle markers we have in aruco_params
+            if marker_id_str not in self.aruco_params:
+                continue
 
-        map_x = camera_pose[0]
-        map_y = camera_pose[1]
+            # For each marker, we can get the camera pose in that marker's frame.
+            # If your 'get_robot_pose()' returns a single pose for all markers or
+            # only for the first marker, you might need to adapt it for multi-marker detection.
+            # Let's assume we have something like:
+            #   cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
+            #       gray_frame, markerCorners, markerIds, specific_id=marker_id_int
+            #   )
+            # That means: "Compute camera pose in the frame of marker_id_int."
+            #
+            # For simplicity, let's do a single call. You may need to adapt your code:
+            cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
+                gray_frame, marker_corners, marker_ids
+            )
+            if cam_pose_marker is None:
+                continue
 
-        # Create and populate the pose message in the 'map' frame
-        pose_msg = PoseWithCovarianceStamped()
-        pose_msg.header.frame_id = 'map'
-        pose_msg.header.stamp = self.get_clock().now().to_msg()
+            x_c = cam_pose_marker[0]
+            y_c = cam_pose_marker[1]
+            th_c = cam_yaw_marker
 
-        pose_msg.pose.pose.position.x = map_x
-        pose_msg.pose.pose.position.y = map_y
+            self.publish_marker_to_camera_transform(marker_id_str, x_c, y_c, th_c)
 
-        # Convert Euler angle to quaternion (roll=0, pitch=0, yaw=camera_angle)
-        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, camera_angle)
-        pose_msg.pose.pose.orientation.x = qx
-        pose_msg.pose.pose.orientation.y = qy
-        pose_msg.pose.pose.orientation.z = qz
-        pose_msg.pose.pose.orientation.w = qw
+    def publish_marker_to_camera_transform(self, marker_id_str, x_c, y_c, th_c):
+        """
+        Publish the DYNAMIC transform: marker_<id> -> camera
+        specifying that "in marker_<id> frame, the camera is at (x_c, y_c, th_c)."
+        """
+        now = self.get_clock().now().to_msg()
+
+        t = TransformStamped()
+        t.header.stamp = now
+        t.header.frame_id = f"marker_{marker_id_str}"
+        t.child_frame_id = "camera"  # or "camera_link"
+
+        t.transform.translation.x = float(x_c)
+        t.transform.translation.y = float(y_c)
+        t.transform.translation.z = 0.0
+
+        q = quaternion_from_euler(0.0, 0.0, float(th_c))
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+
+        # Publish this dynamic transform
+        self.tf_broadcaster.sendTransform(t)
 
         self.get_logger().info(
-            f"Publishing CAMERA pose in 'map': x={map_x:.2f}, y={map_y:.2f}, angle={math.degrees(camera_angle):.1f}°"
+            f"marker_{marker_id_str}->camera published: "
+            f"x={x_c:.2f}, y={y_c:.2f}, yaw(deg)={math.degrees(th_c):.1f}"
         )
-        self.pose_publisher.publish(pose_msg)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = LocalizationNode()
+    node = MultipleMarkersTFNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down LocalizationNode...")
+        node.get_logger().info("Shutting down TFLocalizationNode...")
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
