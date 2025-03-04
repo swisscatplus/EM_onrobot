@@ -266,7 +266,7 @@ class MultipleMarkersTFNode(Node):
                 gray_frame, marker_corners, marker_ids
             )
             if cam_pose_marker is None:
-                self.get_logger().debug(f"No valid pose returned for marker {marker_id_int}.")
+                self.get_logger().info(f"No valid pose returned for marker {marker_id_int}.")
                 continue
 
             x_c = cam_pose_marker[0]
