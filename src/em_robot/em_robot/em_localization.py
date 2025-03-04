@@ -26,8 +26,9 @@ class MultipleMarkersTFNode(Node):
     A node that:
       1) Publishes a STATIC transform from 'map' to each ArUco marker (marker_<id>),
          based on (t_x, t_y, yaw) given in the YAML file.
-      2) Detects markers in the camera image.
-      3) For each detected marker, publishes a DYNAMIC transform marker_<id> -> camera
+      2) Publishes a STATIC transform from base_link -> camera (the physical camera mount).
+      3) Detects markers in the camera image.
+      4) For each detected marker, publishes a DYNAMIC transform marker_<id> -> camera
          using the pose returned by get_robot_pose().
     """
     def __init__(self):
@@ -92,9 +93,14 @@ class MultipleMarkersTFNode(Node):
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # --------------------------------------------------------
-        # Publish all static transforms: map->marker_<id>
+        # 1) Publish all static transforms: map->marker_<id>
         # --------------------------------------------------------
         self.publish_all_static_map_to_marker()
+
+        # --------------------------------------------------------
+        # 2) Publish static transform: base_link -> camera
+        # --------------------------------------------------------
+        self.publish_static_base_link_to_camera()
 
         # --------------------------------------------------------
         # Timer for ArUco detection
@@ -123,7 +129,7 @@ class MultipleMarkersTFNode(Node):
             t_y = marker_info.get('t_y', 0.0)
             yaw = marker_info.get('yaw', 0.0)
 
-            # Build a static transform from map->marker_XXX
+            # Build a static transform: map -> marker_<ID>
             t = TransformStamped()
             t.header.stamp = now
             t.header.frame_id = "map"
@@ -151,6 +157,46 @@ class MultipleMarkersTFNode(Node):
         self.static_broadcaster.sendTransform(transforms)
         self.get_logger().info("Published all static transforms map->marker_<id>.")
 
+    def publish_static_base_link_to_camera(self):
+        """
+        Publish a single static transform: base_link -> camera.
+
+        The camera is 0.198 m in front of the robot (along +X of base_link).
+        The camera frame has:
+          +X = left of the robot,
+          +Y = back (opposite of robot's +X),
+          +Z = up.
+
+        => That's a +90° rotation about Z from base_link to camera frame.
+        """
+        now = self.get_clock().now().to_msg()
+
+        t = TransformStamped()
+        t.header.stamp = now
+        t.header.frame_id = "base_link"   # parent
+        t.child_frame_id = "camera"       # child (or "camera_link")
+
+        # Translation: 0.198 m forward along base_link +X
+        t.transform.translation.x = 0.198
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.0
+
+        # Rotation: +90° around Z so that camera X=left, Y=back, Z=up
+        roll = 0.0
+        pitch = 0.0
+        yaw = math.radians(90)  # 1.5708
+        q = quaternion_from_euler(roll, pitch, yaw)
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+
+        # Publish the static transform
+        self.static_broadcaster.sendTransform(t)
+        self.get_logger().info(
+            "Published static transform base_link->camera at +0.198m, +90° about Z."
+        )
+
     def detect_and_broadcast(self):
         """
         1. Capture image
@@ -171,23 +217,17 @@ class MultipleMarkersTFNode(Node):
 
         # marker_ids is a numpy array of shape (N,1) if multiple markers are detected
         for i, m_id in enumerate(marker_ids):
-            marker_id_int = int(m_id[0])  # each m_id is e.g. [645]
+            marker_id_int = int(m_id[0])  # e.g. [645] -> 645
             marker_id_str = str(marker_id_int)
 
             # Only handle markers we have in aruco_params
             if marker_id_str not in self.aruco_params:
                 continue
 
-            # For each marker, we can get the camera pose in that marker's frame.
-            # If your 'get_robot_pose()' returns a single pose for all markers or
-            # only for the first marker, you might need to adapt it for multi-marker detection.
-            # Let's assume we have something like:
-            #   cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
-            #       gray_frame, markerCorners, markerIds, specific_id=marker_id_int
-            #   )
-            # That means: "Compute camera pose in the frame of marker_id_int."
-            #
-            # For simplicity, let's do a single call. You may need to adapt your code:
+            # For each marker, we get the camera pose in that marker's frame.
+            # If 'get_robot_pose()' is only for a single marker or lumps them all,
+            # you may need to adapt it. Here we just assume it returns the correct
+            # pose for the marker of interest.
             cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
                 gray_frame, marker_corners, marker_ids
             )
@@ -198,6 +238,7 @@ class MultipleMarkersTFNode(Node):
             y_c = cam_pose_marker[1]
             th_c = cam_yaw_marker
 
+            # Publish marker_<id> -> camera
             self.publish_marker_to_camera_transform(marker_id_str, x_c, y_c, th_c)
 
     def publish_marker_to_camera_transform(self, marker_id_str, x_c, y_c, th_c):
