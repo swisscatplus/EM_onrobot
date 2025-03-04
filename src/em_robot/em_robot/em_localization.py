@@ -235,12 +235,20 @@ class MultipleMarkersTFNode(Node):
              (map->marker_<id>) * (marker_<id>->camera) * (camera->base_link)
              and publish as a PoseWithCovarianceStamped
         """
+        self.get_logger().debug("Capturing new frame from the camera...")
         frame = self.picam2.capture_array()
+
+        self.get_logger().debug(f"Converting to grayscale, frame size: {frame.shape}")
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
+        self.get_logger().debug("Detecting ArUco markers...")
         marker_corners, marker_ids, _ = detector.detectMarkers(gray_frame)
+
         if marker_ids is None:
+            self.get_logger().debug("No markers found in this frame.")
             return  # no markers found
+
+        self.get_logger().info(f"Detected {len(marker_ids)} marker(s): {marker_ids.flatten().tolist()}")
 
         for i, m_id in enumerate(marker_ids):
             marker_id_int = int(m_id[0])  # e.g. [645] -> 645
@@ -248,18 +256,27 @@ class MultipleMarkersTFNode(Node):
 
             # Skip markers not in our YAML
             if marker_id_str not in self.aruco_params:
+                self.get_logger().debug(f"Marker {marker_id_int} not in aruco_params. Skipping.")
                 continue
+
+            self.get_logger().debug(f"Processing marker {marker_id_int}...")
 
             # This function returns camera pose in marker frame
             cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
                 gray_frame, marker_corners, marker_ids
             )
             if cam_pose_marker is None:
+                self.get_logger().debug(f"No valid pose returned for marker {marker_id_int}.")
                 continue
 
             x_c = cam_pose_marker[0]
             y_c = cam_pose_marker[1]
             th_c = cam_yaw_marker
+
+            self.get_logger().info(
+                f"Camera pose relative to marker_{marker_id_str}: "
+                f"x={x_c:.3f}, y={y_c:.3f}, yaw(deg)={math.degrees(th_c):.1f}"
+            )
 
             # Publish the dynamic transform marker_<id> -> camera
             self.publish_marker_to_camera_transform(marker_id_str, x_c, y_c, th_c)
@@ -273,10 +290,21 @@ class MultipleMarkersTFNode(Node):
 
             map_to_marker = (mx, my, mth)
             marker_to_camera = (x_c, y_c, th_c)
-            # Then camera_to_base_link is known from invert_2d(base_link->camera)
-            # Compose them all in 2D
+
+            # 1) map->camera
             map_to_camera = compose_2d(map_to_marker, marker_to_camera)
+            self.get_logger().debug(
+                f"map->camera from composition: x={map_to_camera[0]:.3f}, "
+                f"y={map_to_camera[1]:.3f}, yaw(deg)={math.degrees(map_to_camera[2]):.1f}"
+            )
+
+            # 2) map->base_link = map->camera * camera->base_link
             map_to_base_link = compose_2d(map_to_camera, self.camera_to_base_link)
+            bx, by, bth = map_to_base_link
+
+            self.get_logger().info(
+                f"map->base_link computed: x={bx:.3f}, y={by:.3f}, yaw(deg)={math.degrees(bth):.1f}"
+            )
 
             # Publish as a PoseWithCovarianceStamped
             self.publish_base_link_pose_in_map(map_to_base_link)
@@ -306,8 +334,8 @@ class MultipleMarkersTFNode(Node):
         self.tf_broadcaster.sendTransform(t)
 
         self.get_logger().info(
-            f"marker_{marker_id_str}->camera published: "
-            f"x={x_c:.2f}, y={y_c:.2f}, yaw(deg)={math.degrees(th_c):.1f}"
+            f"Published dynamic TF: marker_{marker_id_str}->camera "
+            f"(x={x_c:.3f}, y={y_c:.3f}, yaw={math.degrees(th_c):.1f} deg)"
         )
 
     def publish_base_link_pose_in_map(self, map_to_base_link):
@@ -336,7 +364,6 @@ class MultipleMarkersTFNode(Node):
         pose_msg.pose.pose.orientation.w = q[3]
 
         # Simple constant covariance (adjust as needed)
-        # e.g. camera measurement is fairly certain:
         cov = [0.01]*36
         pose_msg.pose.covariance = cov
 
@@ -344,7 +371,8 @@ class MultipleMarkersTFNode(Node):
         self.base_pose_pub.publish(pose_msg)
 
         self.get_logger().info(
-            f"Published map->base_link pose: x={bx:.2f}, y={by:.2f}, yaw={math.degrees(bth):.1f}"
+            f"Published PoseWithCovarianceStamped on /camera_base_pose: "
+            f"x={bx:.3f}, y={by:.3f}, yaw(deg)={math.degrees(bth):.1f}"
         )
 
 
