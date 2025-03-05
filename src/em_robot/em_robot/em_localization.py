@@ -256,12 +256,12 @@ class MarkerLocalizationNode(Node):
             pose_msg.pose.pose.orientation.w = qw
 
             # Example covariance matrix: low uncertainty in x, y, and yaw; high in z, roll, pitch.
-            cov = [0.01, 0,    0,    0,    0,    0,
-                   0,    0.01, 0,    0,    0,    0,
-                   0,    0,    1000.0, 0,    0,    0,
-                   0,    0,    0,    1000.0, 0,    0,
-                   0,    0,    0,    0,    1000.0, 0,
-                   0,    0,    0,    0,    0,    0.01]
+            cov = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                   0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                   0.0, 0.0, 1000.0, 0.0, 0.0, 0.0,
+                   0.0, 0.0, 0.0, 1000.0, 0.0, 0.0,
+                   0.0, 0.0, 0.0, 0.0, 1000.0, 0.0,
+                   0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
             pose_msg.pose.covariance = cov
 
             self.pose_pub.publish(pose_msg)
