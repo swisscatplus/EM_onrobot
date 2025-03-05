@@ -118,76 +118,84 @@ class MovementNode(Node):
 
     def odom_callback(self):
         """
-        Reads the present positions from the Dynamixels,
-        calculates odometry, and publishes it.
+        Called by the timer to read the present positions from the Dynamixels,
+        calculate odometry, and publish it.
         """
         now = self.get_clock().now()
 
-        # Read encoder positions
+        # Corrected unpacking: first value, then comm_result, then error
         current_position_r, dxl_comm_result_r, dxl_error_r = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
         )
+        if dxl_comm_result_r != COMM_SUCCESS or dxl_error_r != 0:
+            self.get_logger().error(f"Error reading right wheel: comm_result={dxl_comm_result_r}, error={dxl_error_r}")
+        else:
+            self.get_logger().debug(f"Right wheel position: {current_position_r}")
+
         current_position_l, dxl_comm_result_l, dxl_error_l = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
         )
-
-        # Handle errors
-        if dxl_comm_result_r != COMM_SUCCESS or dxl_error_r != 0:
-            self.get_logger().error(f"Error reading right wheel: {dxl_comm_result_r}, {dxl_error_r}")
-            return
         if dxl_comm_result_l != COMM_SUCCESS or dxl_error_l != 0:
-            self.get_logger().error(f"Error reading left wheel: {dxl_comm_result_l}, {dxl_error_l}")
-            return
+            self.get_logger().error(f"Error reading left wheel: comm_result={dxl_comm_result_l}, error={dxl_error_l}")
+        else:
+            self.get_logger().debug(f"Left wheel position: {current_position_l}")
 
-        # Initialize if first reading
+        # If this is the first reading, just store and return
         if self.prev_position_r is None or self.prev_position_l is None:
             self.prev_position_r = current_position_r
             self.prev_position_l = current_position_l
             self.prev_time = now
+            self.get_logger().debug("Initialized previous positions.")
             return
 
-        # **Handle encoder wraparounds correctly**
-        delta_r = (current_position_r - self.prev_position_r) % ENCODER_RESOLUTION
-        delta_l = (current_position_l - self.prev_position_l) % ENCODER_RESOLUTION
+        # Calculate differences in encoder ticks
+        delta_r = current_position_r - self.prev_position_r
+        delta_r = -(current_position_r - self.prev_position_r)
+        delta_l = current_position_l - self.prev_position_l
+        self.get_logger().debug(f"Delta ticks: right={delta_r}, left={delta_l}")
 
-        # Convert from encoder ticks to wheel rotations
-        rad_r = (delta_r / ENCODER_RESOLUTION) * (2.0 * math.pi)
-        rad_l = (delta_l / ENCODER_RESOLUTION) * (2.0 * math.pi)
+        # Convert from ticks to radians
+        rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
 
-        # Convert from wheel rotations to distance traveled
+        # Distance traveled by each wheel
         d_r = rad_r * WHEEL_RADIUS
         d_l = rad_l * WHEEL_RADIUS
+        self.get_logger().debug(f"Wheel distances: d_r={d_r:.4f} m, d_l={d_l:.4f} m")
 
-        # **Compute robot motion**
-        d = (d_r + d_l) / 2.0  # Average wheel travel distance
-        dtheta = (d_r - d_l) / WHEEL_BASE  # Change in orientation
+        # Odometry computations
+        d = (d_r + d_l) / 2.0
+        dtheta = (d_r - d_l) / WHEEL_BASE
 
-        # Compute time difference
+        # Time elapsed
         dt = (now - self.prev_time).nanoseconds / 1e9
         if dt <= 0.0:
-            dt = 1e-6  # Avoid division by zero
+            dt = 1e-6  # safeguard against division by zero
+        self.get_logger().debug(f"Elapsed time: dt={dt:.4f} sec")
 
-        # Compute velocity
+        # Robot velocities
         vx = d / dt
         vth = dtheta / dt
+        self.get_logger().debug(f"Computed velocities: vx={vx:.4f} m/s, vth={vth:.4f} rad/s")
 
-        # **Update robot position (midpoint integration)**
+        # Update the robot pose (using midpoint integration)
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
+        self.get_logger().debug(f"Updated pose: x={self.x:.4f}, y={self.y:.4f}, theta={self.theta:.4f}")
 
-        # **Publish Odometry message**
+        # Construct the Odometry message
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
 
-        # Position in meters
+        # Position
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
 
-        # Orientation as quaternion
+        # Orientation as a quaternion
         qz = math.sin(self.theta / 2.0)
         qw = math.cos(self.theta / 2.0)
         odom_msg.pose.pose.orientation.x = 0.0
@@ -195,14 +203,16 @@ class MovementNode(Node):
         odom_msg.pose.pose.orientation.z = qz
         odom_msg.pose.pose.orientation.w = qw
 
-        # Velocities
+        # Linear and angular velocity
         odom_msg.twist.twist.linear.x = vx
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.angular.z = vth
 
+        # Publish odometry
         self.odom_pub.publish(odom_msg)
+        self.get_logger().debug("Published odometry message.")
 
-        # Update previous values
+        # Update previous position/time
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
