@@ -1,7 +1,7 @@
 ekf_filter_node:
   ros__parameters:
     frequency: 30.0             # EKF update rate (Hz)
-    sensor_timeout: 0.1         # Sensor timeout in seconds
+    sensor_timeout: 1.0        # Sensor timeout in seconds
     two_d_mode: true            # Restrict the filter to 2D (x, y, yaw)
     transform_time_offset: 0.0
     transform_timeout: 0.0
