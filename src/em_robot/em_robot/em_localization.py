@@ -8,8 +8,8 @@ from rclpy.node import Node
 import numpy as np
 import cv2 as cv
 
-from tf2_ros import TransformBroadcaster
-from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
+from geometry_msgs.msg import TransformStamped, PoseWithCovarianceStamped
 from tf_transformations import (
     quaternion_from_euler,
     euler_from_matrix,
@@ -29,8 +29,9 @@ class MarkerLocalizationNode(Node):
       - Detects ArUco markers
       - Uses solvePnP to compute the transform marker->camera
       - Publishes:
-        1) Dynamic TF: aruco_<id> -> camera_frame (computed from detections)
-        2) Static TF: base_link -> camera_frame (fixed camera mounting position)
+          1) Dynamic TF: aruco_<id> -> camera_frame (computed from detections)
+          2) Static TF: base_link -> camera_frame (fixed camera mounting position)
+          3) Sensor message: PoseWithCovarianceStamped for camera pose
     """
 
     def __init__(self):
@@ -90,10 +91,14 @@ class MarkerLocalizationNode(Node):
             "LensPosition": lens_position
         })
 
-        # 3) TF broadcaster
+        # 3) TF broadcasters
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
 
-        # 4) Publish the static transform (base_link -> camera_frame)
+        # Publisher for sensor message (PoseWithCovarianceStamped)
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, 'camera_pose', 10)
+
+        # 4) Publish the static transform (base_link -> camera_frame) using static broadcaster
         self.publish_static_transform()
 
         # 5) Timer to detect markers
@@ -106,6 +111,7 @@ class MarkerLocalizationNode(Node):
         """
         Publishes a static transform from `base_link` to `camera_frame`,
         representing the physical mounting of the camera on the robot.
+        Uses StaticTransformBroadcaster.
         """
         static_transform = TransformStamped()
         static_transform.header.stamp = self.get_clock().now().to_msg()
@@ -113,9 +119,9 @@ class MarkerLocalizationNode(Node):
         static_transform.child_frame_id = "camera_frame"  # Child frame
 
         # Adjust these values based on actual camera mounting position
-        static_transform.transform.translation.x = 0.198  # 15 cm forward
-        static_transform.transform.translation.y = 0.0   # Centered
-        static_transform.transform.translation.z = 0.0   # 20 cm up
+        static_transform.transform.translation.x = 0.198  # e.g., 15 cm forward
+        static_transform.transform.translation.y = 0.0    # Centered
+        static_transform.transform.translation.z = 0.0    # e.g., 20 cm up
 
         # Assuming the camera is facing forward
         static_transform.transform.rotation.x = 0.0
@@ -123,8 +129,8 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.rotation.z = 0.0
         static_transform.transform.rotation.w = 1.0
 
-        # Broadcast this static transform
-        self.tf_broadcaster.sendTransform(static_transform)
+        # Broadcast this static transform once (latching the transform)
+        self.static_tf_broadcaster.sendTransform(static_transform)
         self.get_logger().info("Published static transform: base_link -> camera_frame")
 
     def process_frame(self):
@@ -158,12 +164,12 @@ class MarkerLocalizationNode(Node):
             R_ca, _ = cv.Rodrigues(rvec)
             t_ca = tvec.reshape((3,1))
 
-            # Build 4x4 transform
+            # Build 4x4 transform: from marker frame to camera frame
             T_marker_camera = np.eye(4, dtype=np.float32)
             T_marker_camera[0:3, 0:3] = R_ca
             T_marker_camera[0:3, 3] = t_ca[:,0]
 
-            # Extract 2D (x, y, yaw)
+            # Extract 2D (x, y, yaw) from transform
             tx = float(T_marker_camera[0, 3])
             ty = float(T_marker_camera[1, 3])
             tz = float(T_marker_camera[2, 3])
@@ -175,10 +181,11 @@ class MarkerLocalizationNode(Node):
             qx, qy, qz, qw = [float(q) for q in yaw_quat]
 
             # Publish dynamic transform: aruco_<id> -> camera_frame
+            # Using the ArUco marker as the parent is acceptable if it’s fixed in the map.
             t = TransformStamped()
             t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = f"aruco_{marker_id}"  # Parent
-            t.child_frame_id = "camera_frame"  # Child
+            t.header.frame_id = f"aruco_{marker_id}"  # Parent (fixed marker)
+            t.child_frame_id = "camera_frame"          # Child (moving camera)
 
             t.transform.translation.x = tx
             t.transform.translation.y = ty
@@ -195,6 +202,33 @@ class MarkerLocalizationNode(Node):
                 f"Marker {marker_id} -> camera in 2D: "
                 f"x={tx:.3f}m, y={ty:.3f}m, yaw={yaw:.3f}rad (ignored tz={tz:.3f})"
             )
+
+            # Publish sensor message (PoseWithCovarianceStamped)
+            pose_msg = PoseWithCovarianceStamped()
+            pose_msg.header.stamp = self.get_clock().now().to_msg()
+            pose_msg.header.frame_id = "camera_frame"
+
+            # Set position and orientation from the computed transform
+            pose_msg.pose.pose.position.x = tx
+            pose_msg.pose.pose.position.y = ty
+            pose_msg.pose.pose.position.z = 0.0  # Force 2D
+
+            pose_msg.pose.pose.orientation.x = qx
+            pose_msg.pose.pose.orientation.y = qy
+            pose_msg.pose.pose.orientation.z = qz
+            pose_msg.pose.pose.orientation.w = qw
+
+            # Example covariance matrix: low uncertainty in x, y, and yaw; high uncertainty in z, roll, pitch.
+            cov = [0.01, 0,    0,    0,    0,    0,
+                   0,    0.01, 0,    0,    0,    0,
+                   0,    0,    1000, 0,    0,    0,
+                   0,    0,    0,    1000, 0,    0,
+                   0,    0,    0,    0,    1000, 0,
+                   0,    0,    0,    0,    0,    0.01]
+            pose_msg.pose.covariance = cov
+
+            self.pose_pub.publish(pose_msg)
+            self.get_logger().info(f"Published PoseWithCovarianceStamped for marker {marker_id}")
 
 def main(args=None):
     rclpy.init(args=args)

@@ -1,8 +1,8 @@
 ekf_filter_node:
   ros__parameters:
-    frequency: 30.0             # EKF update rate (Hz)
-    sensor_timeout: 1.0        # Sensor timeout in seconds
-    two_d_mode: true            # Restrict the filter to 2D (x, y, yaw)
+    frequency: 30.0
+    sensor_timeout: 0.6         # Increased timeout to account for the slower (0.5 s) camera updates
+    two_d_mode: true
     transform_time_offset: 0.0
     transform_timeout: 0.0
     publish_tf: true
@@ -29,8 +29,8 @@ ekf_filter_node:
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
 
     # Lower-rate camera odometry (more trusted)
-    pose0: "tf"  # From camera localization
-    pose0_frame: "camera_frame"  # The pose given in camera coordinates
+    pose0: "camera_pose"  # Now using the sensor message with covariance
+    pose0_frame: "camera_frame"  # Ensure your sensor message header.frame_id matches this!
     pose0_config: [true, true, false,   # x, y, yaw positions
                    false, false, true,   # yaw rate (angular velocity)
                    false, false, false,  # unused fields (z, roll, pitch)
