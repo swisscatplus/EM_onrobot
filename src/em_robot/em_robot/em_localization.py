@@ -12,7 +12,7 @@ from picamera2 import Picamera2
 from libcamera import controls
 
 # Import the detection function from the aruco_detection script
-from .aruco_detection import detect_markers
+from .submodules.aruco_detection import detect_markers
 
 
 class MarkerLocalizationNode(Node):
