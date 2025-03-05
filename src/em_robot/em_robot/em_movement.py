@@ -147,7 +147,7 @@ class MovementNode(Node):
             return
 
         # **Handle encoder wraparounds correctly**
-        delta_r = (current_position_r - self.prev_position_r) % ENCODER_RESOLUTION
+        delta_r = -(current_position_r - self.prev_position_r) % ENCODER_RESOLUTION
         delta_l = (current_position_l - self.prev_position_l) % ENCODER_RESOLUTION
 
         # Convert from encoder ticks to wheel rotations

@@ -113,9 +113,9 @@ class MarkerLocalizationNode(Node):
         static_transform.child_frame_id = "camera_frame"  # Child frame
 
         # Adjust these values based on actual camera mounting position
-        static_transform.transform.translation.x = 0.15  # 15 cm forward
+        static_transform.transform.translation.x = 0.198  # 15 cm forward
         static_transform.transform.translation.y = 0.0   # Centered
-        static_transform.transform.translation.z = 0.2   # 20 cm up
+        static_transform.transform.translation.z = 0.0   # 20 cm up
 
         # Assuming the camera is facing forward
         static_transform.transform.rotation.x = 0.0
