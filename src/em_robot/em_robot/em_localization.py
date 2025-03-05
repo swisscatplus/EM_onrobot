@@ -17,7 +17,7 @@ from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
 # Use the detection function from your aruco_detection.py
-from .aruco_detection import detect_aruco_corners
+from .submodules.aruco_detection import detect_aruco_corners
 
 class MarkerLocalizationNode(Node):
     """
