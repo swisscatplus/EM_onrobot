@@ -97,9 +97,9 @@ class MarkerLocalizationNode(Node):
             t.header.frame_id = f"aruco_{marker_id}"
             t.child_frame_id = "camera_frame"
 
-            t.transform.translation.x = tx
-            t.transform.translation.y = ty
-            t.transform.translation.z = tz
+            t.transform.translation.x = float(tx)
+            t.transform.translation.y = float(ty)
+            t.transform.translation.z = float(tz)
             t.transform.rotation.x = qx
             t.transform.rotation.y = qy
             t.transform.rotation.z = qz
