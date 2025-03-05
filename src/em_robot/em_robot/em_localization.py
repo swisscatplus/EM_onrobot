@@ -1,77 +1,34 @@
 #!/usr/bin/env python3
+
 import os
-import math
 import yaml
 import cv2 as cv
-
 import rclpy
 from rclpy.node import Node
-from ament_index_python.packages import get_package_share_directory
 
-# TF
-import tf2_ros
-from geometry_msgs.msg import (
-    TransformStamped,
-    PoseWithCovarianceStamped
-)
-from tf_transformations import (
-    quaternion_from_euler
-)
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 
-# PiCamera2
+from tf_transformations import quaternion_from_euler
 from picamera2 import Picamera2
 from libcamera import controls
+from ament_index_python.packages import get_package_share_directory
 
-# Your ArUco detection code
-from .submodules.detect_aruco import CameraVisionStation, detector
+import math
 
+from .submodules.detect_aruco import detector  # or however you import your ArUco detector
 
-def compose_2d(parent, child):
+class MarkerLocalizationNode(Node):
     """
-    2D rigid transform composition.
-    parent = (px, py, ptheta)
-    child = (cx, cy, ctheta)
-    Returns parent * child = (rx, ry, rtheta).
+    ROS 2 Node for detecting ArUco (or QR) markers and publishing their poses in the camera frame.
     """
-    px, py, pth = parent
-    cx, cy, cth = child
 
-    rx = px + math.cos(pth)*cx - math.sin(pth)*cy
-    ry = py + math.sin(pth)*cx + math.cos(pth)*cy
-    rtheta = pth + cth
-    return (rx, ry, rtheta)
-
-
-def invert_2d(x, y, theta):
-    """
-    Invert a 2D transform (x, y, theta).
-    The inverse is a translation in the opposite direction,
-    rotated by -theta, plus a -theta for the rotation.
-    """
-    # Rotate and negate the translation:
-    xr = -(x*math.cos(theta) + y*math.sin(theta))
-    yr = -(-x*math.sin(theta) + y*math.cos(theta))
-    tprime = -theta
-    return (xr, yr, tprime)
-
-
-class MultipleMarkersTFNode(Node):
-    """
-    A node that:
-      1) Publishes a STATIC transform from 'map' to each ArUco marker (marker_<id>),
-         based on (t_x, t_y, yaw) given in the YAML file.
-      2) Publishes a STATIC transform 'base_link' -> 'camera'
-         describing how the camera is physically mounted.
-      3) Detects markers in the camera image.
-      4) For each detected marker, publishes a DYNAMIC transform marker_<id> -> camera,
-         and also computes and publishes map->base_link as a PoseWithCovarianceStamped.
-    """
     def __init__(self):
-        super().__init__('localization_node')
+        super().__init__('marker_localization_node')
 
-        # --------------------------------------------------------
-        # Load config from YAML
-        # --------------------------------------------------------
+        # Load configuration parameters from YAML
         package_name = 'em_robot'
         config_filename = 'config/cam.yaml'
         pkg_share = get_package_share_directory(package_name)
@@ -83,33 +40,28 @@ class MultipleMarkersTFNode(Node):
             raise FileNotFoundError(f"Configuration file not found: {config_file_path}")
 
         with open(config_file_path, 'r') as file:
-            full_config = yaml.safe_load(file)
+            config = yaml.safe_load(file)
 
-        # Our node name in the YAML is 'localization_node'
-        node_config = full_config.get(self.get_name(), {}).get('ros__parameters', {})
+        # Extract ROS parameters for this node
+        node_config = config.get(self.get_name(), {}).get('ros__parameters', {})
+        if not node_config:
+            self.get_logger().warn("No parameters found under this node's name. Using defaults.")
         cam_params = node_config.get('cam_params', {})
-        self.aruco_params = node_config.get('aruco_params', {})
+        aruco_params = node_config.get('aruco_params', {})
 
         # Camera resolution
-        size_list = cam_params.get('size', [4608, 2592])
-        self.size = tuple(size_list)
+        self.size = tuple(cam_params.get('size', [4608, 2592]))
+        # How often to process frames (seconds)
+        self.timer_period = cam_params.get('timer_period', 0.5)
+        # For manual focus (example logic)
+        self.camera_height = cam_params.get('camera_height', 0.63)
+        self.lens_position = 1.0 / self.camera_height
 
-        # Camera lens/manual focus
-        self.camera_height = cam_params.get('camera_height', 2.0)
-        self.lens_position = 1.0 / float(self.camera_height)
+        # ArUco known markers from YAML
+        # e.g., aruco_params is a dictionary like: { 11: {t_x:..., t_y:..., yaw:...}, 618: {...}, ... }
+        self.known_markers = aruco_params
 
-        self.get_logger().info(f"Camera parameters: {cam_params}")
-        self.get_logger().info(f"Aruco parameters: {self.aruco_params}")
-        self.get_logger().info(f"Calculated lens position: {self.lens_position:.4f}")
-
-        # --------------------------------------------------------
-        # Initialize PiCamera2
-        # --------------------------------------------------------
-        self.get_logger().info("Initializing CameraVisionStation and PiCamera2...")
-        self.cam = CameraVisionStation(cam_params=cam_params,
-                                       aruco_params=self.aruco_params,
-                                       cam_frame=self.size)
-
+        # Initialize camera
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -121,272 +73,125 @@ class MultipleMarkersTFNode(Node):
             "LensPosition": self.lens_position
         })
 
-        # --------------------------------------------------------
-        # TF Broadcasters
-        # --------------------------------------------------------
-        self.static_broadcaster = tf2_ros.StaticTransformBroadcaster(self)
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        # TF broadcaster (to publish transforms of markers)
+        self.tf_broadcaster = TransformBroadcaster(self)
 
-        # --------------------------------------------------------
-        # 1) Publish all static transforms: map->marker_<id>
-        # --------------------------------------------------------
-        self.publish_all_static_map_to_marker()
+        # Create a publisher for Odometry or Pose messages
+        # We’ll publish to "marker_odom" for example
+        self.odom_publisher = self.create_publisher(Odometry, 'marker_odom', 10)
+        # Alternatively, if you prefer PoseStamped:
+        # self.pose_publisher = self.create_publisher(PoseStamped, 'marker_pose', 10)
 
-        # --------------------------------------------------------
-        # 2) Publish static transform: base_link -> camera
-        #    We'll store its inverse as well, for computing base_link in map
-        # --------------------------------------------------------
-        self.base_link_to_camera = (0.198, 0.0, math.radians(90))  # (x, y, yaw)
-        self.camera_to_base_link = invert_2d(*self.base_link_to_camera)
-        self.publish_static_base_link_to_camera()
+        # Timer to grab frames and detect markers
+        self.timer = self.create_timer(self.timer_period, self.process_frame)
 
-        # --------------------------------------------------------
-        # 3) Publisher for final map->base_link pose
-        # --------------------------------------------------------
-        self.base_pose_pub = self.create_publisher(
-            PoseWithCovarianceStamped,
-            '/camera_base_pose',
-            10
-        )
+        self.get_logger().info("MarkerLocalizationNode: started.")
 
-        # --------------------------------------------------------
-        # Timer for ArUco detection
-        # --------------------------------------------------------
-        timer_period = cam_params.get('timer_period', 0.5)
-        self.timer = self.create_timer(timer_period, self.detect_and_broadcast)
-
-        self.get_logger().info("MultipleMarkersTFNode is up and running!")
-
-    def publish_all_static_map_to_marker(self):
+    def process_frame(self):
         """
-        For each marker ID in 'aruco_params', publish a static transform:
-           map -> marker_<id>
-        using (t_x, t_y, yaw) from the YAML.
+        Capture image, detect markers, and publish TF + Odometry in camera frame.
         """
-        transforms = []
-        now = self.get_clock().now().to_msg()
-
-        for marker_id_str, marker_info in self.aruco_params.items():
-            t_x = marker_info.get('t_x', 0.0)
-            t_y = marker_info.get('t_y', 0.0)
-            yaw = marker_info.get('yaw', 0.0)
-
-            # Build a static transform: map -> marker_<ID>
-            t = TransformStamped()
-            t.header.stamp = now
-            t.header.frame_id = "map"
-            t.child_frame_id = f"marker_{marker_id_str}"
-
-            t.transform.translation.x = float(t_x)
-            t.transform.translation.y = float(t_y)
-            t.transform.translation.z = 0.0
-
-            q = quaternion_from_euler(0.0, 0.0, float(yaw))
-            t.transform.rotation.x = q[0]
-            t.transform.rotation.y = q[1]
-            t.transform.rotation.z = q[2]
-            t.transform.rotation.w = q[3]
-
-            transforms.append(t)
-            self.get_logger().info(
-                f"map->marker_{marker_id_str} at x={t_x}, y={t_y}, yaw={yaw}"
-            )
-
-        self.static_broadcaster.sendTransform(transforms)
-        self.get_logger().info("Published all static transforms map->marker_<id>.")
-
-    def publish_static_base_link_to_camera(self):
-        """
-        Publish a single static transform: base_link -> camera.
-
-        We have: base_link->camera = (0.198 m forward, +90° about Z).
-        """
-        now = self.get_clock().now().to_msg()
-
-        x_b, y_b, yaw_b = self.base_link_to_camera
-        t = TransformStamped()
-        t.header.stamp = now
-        t.header.frame_id = "base_link"
-        t.child_frame_id = "camera"
-
-        t.transform.translation.x = x_b
-        t.transform.translation.y = y_b
-        t.transform.translation.z = 0.0
-
-        q = quaternion_from_euler(0.0, 0.0, yaw_b)
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
-        self.static_broadcaster.sendTransform(t)
-        self.get_logger().info(
-            "Published static transform base_link->camera at +0.198m, +90° about Z."
-        )
-
-    def detect_and_broadcast(self):
-        """
-        1. Capture image
-        2. Detect any ArUco markers
-        3. For each detected marker ID (that we have in aruco_params),
-           - compute camera pose in that marker's frame,
-           - publish dynamic transform marker_<id>->camera
-           - also compute map->base_link by composing transforms
-             (map->marker_<id>) * (marker_<id>->camera) * (camera->base_link)
-             and publish as a PoseWithCovarianceStamped
-        """
-        self.get_logger().debug("Capturing new frame from the camera...")
         frame = self.picam2.capture_array()
-
-        self.get_logger().debug(f"Converting to grayscale, frame size: {frame.shape}")
         gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-        self.get_logger().debug("Detecting ArUco markers...")
-        marker_corners, marker_ids, _ = detector.detectMarkers(gray_frame)
+        markerCorners, markerIds, _ = detector.detectMarkers(gray_frame)
+        if markerIds is None:
+            return
 
-        if marker_ids is None:
-            self.get_logger().debug("No markers found in this frame.")
-            return  # no markers found
-
-        self.get_logger().info(f"Detected {len(marker_ids)} marker(s): {marker_ids.flatten().tolist()}")
-
-        for i, m_id in enumerate(marker_ids):
-            marker_id_int = int(m_id[0])  # e.g. [645] -> 645
-            marker_id_str = str(marker_id_int)
-
-            # Skip markers not in our YAML
-            if marker_id_str not in self.aruco_params:
-                self.get_logger().info(f"Marker {marker_id_int} not in aruco_params. Skipping.")
+        # For each detected marker, check if ID is in known_markers
+        for corners, marker_id in zip(markerCorners, markerIds.flatten()):
+            if marker_id not in self.known_markers:
+                # Skip if not in YAML
                 continue
 
-            self.get_logger().info(f"Processing marker {marker_id_int}...")
+            # corners is an array of 4 points (x,y) of the detected marker in the image
+            # For a simple approximation, we can take the center of corners as the marker's 2D location in the image.
+            # Then you'd use your known camera intrinsics to estimate the 3D position in front of the camera.
+            # For demonstration, let's just set some dummy transformations or
+            # do a quick planar approximation from the corners.
 
-            # This function returns camera pose in marker frame
-            cam_pose_marker, cam_yaw_marker = self.cam.get_robot_pose(
-                gray_frame, marker_corners, marker_ids
-            )
-            if cam_pose_marker is None:
-                self.get_logger().info(f"No valid pose returned for marker {marker_id_int}.")
-                continue
+            # Approximate marker center in image coordinates
+            center_x = 0.0
+            center_y = 0.0
+            for pt in corners[0]:
+                center_x += pt[0]
+                center_y += pt[1]
+            center_x /= 4.0
+            center_y /= 4.0
 
-            x_c = cam_pose_marker[0]
-            y_c = cam_pose_marker[1]
-            th_c = cam_yaw_marker
+            # Convert from image coords -> camera coords (you should replace with your own geometry)
+            # Simple pinhole camera model: X = (u - cx)/fx * Z, Y = (v - cy)/fy * Z, etc.
+            # This example is just a placeholder to demonstrate we have a position in the camera frame.
+            # Suppose we guess Z = 0.5 m in front of camera just to show the transform works:
+            Z_est = 0.5
+            fx = float(self.known_markers[marker_id].get('fx', 1000.0))
+            fy = float(self.known_markers[marker_id].get('fy', 1000.0))
+            cx = self.size[0] / 2.0
+            cy = self.size[1] / 2.0
+
+            X = (center_x - cx) / fx * Z_est
+            Y = (center_y - cy) / fy * Z_est
+            # In many coordinate systems, the camera points +Z forward, +X to the right, +Y down.
+            # Adapt as needed. For now, we’ll define camera_frame with +X right, +Y up, +Z forward.
+
+            # Orientation: for this demo, we’ll say marker is "facing" camera with no rotation
+            # If you want the actual orientation from solvePnP or known marker orientation, do so.
+            qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, 0.0)
+
+            # ----------------------
+            # 1) Publish TF transform
+            # ----------------------
+            transform = TransformStamped()
+            transform.header.stamp = self.get_clock().now().to_msg()
+            transform.header.frame_id = "camera_frame"  # name of your camera frame
+            transform.child_frame_id = f"marker_{marker_id}"
+            transform.transform.translation.x = X
+            transform.transform.translation.y = Y
+            transform.transform.translation.z = Z_est
+            transform.transform.rotation.x = qx
+            transform.transform.rotation.y = qy
+            transform.transform.rotation.z = qz
+            transform.transform.rotation.w = qw
+
+            self.tf_broadcaster.sendTransform(transform)
+
+            # ----------------------
+            # 2) Publish Odometry (or Pose) for visualization
+            # ----------------------
+            odom_msg = Odometry()
+            odom_msg.header.stamp = transform.header.stamp
+            odom_msg.header.frame_id = "camera_frame"     # where the pose is expressed
+            odom_msg.child_frame_id = f"marker_{marker_id}"  # the "moving" frame (though it's actually stationary in camera frame)
+            odom_msg.pose.pose.position.x = X
+            odom_msg.pose.pose.position.y = Y
+            odom_msg.pose.pose.position.z = Z_est
+            odom_msg.pose.pose.orientation.x = qx
+            odom_msg.pose.pose.orientation.y = qy
+            odom_msg.pose.pose.orientation.z = qz
+            odom_msg.pose.pose.orientation.w = qw
+
+            self.odom_publisher.publish(odom_msg)
+
+            # If using PoseStamped instead:
+            # pose_msg = PoseStamped()
+            # pose_msg.header = odom_msg.header
+            # pose_msg.pose = odom_msg.pose.pose
+            # self.pose_publisher.publish(pose_msg)
 
             self.get_logger().info(
-                f"Camera pose relative to marker_{marker_id_str}: "
-                f"x={x_c:.3f}, y={y_c:.3f}, yaw(deg)={math.degrees(th_c):.1f}"
+                f"Detected marker {marker_id} -> Published TF & Odom in camera_frame"
             )
-
-            # Publish the dynamic transform marker_<id> -> camera
-            self.publish_marker_to_camera_transform(marker_id_str, x_c, y_c, th_c)
-
-            # Now also compute map->base_link by chaining:
-            # map->marker_<id> from YAML
-            marker_info = self.aruco_params[marker_id_str]
-            mx = marker_info.get('t_x', 0.0)
-            my = marker_info.get('t_y', 0.0)
-            mth = marker_info.get('yaw', 0.0)
-
-            map_to_marker = (mx, my, mth)
-            marker_to_camera = (x_c, y_c, th_c)
-
-            # 1) map->camera
-            map_to_camera = compose_2d(map_to_marker, marker_to_camera)
-            self.get_logger().debug(
-                f"map->camera from composition: x={map_to_camera[0]:.3f}, "
-                f"y={map_to_camera[1]:.3f}, yaw(deg)={math.degrees(map_to_camera[2]):.1f}"
-            )
-
-            # 2) map->base_link = map->camera * camera->base_link
-            map_to_base_link = compose_2d(map_to_camera, self.camera_to_base_link)
-            bx, by, bth = map_to_base_link
-
-            self.get_logger().info(
-                f"map->base_link computed: x={bx:.3f}, y={by:.3f}, yaw(deg)={math.degrees(bth):.1f}"
-            )
-
-            # Publish as a PoseWithCovarianceStamped
-            self.publish_base_link_pose_in_map(map_to_base_link)
-
-    def publish_marker_to_camera_transform(self, marker_id_str, x_c, y_c, th_c):
-        """
-        Publish the DYNAMIC transform: marker_<id> -> camera
-        specifying that "in marker_<id> frame, the camera is at (x_c, y_c, th_c)."
-        """
-        now = self.get_clock().now().to_msg()
-
-        t = TransformStamped()
-        t.header.stamp = now
-        t.header.frame_id = f"marker_{marker_id_str}"
-        t.child_frame_id = "camera"
-
-        t.transform.translation.x = float(x_c)
-        t.transform.translation.y = float(y_c)
-        t.transform.translation.z = 0.0
-
-        q = quaternion_from_euler(0.0, 0.0, float(th_c))
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
-        self.tf_broadcaster.sendTransform(t)
-
-        self.get_logger().info(
-            f"Published dynamic TF: marker_{marker_id_str}->camera "
-            f"(x={x_c:.3f}, y={y_c:.3f}, yaw={math.degrees(th_c):.1f} deg)"
-        )
-
-    def publish_base_link_pose_in_map(self, map_to_base_link):
-        """
-        Convert the final (x, y, yaw) for base_link in the map frame
-        into a PoseWithCovarianceStamped and publish to /camera_base_pose
-        so the EKF can fuse it.
-        """
-        bx, by, bth = map_to_base_link
-
-        # Build the message
-        pose_msg = PoseWithCovarianceStamped()
-        pose_msg.header.frame_id = "map"
-        pose_msg.header.stamp = self.get_clock().now().to_msg()
-
-        # 2D position => z=0
-        pose_msg.pose.pose.position.x = bx
-        pose_msg.pose.pose.position.y = by
-        pose_msg.pose.pose.position.z = 0.0
-
-        # 2D yaw => quaternion
-        q = quaternion_from_euler(0.0, 0.0, bth)
-        pose_msg.pose.pose.orientation.x = q[0]
-        pose_msg.pose.pose.orientation.y = q[1]
-        pose_msg.pose.pose.orientation.z = q[2]
-        pose_msg.pose.pose.orientation.w = q[3]
-
-        # Simple constant covariance (adjust as needed)
-        cov = [0.01]*36
-        pose_msg.pose.covariance = cov
-
-        # Publish
-        self.base_pose_pub.publish(pose_msg)
-
-        self.get_logger().info(
-            f"Published PoseWithCovarianceStamped on /camera_base_pose: "
-            f"x={bx:.3f}, y={by:.3f}, yaw(deg)={math.degrees(bth):.1f}"
-        )
-
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MultipleMarkersTFNode()
+    node = MarkerLocalizationNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down TFLocalizationNode...")
+        node.get_logger().info("Shutting down MarkerLocalizationNode...")
     finally:
         node.destroy_node()
         rclpy.shutdown()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
