@@ -8,7 +8,7 @@ import math
 
 # --- Constants ---
 WHEEL_RADIUS = 0.035  # 35 mm = 0.035 m
-WHEEL_BASE = 0.130  # 129 mm = 0.129 m
+WHEEL_BASE = 0.130    # 129 mm = 0.129 m
 ENCODER_RESOLUTION = 4096  # Ticks per revolution for X-Series in extended position mode
 
 # Control Table Addresses (for X-Series, including XC430-W150)
@@ -102,15 +102,15 @@ class MovementNode(Node):
         )
 
         # Send the goal velocities to the motors and log errors if any
-        result_r, error_r = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY,
-                                                              motor_speed_r)
+        result_r, error_r = self.packetHandler.write4ByteTxRx(
+            self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY, motor_speed_r)
         if result_r != COMM_SUCCESS or error_r != 0:
             self.get_logger().error(f"Error sending goal velocity to right wheel: result={result_r}, error={error_r}")
         else:
             self.get_logger().debug("Right wheel velocity command sent successfully.")
 
-        result_l, error_l = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY,
-                                                              motor_speed_l)
+        result_l, error_l = self.packetHandler.write4ByteTxRx(
+            self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY, motor_speed_l)
         if result_l != COMM_SUCCESS or error_l != 0:
             self.get_logger().error(f"Error sending goal velocity to left wheel: result={result_l}, error={error_l}")
         else:
@@ -123,24 +123,22 @@ class MovementNode(Node):
         """
         now = self.get_clock().now()
 
-        # Corrected unpacking: first value, then comm_result, then error
+        # Read positions from the Dynamixels
         current_position_r, dxl_comm_result_r, dxl_error_r = self.packetHandler.read4ByteTxRx(
-            self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
-        )
+            self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION)
         if dxl_comm_result_r != COMM_SUCCESS or dxl_error_r != 0:
             self.get_logger().error(f"Error reading right wheel: comm_result={dxl_comm_result_r}, error={dxl_error_r}")
         else:
             self.get_logger().debug(f"Right wheel position: {current_position_r}")
 
         current_position_l, dxl_comm_result_l, dxl_error_l = self.packetHandler.read4ByteTxRx(
-            self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
-        )
+            self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION)
         if dxl_comm_result_l != COMM_SUCCESS or dxl_error_l != 0:
             self.get_logger().error(f"Error reading left wheel: comm_result={dxl_comm_result_l}, error={dxl_error_l}")
         else:
             self.get_logger().debug(f"Left wheel position: {current_position_l}")
 
-        # If this is the first reading, just store and return
+        # Initialize previous positions if first reading
         if self.prev_position_r is None or self.prev_position_l is None:
             self.prev_position_r = current_position_r
             self.prev_position_l = current_position_l
@@ -149,7 +147,6 @@ class MovementNode(Node):
             return
 
         # Calculate differences in encoder ticks
-        delta_r = current_position_r - self.prev_position_r
         delta_r = -(current_position_r - self.prev_position_r)
         delta_l = current_position_l - self.prev_position_l
         self.get_logger().debug(f"Delta ticks: right={delta_r}, left={delta_l}")
@@ -203,10 +200,30 @@ class MovementNode(Node):
         odom_msg.pose.pose.orientation.z = qz
         odom_msg.pose.pose.orientation.w = qw
 
+        # Set a non-zero covariance for pose (6x6 matrix in row-major order)
+        odom_msg.pose.covariance = [
+            0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.1
+        ]
+
         # Linear and angular velocity
         odom_msg.twist.twist.linear.x = vx
         odom_msg.twist.twist.linear.y = 0.0
         odom_msg.twist.twist.angular.z = vth
+
+        # Set a non-zero covariance for twist
+        odom_msg.twist.covariance = [
+            0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.1
+        ]
 
         # Publish odometry
         self.odom_pub.publish(odom_msg)
@@ -222,8 +239,8 @@ class MovementNode(Node):
         On shutdown, disable torque and close the port.
         """
         for dxl_id in [DXL_ID_1, DXL_ID_2]:
-            result, error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE,
-                                                              TORQUE_DISABLE)
+            result, error = self.packetHandler.write1ByteTxRx(
+                self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
             if result != COMM_SUCCESS or error != 0:
                 self.get_logger().error(
                     f"Error disabling torque on Dynamixel ID={dxl_id}: result={result}, error={error}")
