@@ -28,7 +28,7 @@ def detect_aruco_corners(frame):
 
     results = []
     for corners, id_ in zip(corners_list, ids.flatten()):
-        # corners is shape (1,4,2), so let's reshape to (4,2)
+        # corners is shape (1,4,2), so reshape to (4,2)
         c = corners[0]
         results.append({
             'id': int(id_),
