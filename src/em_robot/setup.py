@@ -33,6 +33,7 @@ setup(
         'console_scripts': [
             'em_movement = em_robot.em_movement:main',
             'em_localization = em_robot.em_localization:main',
+            'em_odom = em_robot.em_odom:main',
         ],
     },
 )

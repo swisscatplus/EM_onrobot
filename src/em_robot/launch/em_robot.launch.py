@@ -17,22 +17,20 @@ def generate_launch_description():
         output='screen',
     )
 
+    odom_node = Node(
+        package=pkg_name,
+        executable='em_odom',
+        output='screen',
+    )
+
     localization_node = Node(
         package=pkg_name,
         executable='em_localization',
         output='screen',
     )
 
-    ekf_node = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_localization_node',
-        output='screen',
-        parameters=[config_file]
-    )
-
     return LaunchDescription([
         movement_node,
         localization_node,
-        ekf_node
+        odom_node,
     ])
