@@ -86,7 +86,7 @@ class MarkerLocalizationNode(Node):
         self.picam2.start()
 
         # Example: set manual focus.
-        camera_height = 0.63
+        camera_height = 0.38 #0.63
         lens_position = 1.0 / camera_height
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
