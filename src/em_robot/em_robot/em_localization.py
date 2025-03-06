@@ -14,6 +14,7 @@ from tf_transformations import quaternion_from_euler
 from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
+from rclpy.duration import Duration
 
 # Use the detection function from your aruco_detection.py
 from .submodules.aruco_detection import detect_aruco_corners
@@ -28,7 +29,6 @@ class MarkerLocalizationNode(Node):
         It uses the marker's detected center and the known marker map position (via TF).
       - Publishes a PoseWithCovarianceStamped in the map frame.
     """
-
     def __init__(self):
         super().__init__('marker_localization_node')
 
@@ -143,10 +143,11 @@ class MarkerLocalizationNode(Node):
             offset_y = pixel_offset[1] * (self.camera_height / fy)
             offset_m = np.array([offset_x, offset_y])
 
-            # Retrieve the marker's map position via TF lookup.
+            # Retrieve the marker's map position via TF lookup with a timeout.
             try:
-                # Lookup transform from "map" to "aruco_<marker_id>"
-                t_map_marker = self.tf_buffer.lookup_transform("map", f"aruco_{marker_id}", rclpy.time.Time())
+                t_map_marker = self.tf_buffer.lookup_transform(
+                    "map", f"aruco_{marker_id}", rclpy.time.Time(), Duration(seconds=0.1)
+                )
             except Exception as e:
                 self.get_logger().warn(f"Could not lookup TF for marker {marker_id}: {e}")
                 continue
