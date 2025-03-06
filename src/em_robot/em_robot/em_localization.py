@@ -65,7 +65,7 @@ class MarkerLocalizationNode(Node):
         self.get_logger().info(f"Loaded dist_coeffs={self.dist_coeffs}")
 
         # Marker dimensions (in meters)
-        self.marker_size_m = 0.036  # e.g., 3.6 cm
+        self.marker_size_m = 0.038  # e.g., 3.6 cm
 
         # 3D coordinates for the marker corners (in marker coordinate system)
         half_side = self.marker_size_m / 2.0
