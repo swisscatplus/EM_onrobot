@@ -75,6 +75,14 @@ class MovementNode(Node):
         self.y = 0.0
         self.theta = 0.0
 
+    def convert_to_signed(self, val):
+        """
+        Convert the raw encoder value (unsigned 32-bit) to a signed integer.
+        """
+        if val > 2147483647:  # If the value exceeds the maximum signed 32-bit integer...
+            return val - 4294967296  # ...subtract 2**32 to get the signed value.
+        return val
+
     def cmd_vel_callback(self, msg: Twist):
         """
         Callback for cmd_vel subscription:
@@ -103,14 +111,14 @@ class MovementNode(Node):
 
         # Send the goal velocities to the motors and log errors if any
         result_r, error_r = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY,
-                                                              motor_speed_r)
+                                                                motor_speed_r)
         if result_r != COMM_SUCCESS or error_r != 0:
             self.get_logger().error(f"Error sending goal velocity to right wheel: result={result_r}, error={error_r}")
         else:
             self.get_logger().debug("Right wheel velocity command sent successfully.")
 
         result_l, error_l = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY,
-                                                              motor_speed_l)
+                                                                motor_speed_l)
         if result_l != COMM_SUCCESS or error_l != 0:
             self.get_logger().error(f"Error sending goal velocity to left wheel: result={result_l}, error={error_l}")
         else:
@@ -130,6 +138,10 @@ class MovementNode(Node):
         current_position_l, dxl_comm_result_l, dxl_error_l = self.packetHandler.read4ByteTxRx(
             self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
         )
+
+        # Convert raw encoder values to signed integers
+        current_position_r = self.convert_to_signed(current_position_r)
+        current_position_l = self.convert_to_signed(current_position_l)
 
         # Log encoder readings
         self.get_logger().info(f"Raw Encoder Readings -> Right: {current_position_r}, Left: {current_position_l}")
@@ -227,7 +239,7 @@ class MovementNode(Node):
         """
         for dxl_id in [DXL_ID_1, DXL_ID_2]:
             result, error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE,
-                                                              TORQUE_DISABLE)
+                                                                TORQUE_DISABLE)
             if result != COMM_SUCCESS or error != 0:
                 self.get_logger().error(
                     f"Error disabling torque on Dynamixel ID={dxl_id}: result={result}, error={error}")
