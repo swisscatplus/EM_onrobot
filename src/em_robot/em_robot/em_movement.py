@@ -18,7 +18,7 @@ ADDR_PRESENT_POSITION = 132
 
 # Default settings
 DXL_ID_1 = 1  # Right wheel motor ID
-DXL_ID_2 = 2  # Left wheel motor ID
+DXL_ID_2 = 3  # Left wheel motor ID
 BAUDRATE = 57600
 DEVICENAME = '/dev/ttyUSB0'
 
