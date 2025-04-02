@@ -171,7 +171,7 @@ class MovementNode(Node):
 
         # Convert ticks to radians
         rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
-        rad_l = -delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
 
         # Compute distances traveled
         d_r = rad_r * WHEEL_RADIUS
