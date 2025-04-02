@@ -92,7 +92,8 @@ class MarkerLocalizationNode(Node):
     def process_frame(self):
         frame = self.picam2.capture_array()
         detections = detect_aruco_corners(frame)
-        if len(detections) == 0:
+
+        if not detections:
             self.get_logger().info("No markers detected.")
             return
 
@@ -105,84 +106,44 @@ class MarkerLocalizationNode(Node):
             marker_id = marker['id']
             corners = marker['corners']
 
-            marker_center = np.mean(corners, axis=0)
+            # Estimate marker center in pixels
+            marker_center = np.mean(corners, axis=0)  # (x, y)
             pixel_offset = marker_center - np.array([cx, cy])
-            offset_x = pixel_offset[0] * (self.camera_height / fx)
-            offset_y = pixel_offset[1] * (self.camera_height / fy)
-            offset_m = np.array([offset_x, offset_y])
 
-            try:
-                t_map_marker = self.tf_buffer.lookup_transform(
-                    "map", f"aruco_{marker_id}", rclpy.time.Time(), Duration(seconds=0.1)
-                )
-            except Exception as e:
-                self.get_logger().warn(f"Could not lookup TF for marker {marker_id}: {e}")
-                continue
+            # Estimate relative position in the camera frame (assuming z = 1 for scale)
+            # This assumes pinhole projection: X_cam = (x - cx) / fx, Y_cam = (y - cy) / fy
+            x_cam = pixel_offset[0] / fx
+            y_cam = pixel_offset[1] / fy
+            z_cam = 1.0  # Unit depth assumption
+            marker_pos_cam = np.array([x_cam, y_cam, z_cam])
 
-            marker_map_position = np.array([
-                t_map_marker.transform.translation.x,
-                t_map_marker.transform.translation.y
-            ])
-
-            camera_map_position = marker_map_position - offset_m
-
+            # Get orientation of marker from corners
             top_center = np.mean(corners[0:2], axis=0)
             bottom_center = np.mean(corners[2:4], axis=0)
             dx, dy = top_center - bottom_center
-            rad_angle = np.arctan2(dy, dx)
 
-            t_map_camera = TransformStamped()
-            t_map_camera.header.stamp = self.get_clock().now().to_msg()
-            t_map_camera.header.frame_id = "map"
-            t_map_camera.child_frame_id = "camera_frame"
+            # In image: y goes down, so reverse dy for correct direction
+            yaw = np.arctan2(-dy, dx)
+            quat = quaternion_from_euler(0.0, 0.0, yaw)  # Rotation in camera frame
 
-            t_map_camera.transform.translation.x = float(camera_map_position[0])
-            t_map_camera.transform.translation.y = float(-camera_map_position[1])
-            t_map_camera.transform.translation.z = 0.0
+            # Build transform
+            t_camera_marker = TransformStamped()
+            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+            t_camera_marker.header.frame_id = "camera_frame"
+            t_camera_marker.child_frame_id = f"aruco_{marker_id}"
+            t_camera_marker.transform.translation.x = marker_pos_cam[0]
+            t_camera_marker.transform.translation.y = marker_pos_cam[1]
+            t_camera_marker.transform.translation.z = marker_pos_cam[2]
+            t_camera_marker.transform.rotation.x = quat[0]
+            t_camera_marker.transform.rotation.y = quat[1]
+            t_camera_marker.transform.rotation.z = quat[2]
+            t_camera_marker.transform.rotation.w = quat[3]
 
-            quat = quaternion_from_euler(0.0, 0.0, -rad_angle)
-            t_map_camera.transform.rotation.x = quat[0]
-            t_map_camera.transform.rotation.y = quat[1]
-            t_map_camera.transform.rotation.z = quat[2]
-            t_map_camera.transform.rotation.w = quat[3]
-
-            try:
-                t_base_camera = self.tf_buffer.lookup_transform(
-                    "base_link", "camera_frame", rclpy.time.Time(), Duration(seconds=0.1)
-                )
-            except Exception as e:
-                self.get_logger().warn(f"Could not lookup static base_link -> camera_frame: {e}")
-                return
-
-            def transform_to_matrix(t):
-                trans = translation_matrix([t.translation.x, t.translation.y, t.translation.z])
-                quat = [t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w]
-                rot = quaternion_matrix(quat)
-                return concatenate_matrices(trans, rot)
-
-            T_map_camera = transform_to_matrix(t_map_camera.transform)
-            T_camera_base = transform_to_matrix(t_base_camera.transform)
-            T_map_base = np.dot(T_map_camera, T_camera_base)
-
-            trans = translation_from_matrix(T_map_base)
-            quat = quaternion_from_matrix(T_map_base)
-
-            t_map_base = TransformStamped()
-            t_map_base.header.stamp = self.get_clock().now().to_msg()
-            t_map_base.header.frame_id = "map"
-            t_map_base.child_frame_id = "base_link"
-            t_map_base.transform.translation.x = trans[0]
-            t_map_base.transform.translation.y = trans[1]
-            t_map_base.transform.translation.z = trans[2]
-            t_map_base.transform.rotation.x = quat[0]
-            t_map_base.transform.rotation.y = quat[1]
-            t_map_base.transform.rotation.z = quat[2]
-            t_map_base.transform.rotation.w = quat[3]
-
-            self.tf_broadcaster.sendTransform(t_map_base)
+            self.tf_broadcaster.sendTransform(t_camera_marker)
             self.get_logger().info(
-                f"[TF] Published map -> base_link: x={trans[0]:.3f}, y={trans[1]:.3f}, yaw={rad_angle:.2f}"
+                f"[TF] Published camera_frame -> aruco_{marker_id}: x={x_cam:.2f}, y={y_cam:.2f}, z={z_cam:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
+
 
 def main(args=None):
     rclpy.init(args=args)
