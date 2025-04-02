@@ -18,6 +18,8 @@ from rclpy.duration import Duration
 
 from .submodules.aruco_detection import detect_aruco_corners
 
+from tf_transformations import quaternion_from_euler
+
 class MarkerLocalizationNode(Node):
     def __init__(self):
         super().__init__('marker_localization_node')
@@ -137,7 +139,7 @@ class MarkerLocalizationNode(Node):
             t_map_camera.transform.translation.y = float(camera_map_position[1])
             t_map_camera.transform.translation.z = 0.0
 
-            quat = quaternion_from_euler(0.0, 0.0, rad_angle)
+            quat = quaternion_from_euler(np.pi, 0.0, rad_angle)
             t_map_camera.transform.rotation.x = quat[0]
             t_map_camera.transform.rotation.y = quat[1]
             t_map_camera.transform.rotation.z = quat[2]
