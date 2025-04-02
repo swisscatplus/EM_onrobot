@@ -106,27 +106,30 @@ class MarkerLocalizationNode(Node):
             marker_id = marker['id']
             corners = marker['corners']  # shape: (4, 2)
 
-            # Estimate marker center in pixels
-            marker_center = np.mean(corners, axis=0)  # (x, y)
+            # Estimate center of marker in image
+            marker_center = np.mean(corners, axis=0)
             pixel_offset = marker_center - np.array([cx, cy])
 
-            # Estimate position in camera frame (arbitrary scale z=1)
-            x_cam = pixel_offset[0] / fx
-            y_cam = pixel_offset[1] / fy
-            z_cam = 1.0
-            cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])  # Position of camera in marker frame
+            # Project camera position into marker frame (unit depth)
+            x_cam = -pixel_offset[0] / fx  # Negative because marker X is to the left
+            y_cam = -pixel_offset[1] / fy  # Negative because marker Y is up
+            z_cam = 1.0  # Marker Z points into image
 
-            # Estimate orientation (yaw) from top to bottom edge of marker
+            # Position of camera in marker frame
+            cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
+
+            # Estimate yaw: vector from bottom to top (since Y is up)
             top_center = np.mean(corners[0:2], axis=0)
             bottom_center = np.mean(corners[2:4], axis=0)
             dx, dy = top_center - bottom_center
-            yaw_marker_to_cam = np.arctan2(-dy, dx)  # Negate dy due to image y-down
 
-            # Invert rotation: camera's yaw in marker frame
-            yaw_cam_in_marker = -yaw_marker_to_cam
-            quat = quaternion_from_euler(0.0, 0.0, yaw_cam_in_marker)
+            # Y-axis goes up in marker, so angle is atan2(dx, dy)
+            yaw = np.arctan2(dx, dy)
 
-            # Broadcast: aruco_<id> → camera_frame
+            # Camera's orientation in marker frame is opposite to what it sees
+            quat = quaternion_from_euler(0.0, 0.0, yaw)
+
+            # Create transform: aruco_<id> → camera_frame
             t_marker_camera = TransformStamped()
             t_marker_camera.header.stamp = self.get_clock().now().to_msg()
             t_marker_camera.header.frame_id = f"aruco_{marker_id}"
@@ -143,7 +146,8 @@ class MarkerLocalizationNode(Node):
 
             self.tf_broadcaster.sendTransform(t_marker_camera)
             self.get_logger().info(
-                f"[TF] aruco_{marker_id} -> camera_frame: x={x_cam:.2f}, y={y_cam:.2f}, z={z_cam:.2f}, yaw={np.degrees(yaw_cam_in_marker):.1f}°"
+                f"[TF] Published: aruco_{marker_id} → camera_frame: "
+                f"x={x_cam:.2f}, y={y_cam:.2f}, z={z_cam:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
 
 
