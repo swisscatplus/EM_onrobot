@@ -140,7 +140,7 @@ class MovementNode(Node):
         )
 
         # Convert raw encoder values to signed integers
-        current_position_r = -self.convert_to_signed(current_position_r)
+        current_position_r = self.convert_to_signed(current_position_r)
         current_position_l = self.convert_to_signed(current_position_l)
 
         # Log encoder readings
