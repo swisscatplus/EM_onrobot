@@ -18,7 +18,7 @@ ADDR_PRESENT_POSITION = 132
 
 # Default settings
 DXL_ID_1 = 2  # Right wheel motor ID
-DXL_ID_2 = 1  # Left wheel motor ID
+DXL_ID_2 = 3  # Left wheel motor ID
 BAUDRATE = 57600
 DEVICENAME = '/dev/ttyUSB0'
 
@@ -170,7 +170,7 @@ class MovementNode(Node):
         self.get_logger().info(f"Encoder Tick Differences -> Right: {delta_r}, Left: {delta_l}")
 
         # Convert ticks to radians
-        rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_r = -delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
         rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
 
         # Compute distances traveled
@@ -189,7 +189,7 @@ class MovementNode(Node):
 
         # Compute odometry values
         d = (d_r + d_l) / 2.0
-        dtheta = (d_l - d_r) / WHEEL_BASE
+        dtheta = (d_r - d_l) / WHEEL_BASE
 
         vx = d / dt
         vth = dtheta / dt
