@@ -17,8 +17,8 @@ ADDR_GOAL_VELOCITY = 104
 ADDR_PRESENT_POSITION = 132
 
 # Default settings
-DXL_ID_1 = 1  # Right wheel motor ID
-DXL_ID_2 = 3  # Left wheel motor ID
+DXL_ID_1 = 2  # Right wheel motor ID
+DXL_ID_2 = 1  # Left wheel motor ID
 BAUDRATE = 57600
 DEVICENAME = '/dev/ttyUSB0'
 
