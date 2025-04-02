@@ -108,7 +108,7 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.translation.z = 0.0    # e.g., 20 cm up.
         static_transform.transform.rotation.x = 0.0
         static_transform.transform.rotation.y = 0.0
-        static_transform.transform.rotation.z = 1.57
+        static_transform.transform.rotation.z = 0.0
         static_transform.transform.rotation.w = 1.0
 
         self.static_tf_broadcaster.sendTransform(static_transform)
