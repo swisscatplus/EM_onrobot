@@ -18,7 +18,7 @@ ADDR_PRESENT_POSITION = 132
 
 # Default settings
 DXL_ID_1 = 2  # Right wheel motor ID
-DXL_ID_2 = 3  # Left wheel motor ID
+DXL_ID_2 = 1  # Left wheel motor ID
 BAUDRATE = 57600
 DEVICENAME = '/dev/ttyUSB0'
 
@@ -93,11 +93,11 @@ class MovementNode(Node):
 
         # Convert from (v, w) to each wheel's velocity in "Dynamixel speed units"
         motor_speed_r = int(
-            (linear_x - (angular_z * WHEEL_BASE / 2))
+            (linear_x + (angular_z * WHEEL_BASE / 2))
             * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
         )
         motor_speed_l = int(
-            (linear_x + (angular_z * WHEEL_BASE / 2))
+            (linear_x - (angular_z * WHEEL_BASE / 2))
             * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
         )
 
@@ -170,8 +170,8 @@ class MovementNode(Node):
         self.get_logger().info(f"Encoder Tick Differences -> Right: {delta_r}, Left: {delta_l}")
 
         # Convert ticks to radians
-        rad_r = -delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
-        rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_l = -delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
 
         # Compute distances traveled
         d_r = rad_r * WHEEL_RADIUS
