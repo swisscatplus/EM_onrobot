@@ -137,10 +137,10 @@ class MarkerLocalizationNode(Node):
             t_map_camera.child_frame_id = "camera_frame"
 
             t_map_camera.transform.translation.x = float(camera_map_position[0])
-            t_map_camera.transform.translation.y = float(camera_map_position[1])
+            t_map_camera.transform.translation.y = float(-camera_map_position[1])
             t_map_camera.transform.translation.z = 0.0
 
-            quat = quaternion_from_euler(0.0, 0.0, rad_angle)
+            quat = quaternion_from_euler(0.0, 0.0, -rad_angle)
             t_map_camera.transform.rotation.x = quat[0]
             t_map_camera.transform.rotation.y = quat[1]
             t_map_camera.transform.rotation.z = quat[2]
