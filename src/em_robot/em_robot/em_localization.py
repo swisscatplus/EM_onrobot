@@ -80,7 +80,7 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.translation.x = 0.198
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
-        quat = quaternion_from_euler(0.0, 0.0, np.pi/2)
+        quat = quaternion_from_euler(0.0, np.pi, np.pi/2)
         static_transform.transform.rotation.x = quat[0]
         static_transform.transform.rotation.y = quat[1]
         static_transform.transform.rotation.z = quat[2]
