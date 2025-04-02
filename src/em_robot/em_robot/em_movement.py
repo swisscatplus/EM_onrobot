@@ -93,11 +93,11 @@ class MovementNode(Node):
 
         # Convert from (v, w) to each wheel's velocity in "Dynamixel speed units"
         motor_speed_r = int(
-            (linear_x + (angular_z * WHEEL_BASE / 2))
+            (linear_x - (angular_z * WHEEL_BASE / 2))
             * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
         )
         motor_speed_l = int(
-            (linear_x - (angular_z * WHEEL_BASE / 2))
+            (linear_x + (angular_z * WHEEL_BASE / 2))
             * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
         )
 
