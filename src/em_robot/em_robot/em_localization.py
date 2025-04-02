@@ -173,8 +173,8 @@ class MarkerLocalizationNode(Node):
             pose_msg.header.stamp = self.get_clock().now().to_msg()
             pose_msg.header.frame_id = "map"
 
-            pose_msg.pose.pose.position.x = float(camera_map_position[1])
-            pose_msg.pose.pose.position.y = float(camera_map_position[0])
+            pose_msg.pose.pose.position.x = float(camera_map_position[0])
+            pose_msg.pose.pose.position.y = float(camera_map_position[1])
             pose_msg.pose.pose.position.z = 0.0  # For 2D localization
 
             quat = quaternion_from_euler(0.0, 0.0, rad_angle)
