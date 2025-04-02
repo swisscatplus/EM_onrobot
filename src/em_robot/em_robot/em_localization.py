@@ -80,10 +80,11 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.translation.x = 0.198
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
-        static_transform.transform.rotation.x = 0.0
-        static_transform.transform.rotation.y = 0.0
-        static_transform.transform.rotation.z = 0.0
-        static_transform.transform.rotation.w = 1.0
+        quat = quaternion_from_euler(0.0, 0.0, 1.57)
+        t_map_camera.transform.rotation.x = quat[0]
+        t_map_camera.transform.rotation.y = quat[1]
+        t_map_camera.transform.rotation.z = quat[2]
+        t_map_camera.transform.rotation.w = quat[3]
 
         self.static_tf_broadcaster.sendTransform(static_transform)
         self.get_logger().info("Published static transform: base_link -> camera_frame")
@@ -139,7 +140,7 @@ class MarkerLocalizationNode(Node):
             t_map_camera.transform.translation.y = float(camera_map_position[1])
             t_map_camera.transform.translation.z = 0.0
 
-            quat = quaternion_from_euler(np.pi, 0.0, rad_angle)
+            quat = quaternion_from_euler(0.0, 0.0, rad_angle)
             t_map_camera.transform.rotation.x = quat[0]
             t_map_camera.transform.rotation.y = quat[1]
             t_map_camera.transform.rotation.z = quat[2]
