@@ -111,9 +111,9 @@ class MarkerLocalizationNode(Node):
             pixel_offset = marker_center - np.array([cx, cy])
 
             # Project camera position into marker frame (unit depth)
-            x_cam = -pixel_offset[0] / fx  # X is left in marker
+            x_cam = pixel_offset[0] / fx  # X is left in marker
             y_cam = -pixel_offset[1] / fy  # Y is up in marker
-            z_cam = 1.0  # Z is forward (into the image)
+            z_cam = 0.0  # Z is forward (into the image)
 
             # Position of camera in marker frame
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
