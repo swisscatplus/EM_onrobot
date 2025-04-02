@@ -197,6 +197,7 @@ class MarkerLocalizationNode(Node):
                 f"Marker {marker_id}: camera pose in map: x={camera_map_position[0]:.3f} m, "
                 f"y={camera_map_position[1]:.3f} m, yaw={rad_angle:.3f} rad"
             )
+            
 
 def main(args=None):
     rclpy.init(args=args)
