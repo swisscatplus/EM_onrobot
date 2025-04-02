@@ -189,7 +189,7 @@ class MovementNode(Node):
 
         # Compute odometry values
         d = (d_r + d_l) / 2.0
-        dtheta = (d_r - d_l) / WHEEL_BASE
+        dtheta = (d_l - d_r) / WHEEL_BASE
 
         vx = d / dt
         vth = dtheta / dt
