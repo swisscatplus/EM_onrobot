@@ -51,7 +51,7 @@ class MarkerLocalizationNode(Node):
 
         self.camera_height = config.get('camera_height', 0.38)
 
-        self.size = (1280, 720)
+        self.size = (1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -117,10 +117,10 @@ class MarkerLocalizationNode(Node):
             ).reshape(-1, 2)
 
             marker_center = np.mean(undistorted_corners, axis=0)
-            cx = self.camera_matrix[0, 2]*3.6
-            cy = self.camera_matrix[1, 2]*3.6
-            fx = self.camera_matrix[0, 0]*3.6
-            fy = self.camera_matrix[1, 1]*3.6
+            cx = self.camera_matrix[0, 2]
+            cy = self.camera_matrix[1, 2]
+            fx = self.camera_matrix[0, 0]
+            fy = self.camera_matrix[1, 1]
             pixel_offset = marker_center - np.array([cx, cy])
 
             x_cam = -pixel_offset[0] / (fx)
