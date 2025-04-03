@@ -49,7 +49,7 @@ class MarkerLocalizationNode(Node):
         if self.dist_coeffs.shape[0] < 4:
             raise ValueError("dist_coeff must have at least 4 values (k1, k2, p1, p2)!")
 
-        self.camera_height = config.get('camera_height', 0.38)
+        self.camera_height = config.get('camera_height', 0.44)
 
         self.size = (4608, 2592)
         self.picam2 = Picamera2()
