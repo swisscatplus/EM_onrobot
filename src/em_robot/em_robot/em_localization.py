@@ -72,7 +72,8 @@ class MarkerLocalizationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.timer_period = 0.5
+        self.frequency = 5
+        self.timer_period = 1/self.frequency
         self.timer = self.create_timer(self.timer_period, self.process_frame)
 
         self.get_logger().info("MarkerLocalizationNode: started.")
@@ -117,8 +118,8 @@ class MarkerLocalizationNode(Node):
             pixel_offset = marker_center - np.array([cx, cy])
 
             # Project camera position into marker frame (unit depth)
-            x_cam = pixel_offset[0] / fx
-            y_cam = pixel_offset[1] / fy
+            x_cam = -pixel_offset[0] / fx
+            y_cam = -pixel_offset[1] / fy
             z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
