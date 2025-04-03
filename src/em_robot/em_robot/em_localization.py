@@ -51,7 +51,7 @@ class MarkerLocalizationNode(Node):
 
         self.camera_height = config.get('camera_height', 0.38)
 
-        self.size = (1536, 864)
+        self.size = (1536*3, 864*3)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -72,7 +72,7 @@ class MarkerLocalizationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.frequency = 5
+        self.frequency = 2
         self.timer_period = 1/self.frequency
         self.timer = self.create_timer(self.timer_period, self.process_frame)
 
