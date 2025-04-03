@@ -54,7 +54,7 @@ class MarkerLocalizationNode(Node):
         self.size = (4608, 2592)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_still_configuration(
-            main={"size": (4608, 2592)},  # scale down the 4608x2592 image, but maintain the full field of view
+            main={"size": (1536, 864)},  # scale down the 4608x2592 image, but maintain the full field of view
             raw={'size': self.size},  # 4608x2592
             buffer_count=2
         )
@@ -74,7 +74,7 @@ class MarkerLocalizationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.frequency = 2
+        self.frequency = 5
         self.timer_period = 1/self.frequency
         self.timer = self.create_timer(self.timer_period, self.process_frame)
 
