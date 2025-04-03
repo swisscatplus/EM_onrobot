@@ -53,8 +53,10 @@ class MarkerLocalizationNode(Node):
 
         self.size = (1536*3, 864*3)
         self.picam2 = Picamera2()
-        preview_config = self.picam2.create_preview_configuration(
-            main={"format": 'XRGB8888', "size": self.size}
+        preview_config = self.picam2.create_still_configuration(
+            main={"size": (4608, 2592)},  # scale down the 4608x2592 image, but maintain the full field of view
+            raw={'size': picam2.sensor_resolution},  # 4608x2592
+            buffer_count=2
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
@@ -121,10 +123,10 @@ class MarkerLocalizationNode(Node):
             cy = self.camera_matrix[1, 2]
             fx = self.camera_matrix[0, 0]
             fy = self.camera_matrix[1, 1]
-            pixel_offset = marker_center - np.array([cx, cy])
+            pixel_offset = np.array([cx, cy]) - marker_center
 
-            x_cam = -pixel_offset[0] / (fx*4)
-            y_cam = -pixel_offset[1] / (fy*4)
+            x_cam = pixel_offset[0] / (fx)
+            y_cam = pixel_offset[1] / (fy)
             z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
