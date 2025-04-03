@@ -104,47 +104,48 @@ class MarkerLocalizationNode(Node):
             self.get_logger().info("No markers detected.")
             return
 
-        fx = self.camera_matrix[0, 0]
-        fy = self.camera_matrix[1, 1]
-        cx = self.camera_matrix[0, 2]
-        cy = self.camera_matrix[1, 2]
-
         for marker in detections:
             marker_id = marker['id']
             corners = marker['corners']  # shape: (4, 2)
 
-            # Estimate center of marker in image
-            marker_center = np.mean(corners, axis=0)
+            # Undistort corners
+            undistorted_corners = cv.undistortPoints(
+                np.expand_dims(corners, axis=1),
+                self.camera_matrix,
+                self.dist_coeffs,
+                P=self.camera_matrix
+            ).reshape(-1, 2)
+
+            marker_center = np.mean(undistorted_corners, axis=0)
+            cx = self.camera_matrix[0, 2]
+            cy = self.camera_matrix[1, 2]
+            fx = self.camera_matrix[0, 0]
+            fy = self.camera_matrix[1, 1]
             pixel_offset = marker_center - np.array([cx, cy])
 
-            # Project camera position into marker frame (unit depth)
             x_cam = -pixel_offset[0] / fx
             y_cam = -pixel_offset[1] / fy
             z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
 
-            # Estimate yaw (rotation around Z axis)
-            top_center = np.mean(corners[0:2], axis=0)
-            bottom_center = np.mean(corners[2:4], axis=0)
+            top_center = np.mean(undistorted_corners[0:2], axis=0)
+            bottom_center = np.mean(undistorted_corners[2:4], axis=0)
             dx = top_center[0] - bottom_center[0]
             dy = top_center[1] - bottom_center[1]
             yaw = np.arctan2(dx, -dy)
 
             quat = quaternion_from_euler(0.0, 0.0, yaw)
 
-            # Build transform from camera_frame to marker frame
             T_marker_cam = concatenate_matrices(
                 translation_matrix(cam_in_marker_pos),
                 quaternion_matrix(quat)
             )
 
-            # Invert it to get camera in marker frame
             T_cam_marker = np.linalg.inv(T_marker_cam)
             inv_trans = translation_from_matrix(T_cam_marker)
             inv_quat = quaternion_from_matrix(T_cam_marker)
 
-            # Create inverted transform: aruco_<id> → camera_frame
             t_camera_marker = TransformStamped()
             t_camera_marker.header.stamp = self.get_clock().now().to_msg()
             t_camera_marker.header.frame_id = f"aruco_{marker_id}"
@@ -165,7 +166,6 @@ class MarkerLocalizationNode(Node):
                 f"[TF] Published: camera_frame ← aruco_{marker_id}: "
                 f"x={inv_trans[0]:.2f}, y={inv_trans[1]:.2f}, z={inv_trans[2]:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
-
 
 def main(args=None):
     rclpy.init(args=args)
