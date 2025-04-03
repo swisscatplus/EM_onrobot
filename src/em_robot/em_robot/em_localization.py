@@ -123,8 +123,8 @@ class MarkerLocalizationNode(Node):
             fy = self.camera_matrix[1, 1]
             pixel_offset = marker_center - np.array([cx, cy])
 
-            x_cam = -pixel_offset[0] / (fx)
-            y_cam = -pixel_offset[1] / (fy)
+            x_cam = -pixel_offset[0] / (fx*4)
+            y_cam = -pixel_offset[1] / (fy*4)
             z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
