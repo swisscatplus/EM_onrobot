@@ -86,7 +86,7 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.translation.x = -0.198
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
-        quat = quaternion_from_euler(0.0, -np.pi, -np.pi/2)
+        quat = quaternion_from_euler(0.0, 0.0, 0.0)
         static_transform.transform.rotation.x = quat[0]
         static_transform.transform.rotation.y = quat[1]
         static_transform.transform.rotation.z = quat[2]
@@ -118,7 +118,7 @@ class MarkerLocalizationNode(Node):
 
             # Project camera position into marker frame (unit depth)
             x_cam = pixel_offset[0] / fx
-            y_cam = -pixel_offset[1] / fy
+            y_cam = pixel_offset[1] / fy
             z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
