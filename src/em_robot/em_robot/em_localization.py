@@ -10,7 +10,14 @@ import cv2 as cv
 
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
 from geometry_msgs.msg import TransformStamped
-from tf_transformations import quaternion_from_euler, quaternion_matrix, translation_matrix, concatenate_matrices, translation_from_matrix, quaternion_from_matrix
+from tf_transformations import (
+    quaternion_from_euler,
+    quaternion_matrix,
+    translation_matrix,
+    concatenate_matrices,
+    translation_from_matrix,
+    quaternion_from_matrix
+)
 from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
@@ -18,7 +25,6 @@ from rclpy.duration import Duration
 
 from .submodules.aruco_detection import detect_aruco_corners
 
-from tf_transformations import quaternion_from_euler
 
 class MarkerLocalizationNode(Node):
     def __init__(self):
@@ -106,66 +112,57 @@ class MarkerLocalizationNode(Node):
             marker_id = marker['id']
             corners = marker['corners']  # shape: (4, 2)
 
-            # Compute orientation of the marker in the image
-            top_center = np.mean(corners[0:2], axis=0)
-            bottom_center = np.mean(corners[2:4], axis=0)
-
-            dx = top_center[0] - bottom_center[0]
-            dy = top_center[1] - bottom_center[1]
-
-            # Marker Y is up → invert dy
-            yaw = np.arctan2(dx, -dy)
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
-
-            # Estimate pixel offset of marker center from camera principal point
+            # Estimate center of marker in image
             marker_center = np.mean(corners, axis=0)
             pixel_offset = marker_center - np.array([cx, cy])
 
-            # Rotate pixel offset into marker frame
-            rot_matrix = np.array([
-                [np.cos(-yaw), -np.sin(-yaw)],
-                [np.sin(-yaw), np.cos(-yaw)]
-            ])
-            rotated_offset = rot_matrix @ pixel_offset
-
-            # Project into marker frame (unit depth)
-            x_cam = -rotated_offset[0] / fx
-            y_cam = -rotated_offset[1] / fy
-            z_cam = 1.0  # Arbitrary unit depth
+            # Project camera position into marker frame (unit depth)
+            x_cam = pixel_offset[0] / fx
+            y_cam = -pixel_offset[1] / fy
+            z_cam = 0.0
 
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
 
-            # --- Invert the transform ---
-            trans = translation_matrix(cam_in_marker_pos)
-            rot = quaternion_matrix(quat)
-            T_marker_camera = concatenate_matrices(trans, rot)
+            # Estimate yaw (rotation around Z axis)
+            top_center = np.mean(corners[0:2], axis=0)
+            bottom_center = np.mean(corners[2:4], axis=0)
+            dx = top_center[0] - bottom_center[0]
+            dy = top_center[1] - bottom_center[1]
+            yaw = np.arctan2(dx, -dy)
 
-            T_camera_marker = np.linalg.inv(T_marker_camera)
+            quat = quaternion_from_euler(0.0, 0.0, yaw)
 
-            trans_inv = translation_from_matrix(T_camera_marker)
-            quat_inv = quaternion_from_matrix(T_camera_marker)
+            # Build transform from camera_frame to marker frame
+            T_marker_cam = concatenate_matrices(
+                translation_matrix(cam_in_marker_pos),
+                quaternion_matrix(quat)
+            )
 
-            # --- Broadcast: aruco_<id> → camera_frame ---
-            t_marker_camera = TransformStamped()
-            t_marker_camera.header.stamp = self.get_clock().now().to_msg()
-            t_marker_camera.header.frame_id = f"aruco_{marker_id}"
-            t_marker_camera.child_frame_id = "camera_frame"
+            # Invert it to get camera in marker frame
+            T_cam_marker = np.linalg.inv(T_marker_cam)
+            inv_trans = translation_from_matrix(T_cam_marker)
+            inv_quat = quaternion_from_matrix(T_cam_marker)
 
-            t_marker_camera.transform.translation.x = trans_inv[0]
-            t_marker_camera.transform.translation.y = trans_inv[1]
-            t_marker_camera.transform.translation.z = trans_inv[2]
+            # Create inverted transform: aruco_<id> → camera_frame
+            t_camera_marker = TransformStamped()
+            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
+            t_camera_marker.child_frame_id = "camera_frame"
 
-            t_marker_camera.transform.rotation.x = quat_inv[0]
-            t_marker_camera.transform.rotation.y = quat_inv[1]
-            t_marker_camera.transform.rotation.z = quat_inv[2]
-            t_marker_camera.transform.rotation.w = quat_inv[3]
+            t_camera_marker.transform.translation.x = inv_trans[0]
+            t_camera_marker.transform.translation.y = inv_trans[1]
+            t_camera_marker.transform.translation.z = inv_trans[2]
 
-            self.tf_broadcaster.sendTransform(t_marker_camera)
+            t_camera_marker.transform.rotation.x = inv_quat[0]
+            t_camera_marker.transform.rotation.y = inv_quat[1]
+            t_camera_marker.transform.rotation.z = inv_quat[2]
+            t_camera_marker.transform.rotation.w = inv_quat[3]
+
+            self.tf_broadcaster.sendTransform(t_camera_marker)
 
             self.get_logger().info(
-                f"[TF] Published: aruco_{marker_id} → camera_frame: "
-                f"x={trans_inv[0]:.2f}, y={trans_inv[1]:.2f}, z={trans_inv[2]:.2f}, "
-                f"yaw={np.degrees(yaw):.1f}°"
+                f"[TF] Published: camera_frame ← aruco_{marker_id}: "
+                f"x={inv_trans[0]:.2f}, y={inv_trans[1]:.2f}, z={inv_trans[2]:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
 
 
