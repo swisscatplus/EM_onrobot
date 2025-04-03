@@ -80,20 +80,20 @@ class MarkerLocalizationNode(Node):
     def publish_static_transform(self):
         static_transform = TransformStamped()
         static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = "base_link"
-        static_transform.child_frame_id = "camera_frame"
+        static_transform.header.frame_id = "camera_frame"
+        static_transform.child_frame_id = "base_link"
 
-        static_transform.transform.translation.x = 0.198
+        static_transform.transform.translation.x = -0.198
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
-        quat = quaternion_from_euler(0.0, np.pi, np.pi/2)
+        quat = quaternion_from_euler(0.0, -np.pi, -np.pi/2)
         static_transform.transform.rotation.x = quat[0]
         static_transform.transform.rotation.y = quat[1]
         static_transform.transform.rotation.z = quat[2]
         static_transform.transform.rotation.w = quat[3]
 
         self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info("Published static transform: base_link -> camera_frame")
+        self.get_logger().info("Published static transform: camera_frame -> base_link ")
 
     def process_frame(self):
         frame = self.picam2.capture_array()
