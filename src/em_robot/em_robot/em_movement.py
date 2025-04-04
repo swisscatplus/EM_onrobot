@@ -1,244 +1,266 @@
 #!/usr/bin/env python3
-
-import os
-import yaml
 import rclpy
 from rclpy.node import Node
-
-import numpy as np
-import cv2 as cv
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+from dynamixel_sdk import *  # Import DYNAMIXEL SDK library
 import math
 
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
-from geometry_msgs.msg import TransformStamped
-from nav_msgs.msg import Odometry
-from tf_transformations import (
-    quaternion_from_euler,
-    quaternion_matrix,
-    translation_matrix,
-    concatenate_matrices,
-    translation_from_matrix,
-    quaternion_from_matrix
-)
-from picamera2 import Picamera2
-from libcamera import controls
-from ament_index_python.packages import get_package_share_directory
+# --- Constants ---
+WHEEL_RADIUS = 0.035  # 35 mm = 0.035 m
+WHEEL_BASE = 0.130  # 129 mm = 0.129 m
+ENCODER_RESOLUTION = 4096  # Ticks per revolution for X-Series in extended position mode
 
-from .submodules.aruco_detection import detect_aruco_corners
+# Control Table Addresses (for X-Series, including XC430-W150)
+ADDR_TORQUE_ENABLE = 64
+ADDR_GOAL_VELOCITY = 104
+ADDR_PRESENT_POSITION = 132
+
+# Default settings
+DXL_ID_1 = 2  # Right wheel motor ID
+DXL_ID_2 = 1  # Left wheel motor ID
+BAUDRATE = 57600
+DEVICENAME = '/dev/ttyUSB0'
+
+# Torque control
+TORQUE_ENABLE = 1
+TORQUE_DISABLE = 0
 
 
-class MarkerLocalizationNode(Node):
+class MovementNode(Node):
     def __init__(self):
-        super().__init__('marker_localization_node')
+        super().__init__('movement_node')
+        self.get_logger().info('MovementNode started')
 
-        # === Load calibration ===
-        package_name = 'em_robot'
-        config_filename = 'config/calibration.yaml'
-        pkg_share = get_package_share_directory(package_name)
-        config_path = os.path.join(pkg_share, config_filename)
-        self.get_logger().info(f"Loading configuration: {config_path}")
+        # Initialize PortHandler/PacketHandler
+        self.portHandler = PortHandler(DEVICENAME)
+        self.packetHandler = PacketHandler(2.0)
 
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+        # Attempt to open port
+        if not self.portHandler.openPort():
+            self.get_logger().error("Failed to open port")
+            return
+        if not self.portHandler.setBaudRate(BAUDRATE):
+            self.get_logger().error("Failed to set baudrate")
+            return
 
-        cammat_list = config.get('camera_matrix', [])
-        dist_list = config.get('dist_coeff', [])
-        self.camera_matrix = np.array(cammat_list, dtype=np.float32)
-        self.dist_coeffs = np.array(dist_list, dtype=np.float32)
+        # Enable torque on both motors
+        for dxl_id in [DXL_ID_1, DXL_ID_2]:
+            result, error = self.packetHandler.write1ByteTxRx(
+                self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE
+            )
+            if result != COMM_SUCCESS or error != 0:
+                self.get_logger().error(
+                    f"Failed to enable torque on Dynamixel ID={dxl_id} (result: {result}, error: {error})")
+            else:
+                self.get_logger().info(f"Torque enabled on Dynamixel ID={dxl_id}")
 
-        if self.camera_matrix.shape != (3, 3):
-            raise ValueError("Camera matrix must be 3x3 in the YAML!")
-        if self.dist_coeffs.shape[0] < 4:
-            raise ValueError("dist_coeff must have at least 4 values (k1, k2, p1, p2)!")
-
-        self.camera_height = config.get('camera_height', 0.381)
-
-        # === Camera setup ===
-        self.size = (1536, 864)
-        self.picam2 = Picamera2()
-        preview_config = self.picam2.create_preview_configuration(
-            main={"format": 'XRGB8888', "size": self.size}
-        )
-        self.picam2.configure(preview_config)
-        self.picam2.start()
-        self.picam2.set_controls({
-            "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": 1.0 / self.camera_height
-        })
-
-        # === TF and Odom setup ===
-        self.tf_broadcaster = TransformBroadcaster(self)
-        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
-        self.publish_static_transform()
-
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-
-        self.last_odom = None
-        self.prev_odom = None
-
-        self.estimated_x = 0.0
-        self.estimated_y = 0.0
-        self.estimated_theta = 0.0
-
-        self.odom_subscription = self.create_subscription(
-            Odometry,
-            'odomWheel',
-            self.odom_callback,
+        # Create subscription to cmd_vel topic
+        self.subscription = self.create_subscription(
+            Twist,
+            'cmd_vel',
+            self.cmd_vel_callback,
             10
         )
 
-        self.timer_period = 1 / 5  # 5 Hz
-        self.timer = self.create_timer(self.timer_period, self.process_frame)
+        # Create publisher for odometry and timer for periodic updates
+        self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
+        self.odom_timer = self.create_timer(0.1, self.odom_callback)  # 10 Hz
 
-        self.get_logger().info("MarkerLocalizationNode: started.")
+        # Odometry state variables
+        self.prev_position_r = None
+        self.prev_position_l = None
+        self.prev_time = self.get_clock().now()
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
 
-    def publish_static_transform(self):
-        static_transform = TransformStamped()
-        static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = "camera_frame"
-        static_transform.child_frame_id = "base_link"
+    def convert_to_signed(self, val):
+        """
+        Convert the raw encoder value (unsigned 32-bit) to a signed integer.
+        """
+        if val > 2147483647:  # If the value exceeds the maximum signed 32-bit integer...
+            return val - 4294967296  # ...subtract 2**32 to get the signed value.
+        return val
 
-        static_transform.transform.translation.x = -0.192
-        static_transform.transform.translation.y = 0.0
-        static_transform.transform.translation.z = 0.0
+    def cmd_vel_callback(self, msg: Twist):
+        """
+        Callback for cmd_vel subscription:
+        Converts linear and angular velocity to the motor velocity commands.
+        """
+        linear_x = msg.linear.x
+        angular_z = msg.angular.z
 
-        quat = quaternion_from_euler(0.0, 0.0, 0.0)
-        static_transform.transform.rotation.x = quat[0]
-        static_transform.transform.rotation.y = quat[1]
-        static_transform.transform.rotation.z = quat[2]
-        static_transform.transform.rotation.w = quat[3]
-
-        self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info("Published static transform: camera_frame -> base_link")
-
-    def odom_callback(self, msg):
-        if self.prev_odom is not None:
-            dx = msg.pose.pose.position.x - self.prev_odom.pose.pose.position.x
-            dy = msg.pose.pose.position.y - self.prev_odom.pose.pose.position.y
-
-            def yaw_from_quat(q):
-                siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-                cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-                return math.atan2(siny_cosp, cosy_cosp)
-
-            theta_prev = yaw_from_quat(self.prev_odom.pose.pose.orientation)
-            theta_now = yaw_from_quat(msg.pose.pose.orientation)
-            dtheta = theta_now - theta_prev
-
-            # Rotate dx, dy into the map frame
-            self.estimated_x += dx * math.cos(self.estimated_theta) - dy * math.sin(self.estimated_theta)
-            self.estimated_y += dx * math.sin(self.estimated_theta) + dy * math.cos(self.estimated_theta)
-            self.estimated_theta += dtheta
-
-        self.prev_odom = msg
-
-    def process_frame(self):
-        frame = self.picam2.capture_array()
-        detections = detect_aruco_corners(frame)
-
-        if not detections:
-            self.get_logger().info("No markers detected.")
-            self.publish_fallback_transform()
-            return
-
-        for marker in detections:
-            marker_id = marker['id']
-            corners = marker['corners']
-
-            undistorted_corners = cv.undistortPoints(
-                np.expand_dims(corners, axis=1),
-                self.camera_matrix,
-                self.dist_coeffs,
-                P=self.camera_matrix
-            ).reshape(-1, 2)
-
-            marker_center = np.mean(corners, axis=0)
-            cx = self.camera_matrix[0, 2]
-            cy = self.camera_matrix[1, 2]
-            fx = self.camera_matrix[0, 0]
-            fy = self.camera_matrix[1, 1]
-            pixel_offset = np.array([cx, cy]) - marker_center
-
-            x_cam = self.camera_height * pixel_offset[0] / (fx * 2)
-            y_cam = self.camera_height * pixel_offset[1] / (fy * 2)
-            z_cam = 0.0
-            cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
-
-            top_center = np.mean(corners[0:2], axis=0)
-            bottom_center = np.mean(corners[2:4], axis=0)
-            dx = top_center[0] - bottom_center[0]
-            dy = top_center[1] - bottom_center[1]
-            yaw = np.arctan2(dx, -dy)
-
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
-            T_marker_cam = concatenate_matrices(
-                translation_matrix(cam_in_marker_pos),
-                quaternion_matrix(quat)
-            )
-            T_cam_marker = np.linalg.inv(T_marker_cam)
-            inv_trans = translation_from_matrix(T_cam_marker)
-            inv_quat = quaternion_from_matrix(T_cam_marker)
-
-            # Update estimated pose from marker
-            self.estimated_x = inv_trans[0]
-            self.estimated_y = inv_trans[1]
-            self.estimated_theta = yaw
-
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = f"aruco_{marker_id}"
-            t.child_frame_id = "camera_frame"
-
-            t.transform.translation.x = inv_trans[0]
-            t.transform.translation.y = inv_trans[1]
-            t.transform.translation.z = inv_trans[2]
-
-            t.transform.rotation.x = inv_quat[0]
-            t.transform.rotation.y = inv_quat[1]
-            t.transform.rotation.z = inv_quat[2]
-            t.transform.rotation.w = inv_quat[3]
-
-            self.tf_broadcaster.sendTransform(t)
-            self.get_logger().info(
-                f"[TF] Marker detected: camera_frame ← aruco_{marker_id} | "
-                f"x={inv_trans[0]:.2f}, y={inv_trans[1]:.2f}, yaw={np.degrees(yaw):.1f}°"
-            )
-
-    def publish_fallback_transform(self):
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "map"
-        t.child_frame_id = "base_link"
-
-        t.transform.translation.x = self.estimated_x
-        t.transform.translation.y = self.estimated_y
-        t.transform.translation.z = 0.0
-
-        quat = quaternion_from_euler(0.0, 0.0, self.estimated_theta)
-        t.transform.rotation.x = quat[0]
-        t.transform.rotation.y = quat[1]
-        t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
-
-        self.tf_broadcaster.sendTransform(t)
-        self.get_logger().info(
-            f"[TF-Fallback] Published from odom delta: x={self.estimated_x:.2f}, "
-            f"y={self.estimated_y:.2f}, θ={math.degrees(self.estimated_theta):.1f}°"
+        # Convert from (v, w) to each wheel's velocity in "Dynamixel speed units"
+        motor_speed_r = int(
+            (linear_x + (angular_z * WHEEL_BASE / 2))
+            * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
         )
+        motor_speed_l = int(
+            (linear_x - (angular_z * WHEEL_BASE / 2))
+            * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
+        )
+
+        # Safeguard: limit the motor speeds
+        motor_speed_r = max(min(motor_speed_r, 410), -410)
+        motor_speed_l = max(min(motor_speed_l, 410), -410)
+
+        self.get_logger().info(
+            f"cmd_vel: v={linear_x:.3f}, w={angular_z:.3f} -> R={motor_speed_r}, L={motor_speed_l}"
+        )
+
+        # Send the goal velocities to the motors and log errors if any
+        result_r, error_r = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY,
+                                                                motor_speed_r)
+        if result_r != COMM_SUCCESS or error_r != 0:
+            self.get_logger().error(f"Error sending goal velocity to right wheel: result={result_r}, error={error_r}")
+        else:
+            self.get_logger().debug("Right wheel velocity command sent successfully.")
+
+        result_l, error_l = self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY,
+                                                                motor_speed_l)
+        if result_l != COMM_SUCCESS or error_l != 0:
+            self.get_logger().error(f"Error sending goal velocity to left wheel: result={result_l}, error={error_l}")
+        else:
+            self.get_logger().debug("Left wheel velocity command sent successfully.")
+
+    def odom_callback(self):
+        """
+        Called by the timer to read the present positions from the Dynamixels,
+        calculate odometry, and publish it.
+        """
+        now = self.get_clock().now()
+
+        # Read encoder positions
+        current_position_r, dxl_comm_result_r, dxl_error_r = self.packetHandler.read4ByteTxRx(
+            self.portHandler, DXL_ID_1, ADDR_PRESENT_POSITION
+        )
+        current_position_l, dxl_comm_result_l, dxl_error_l = self.packetHandler.read4ByteTxRx(
+            self.portHandler, DXL_ID_2, ADDR_PRESENT_POSITION
+        )
+
+        # Convert raw encoder values to signed integers
+        current_position_r = self.convert_to_signed(current_position_r)
+        current_position_l = self.convert_to_signed(current_position_l)
+
+        # Log encoder readings
+        self.get_logger().info(f"Raw Encoder Readings -> Right: {current_position_r}, Left: {current_position_l}")
+
+        if self.prev_position_r is None or self.prev_position_l is None:
+            self.prev_position_r = current_position_r
+            self.prev_position_l = current_position_l
+            self.prev_time = now
+            return  # Skip first iteration
+
+        # Compute encoder differences
+        delta_r = current_position_r - self.prev_position_r
+        delta_l = current_position_l - self.prev_position_l
+
+        # Handle wrap-around cases (assuming 32-bit integer)
+        if delta_r > ENCODER_RESOLUTION / 2:
+            delta_r -= ENCODER_RESOLUTION
+        elif delta_r < -ENCODER_RESOLUTION / 2:
+            delta_r += ENCODER_RESOLUTION
+
+        if delta_l > ENCODER_RESOLUTION / 2:
+            delta_l -= ENCODER_RESOLUTION
+        elif delta_l < -ENCODER_RESOLUTION / 2:
+            delta_l += ENCODER_RESOLUTION
+
+        self.get_logger().info(f"Encoder Tick Differences -> Right: {delta_r}, Left: {delta_l}")
+
+        # Convert ticks to radians
+        rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
+        rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
+
+        # Compute distances traveled
+        d_r = rad_r * WHEEL_RADIUS
+        d_l = rad_l * WHEEL_RADIUS
+
+        self.get_logger().info(f"Wheel Travel Distances -> d_r: {d_r:.6f} m, d_l: {d_l:.6f} m")
+
+        # Compute time elapsed
+        dt = (now - self.prev_time).nanoseconds / 1e9
+        if dt <= 0:
+            self.get_logger().error("Time difference (dt) is zero or negative!")
+            dt = 1e-6  # Prevent division by zero
+
+        self.get_logger().info(f"Elapsed Time -> dt: {dt:.6f} sec")
+
+        # Compute odometry values
+        d = (d_r + d_l) / 2.0
+        dtheta = (d_r - d_l) / WHEEL_BASE
+
+        vx = d / dt
+        vth = dtheta / dt
+
+        self.get_logger().info(f"Computed Velocities -> Linear: {vx:.6f} m/s, Angular: {vth:.6f} rad/s")
+
+        # Update robot pose
+        self.x += d * math.cos(self.theta + dtheta / 2.0)
+        self.y += d * math.sin(self.theta + dtheta / 2.0)
+        self.theta += dtheta
+
+        self.get_logger().info(f"Updated Pose -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
+
+        # Publish odometry message
+        odom_msg = Odometry()
+        odom_msg.header.stamp = now.to_msg()
+        odom_msg.header.frame_id = "odom"
+        odom_msg.child_frame_id = "base_link"
+
+        # Position
+        odom_msg.pose.pose.position.x = self.x
+        odom_msg.pose.pose.position.y = self.y
+
+        # Orientation (Quaternion)
+        qz = math.sin(self.theta / 2.0)
+        qw = math.cos(self.theta / 2.0)
+        odom_msg.pose.pose.orientation.z = qz
+        odom_msg.pose.pose.orientation.w = qw
+
+        # Velocities
+        odom_msg.twist.twist.linear.x = vx
+        odom_msg.twist.twist.angular.z = vth
+
+        self.odom_pub.publish(odom_msg)
+
+        # Log publishing event
+        self.get_logger().info(f"Published Odometry -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
+
+        # Update previous values
+        self.prev_position_r = current_position_r
+        self.prev_position_l = current_position_l
+        self.prev_time = now
+
+    def stop_motors(self):
+        """
+        On shutdown, disable torque and close the port.
+        """
+        for dxl_id in [DXL_ID_1, DXL_ID_2]:
+            result, error = self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE,
+                                                                TORQUE_DISABLE)
+            if result != COMM_SUCCESS or error != 0:
+                self.get_logger().error(
+                    f"Error disabling torque on Dynamixel ID={dxl_id}: result={result}, error={error}")
+            else:
+                self.get_logger().info(f"Torque disabled on Dynamixel ID={dxl_id}")
+        self.portHandler.closePort()
+        self.get_logger().info("Port closed.")
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MarkerLocalizationNode()
+    node = MovementNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down MarkerLocalizationNode...")
+        node.get_logger().info("Keyboard Interrupt, shutting down...")
     finally:
+        node.stop_motors()
         node.destroy_node()
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
