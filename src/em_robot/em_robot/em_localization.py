@@ -2,16 +2,15 @@
 
 import os
 import yaml
-import rclpy
-from rclpy.node import Node
-
+import math
 import numpy as np
 import cv2 as cv
-import math
 
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
-from geometry_msgs.msg import TransformStamped
+import rclpy
+from rclpy.node import Node
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
 from tf_transformations import (
     quaternion_from_euler,
     quaternion_matrix,
@@ -20,6 +19,7 @@ from tf_transformations import (
     translation_from_matrix,
     quaternion_from_matrix
 )
+
 from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
@@ -31,7 +31,7 @@ class MarkerLocalizationNode(Node):
     def __init__(self):
         super().__init__('marker_localization_node')
 
-        # === Load calibration ===
+        # === Load camera calibration ===
         package_name = 'em_robot'
         config_filename = 'config/calibration.yaml'
         pkg_share = get_package_share_directory(package_name)
@@ -46,14 +46,9 @@ class MarkerLocalizationNode(Node):
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
 
-        if self.camera_matrix.shape != (3, 3):
-            raise ValueError("Camera matrix must be 3x3 in the YAML!")
-        if self.dist_coeffs.shape[0] < 4:
-            raise ValueError("dist_coeff must have at least 4 values (k1, k2, p1, p2)!")
-
         self.camera_height = config.get('camera_height', 0.381)
 
-        # === Camera setup ===
+        # === Camera Setup ===
         self.size = (1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
@@ -66,31 +61,23 @@ class MarkerLocalizationNode(Node):
             "LensPosition": 1.0 / self.camera_height
         })
 
-        # === TF and Odom setup ===
+        # === TF Setup ===
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.publish_static_transform()
 
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-
-        self.last_odom = None
+        # === Odometry + State ===
         self.prev_odom = None
-
-        self.estimated_x = 0.0
-        self.estimated_y = 0.0
-        self.estimated_theta = 0.0
+        self.prev_odom_pose = None
+        self.last_marker_pose = None  # (x, y, theta)
+        self.estimated_pose = (0.0, 0.0, 0.0)
+        self.marker_visible = False
 
         self.odom_subscription = self.create_subscription(
-            Odometry,
-            'odomWheel',
-            self.odom_callback,
-            10
+            Odometry, 'odomWheel', self.odom_callback, 10
         )
 
-        self.timer_period = 1 / 5  # 5 Hz
-        self.timer = self.create_timer(self.timer_period, self.process_frame)
-
+        self.timer = self.create_timer(1/5, self.process_frame)  # 5 Hz
         self.get_logger().info("MarkerLocalizationNode: started.")
 
     def publish_static_transform(self):
@@ -110,26 +97,28 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.rotation.w = quat[3]
 
         self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info("Published static transform: camera_frame -> base_link")
+        self.get_logger().info("Published static transform: camera_frame → base_link")
+
+    def extract_pose_from_odom(self, msg):
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        q = msg.pose.pose.orientation
+        theta = 2.0 * math.atan2(q.z, q.w)  # Assuming qx=qy=0
+        return (x, y, theta)
 
     def odom_callback(self, msg):
-        if self.prev_odom is not None:
-            dx = msg.pose.pose.position.x - self.prev_odom.pose.pose.position.x
-            dy = msg.pose.pose.position.y - self.prev_odom.pose.pose.position.y
+        if not self.marker_visible and self.prev_odom and self.prev_odom_pose:
+            current_pose = self.extract_pose_from_odom(msg)
+            dx = current_pose[0] - self.prev_odom_pose[0]
+            dy = current_pose[1] - self.prev_odom_pose[1]
+            dtheta = current_pose[2] - self.prev_odom_pose[2]
 
-            def yaw_from_quat(q):
-                siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
-                cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-                return math.atan2(siny_cosp, cosy_cosp)
-
-            theta_prev = yaw_from_quat(self.prev_odom.pose.pose.orientation)
-            theta_now = yaw_from_quat(msg.pose.pose.orientation)
-            dtheta = theta_now - theta_prev
-
-            # Rotate dx, dy into the map frame
-            self.estimated_x += dx * math.cos(self.estimated_theta) - dy * math.sin(self.estimated_theta)
-            self.estimated_y += dx * math.sin(self.estimated_theta) + dy * math.cos(self.estimated_theta)
-            self.estimated_theta += dtheta
+            x0, y0, theta0 = self.estimated_pose
+            self.estimated_pose = (
+                x0 + dx * math.cos(theta0) - dy * math.sin(theta0),
+                y0 + dx * math.sin(theta0) + dy * math.cos(theta0),
+                theta0 + dtheta
+            )
 
         self.prev_odom = msg
 
@@ -138,14 +127,16 @@ class MarkerLocalizationNode(Node):
         detections = detect_aruco_corners(frame)
 
         if not detections:
-            self.get_logger().info("No markers detected.")
-            self.publish_fallback_transform()
+            self.marker_visible = False
+            self.publish_pose_transform(*self.estimated_pose)
+            self.get_logger().info("[Fallback] No marker, publishing odometry-integrated pose.")
             return
 
         for marker in detections:
             marker_id = marker['id']
             corners = marker['corners']
 
+            # Undistort
             undistorted_corners = cv.undistortPoints(
                 np.expand_dims(corners, axis=1),
                 self.camera_matrix,
@@ -153,6 +144,7 @@ class MarkerLocalizationNode(Node):
                 P=self.camera_matrix
             ).reshape(-1, 2)
 
+            # Estimate marker center
             marker_center = np.mean(corners, axis=0)
             cx = self.camera_matrix[0, 2]
             cy = self.camera_matrix[1, 2]
@@ -165,67 +157,58 @@ class MarkerLocalizationNode(Node):
             z_cam = 0.0
             cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
 
+            # Compute orientation
             top_center = np.mean(corners[0:2], axis=0)
             bottom_center = np.mean(corners[2:4], axis=0)
             dx = top_center[0] - bottom_center[0]
             dy = top_center[1] - bottom_center[1]
             yaw = np.arctan2(dx, -dy)
 
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
             T_marker_cam = concatenate_matrices(
                 translation_matrix(cam_in_marker_pos),
-                quaternion_matrix(quat)
+                quaternion_matrix(quaternion_from_euler(0.0, 0.0, yaw))
             )
-            T_cam_marker = np.linalg.inv(T_marker_cam)
-            inv_trans = translation_from_matrix(T_cam_marker)
-            inv_quat = quaternion_from_matrix(T_cam_marker)
 
-            # Update estimated pose from marker
-            self.estimated_x = inv_trans[0]
-            self.estimated_y = inv_trans[1]
-            self.estimated_theta = yaw
+            T_base_camera = concatenate_matrices(
+                translation_matrix([-0.192, 0.0, 0.0]),
+                quaternion_matrix(quaternion_from_euler(0.0, 0.0, 0.0))
+            )
 
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = f"aruco_{marker_id}"
-            t.child_frame_id = "camera_frame"
+            T_map_base = T_marker_cam @ T_base_camera
+            trans = translation_from_matrix(T_map_base)
+            quat = quaternion_from_matrix(T_map_base)
+            yaw_est = math.atan2(2.0 * (quat[3] * quat[2]), 1.0 - 2.0 * (quat[2] ** 2))
 
-            t.transform.translation.x = inv_trans[0]
-            t.transform.translation.y = inv_trans[1]
-            t.transform.translation.z = inv_trans[2]
+            # Save new true pose
+            self.last_marker_pose = (trans[0], trans[1], yaw_est)
+            self.estimated_pose = self.last_marker_pose
+            self.marker_visible = True
 
-            t.transform.rotation.x = inv_quat[0]
-            t.transform.rotation.y = inv_quat[1]
-            t.transform.rotation.z = inv_quat[2]
-            t.transform.rotation.w = inv_quat[3]
+            if self.prev_odom:
+                self.prev_odom_pose = self.extract_pose_from_odom(self.prev_odom)
 
-            self.tf_broadcaster.sendTransform(t)
+            self.publish_pose_transform(*self.estimated_pose)
             self.get_logger().info(
-                f"[TF] Marker detected: camera_frame ← aruco_{marker_id} | "
-                f"x={inv_trans[0]:.2f}, y={inv_trans[1]:.2f}, yaw={np.degrees(yaw):.1f}°"
+                f"[Marker] Detected ArUco {marker_id} | x={trans[0]:.2f}, y={trans[1]:.2f}, yaw={math.degrees(yaw_est):.1f}°"
             )
 
-    def publish_fallback_transform(self):
+    def publish_pose_transform(self, x, y, theta):
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
         t.child_frame_id = "base_link"
 
-        t.transform.translation.x = self.estimated_x
-        t.transform.translation.y = self.estimated_y
+        t.transform.translation.x = x
+        t.transform.translation.y = y
         t.transform.translation.z = 0.0
 
-        quat = quaternion_from_euler(0.0, 0.0, self.estimated_theta)
+        quat = quaternion_from_euler(0.0, 0.0, theta)
         t.transform.rotation.x = quat[0]
         t.transform.rotation.y = quat[1]
         t.transform.rotation.z = quat[2]
         t.transform.rotation.w = quat[3]
 
         self.tf_broadcaster.sendTransform(t)
-        self.get_logger().info(
-            f"[TF-Fallback] Published from odom delta: x={self.estimated_x:.2f}, "
-            f"y={self.estimated_y:.2f}, θ={math.degrees(self.estimated_theta):.1f}°"
-        )
 
 
 def main(args=None):
