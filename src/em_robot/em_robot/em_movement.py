@@ -144,7 +144,7 @@ class MovementNode(Node):
         current_position_l = self.convert_to_signed(current_position_l)
 
         # Log encoder readings
-        self.get_logger().info(f"Raw Encoder Readings -> Right: {current_position_r}, Left: {current_position_l}")
+        #self.get_logger().info(f"Raw Encoder Readings -> Right: {current_position_r}, Left: {current_position_l}")
 
         if self.prev_position_r is None or self.prev_position_l is None:
             self.prev_position_r = current_position_r
@@ -167,7 +167,7 @@ class MovementNode(Node):
         elif delta_l < -ENCODER_RESOLUTION / 2:
             delta_l += ENCODER_RESOLUTION
 
-        self.get_logger().info(f"Encoder Tick Differences -> Right: {delta_r}, Left: {delta_l}")
+        #self.get_logger().info(f"Encoder Tick Differences -> Right: {delta_r}, Left: {delta_l}")
 
         # Convert ticks to radians
         rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
@@ -177,7 +177,7 @@ class MovementNode(Node):
         d_r = rad_r * WHEEL_RADIUS
         d_l = rad_l * WHEEL_RADIUS
 
-        self.get_logger().info(f"Wheel Travel Distances -> d_r: {d_r:.6f} m, d_l: {d_l:.6f} m")
+        #self.get_logger().info(f"Wheel Travel Distances -> d_r: {d_r:.6f} m, d_l: {d_l:.6f} m")
 
         # Compute time elapsed
         dt = (now - self.prev_time).nanoseconds / 1e9
@@ -185,7 +185,7 @@ class MovementNode(Node):
             self.get_logger().error("Time difference (dt) is zero or negative!")
             dt = 1e-6  # Prevent division by zero
 
-        self.get_logger().info(f"Elapsed Time -> dt: {dt:.6f} sec")
+        #self.get_logger().info(f"Elapsed Time -> dt: {dt:.6f} sec")
 
         # Compute odometry values
         d = (d_r + d_l) / 2.0
@@ -194,14 +194,14 @@ class MovementNode(Node):
         vx = d / dt
         vth = dtheta / dt
 
-        self.get_logger().info(f"Computed Velocities -> Linear: {vx:.6f} m/s, Angular: {vth:.6f} rad/s")
+        #self.get_logger().info(f"Computed Velocities -> Linear: {vx:.6f} m/s, Angular: {vth:.6f} rad/s")
 
         # Update robot pose
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
 
-        self.get_logger().info(f"Updated Pose -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
+        #self.get_logger().info(f"Updated Pose -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
 
         # Publish odometry message
         odom_msg = Odometry()
@@ -226,7 +226,7 @@ class MovementNode(Node):
         self.odom_pub.publish(odom_msg)
 
         # Log publishing event
-        self.get_logger().info(f"Published Odometry -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
+        #self.get_logger().info(f"Published Odometry -> x: {self.x:.6f}, y: {self.y:.6f}, theta: {self.theta:.6f}")
 
         # Update previous values
         self.prev_position_r = current_position_r
