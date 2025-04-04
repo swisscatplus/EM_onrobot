@@ -84,7 +84,7 @@ class MarkerLocalizationNode(Node):
         static_transform.header.frame_id = "camera_frame"
         static_transform.child_frame_id = "base_link"
 
-        static_transform.transform.translation.x = -0.198
+        static_transform.transform.translation.x = -0.192
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
         quat = quaternion_from_euler(0.0, 0.0, 0.0)
