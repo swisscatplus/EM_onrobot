@@ -11,7 +11,8 @@ import cv2 as cv
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
 from geometry_msgs.msg import TransformStamped, PoseStamped
 from tf_transformations import (
-    quaternion_from_matrix
+    quaternion_from_matrix,
+    quaternion_from_euler
 )
 from picamera2 import Picamera2
 from libcamera import controls
@@ -131,60 +132,62 @@ class MarkerLocalizationNode(Node):
                 self.get_logger().warn(f"PnP failed for marker {marker_id}")
                 continue
 
+            # Convert rvec to rotation matrix
             rotation_matrix, _ = cv.Rodrigues(rvec)
 
-            # Matrice homogène marker → camera
+            # Build full 4x4 marker→camera transform
             T_marker_cam = np.eye(4)
             T_marker_cam[:3, :3] = rotation_matrix
-            T_marker_cam[:3, 3] = tvec.T
+            T_marker_cam[:3, 3] = tvec.flatten()
 
-            # Inverse pour TF: camera → marker
+            # Invert: camera → marker
             T_cam_marker = np.linalg.inv(T_marker_cam)
-            trans_inv = T_cam_marker[:3, 3]
-            yaw = np.arctan2(T_cam_marker[1, 0], T_cam_marker[0, 0])  # seulement en Z
+            trans = T_cam_marker[:3, 3]
+            quat = quaternion_from_matrix(T_cam_marker)
 
-            # Quaternion 2D (yaw only)
-            qx, qy, qz, qw = quaternion_from_matrix([
+            # Send TF: aruco_<id> → camera_frame (full 6DoF)
+            t_camera_marker = TransformStamped()
+            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
+            t_camera_marker.child_frame_id = "camera_frame"
+
+            t_camera_marker.transform.translation.x = trans[0]
+            t_camera_marker.transform.translation.y = trans[1]
+            t_camera_marker.transform.translation.z = trans[2]  # keep Z ✅
+
+            t_camera_marker.transform.rotation.x = quat[0]
+            t_camera_marker.transform.rotation.y = quat[1]
+            t_camera_marker.transform.rotation.z = quat[2]
+            t_camera_marker.transform.rotation.w = quat[3]
+
+            self.tf_broadcaster.sendTransform(t_camera_marker)
+
+            # Now compute 2D projection for PoseStamped
+            yaw = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
+
+            quat_yaw_only = quaternion_from_matrix([
                 [np.cos(yaw), -np.sin(yaw), 0, 0],
                 [np.sin(yaw), np.cos(yaw), 0, 0],
                 [0, 0, 1, 0],
                 [0, 0, 0, 1],
             ])
 
-            # Publier TF: aruco_<id> → camera_frame (2D seulement)
-            t_camera_marker = TransformStamped()
-            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
-            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
-            t_camera_marker.child_frame_id = "camera_frame"
-
-            t_camera_marker.transform.translation.x = trans_inv[0]
-            t_camera_marker.transform.translation.y = trans_inv[1]
-            t_camera_marker.transform.translation.z = 0.0  # forcer 2D
-
-            t_camera_marker.transform.rotation.x = qx
-            t_camera_marker.transform.rotation.y = qy
-            t_camera_marker.transform.rotation.z = qz
-            t_camera_marker.transform.rotation.w = qw
-
-            self.tf_broadcaster.sendTransform(t_camera_marker)
-
-            # Publier la pose du marker dans camera_frame
             pose_msg = PoseStamped()
             pose_msg.header.stamp = self.get_clock().now().to_msg()
             pose_msg.header.frame_id = "camera_frame"
             pose_msg.pose.position.x = tvec[0][0]
             pose_msg.pose.position.y = tvec[1][0]
-            pose_msg.pose.position.z = 0.0  # forcer 2D
+            pose_msg.pose.position.z = 0.0  # force 2D in Pose only
 
-            pose_msg.pose.orientation.x = qx
-            pose_msg.pose.orientation.y = qy
-            pose_msg.pose.orientation.z = qz
-            pose_msg.pose.orientation.w = qw
+            pose_msg.pose.orientation.x = quat_yaw_only[0]
+            pose_msg.pose.orientation.y = quat_yaw_only[1]
+            pose_msg.pose.orientation.z = quat_yaw_only[2]
+            pose_msg.pose.orientation.w = quat_yaw_only[3]
 
             self.pose_pub.publish(pose_msg)
 
             self.get_logger().info(
-                f"[Pose + TF] Marker {marker_id}: x={tvec[0][0]:.2f}, y={tvec[1][0]:.2f}, yaw={np.degrees(yaw):.1f}°"
+                f"[TF+Pose] Marker {marker_id}: TF z={trans[2]:.3f} | Pose 2D x={tvec[0][0]:.3f}, y={tvec[1][0]:.3f}, yaw={np.degrees(yaw):.1f}°"
             )
 
     def process_frame_old(self):
