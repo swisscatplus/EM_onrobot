@@ -133,38 +133,17 @@ class MarkerLocalizationNode(Node):
 
             rotation_matrix, _ = cv.Rodrigues(rvec)
 
-            # Full transform: marker → camera
+            # Matrice homogène marker → camera
             T_marker_cam = np.eye(4)
             T_marker_cam[:3, :3] = rotation_matrix
             T_marker_cam[:3, 3] = tvec.T
 
-            # Inverse: camera → marker (for TF)
+            # Inverse pour TF: camera → marker
             T_cam_marker = np.linalg.inv(T_marker_cam)
             trans_inv = T_cam_marker[:3, 3]
-            quat_inv = quaternion_from_matrix(T_cam_marker)
+            yaw = np.arctan2(T_cam_marker[1, 0], T_cam_marker[0, 0])  # seulement en Z
 
-            # TF broadcast: aruco_<id> → camera_frame
-            t_camera_marker = TransformStamped()
-            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
-            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
-            t_camera_marker.child_frame_id = "camera_frame"
-
-            t_camera_marker.transform.translation.x = trans_inv[0]
-            t_camera_marker.transform.translation.y = trans_inv[1]
-            t_camera_marker.transform.translation.z = trans_inv[2]
-            t_camera_marker.transform.rotation.x = quat_inv[0]
-            t_camera_marker.transform.rotation.y = quat_inv[1]
-            t_camera_marker.transform.rotation.z = quat_inv[2]
-            t_camera_marker.transform.rotation.w = quat_inv[3]
-
-            self.tf_broadcaster.sendTransform(t_camera_marker)
-
-            # Extract 2D pose: x, y, yaw from T_marker_cam
-            x = tvec[0][0]
-            y = tvec[1][0]
-            yaw = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
-
-            # Convert yaw to quaternion (Z only)
+            # Quaternion 2D (yaw only)
             qx, qy, qz, qw = quaternion_from_matrix([
                 [np.cos(yaw), -np.sin(yaw), 0, 0],
                 [np.sin(yaw), np.cos(yaw), 0, 0],
@@ -172,13 +151,30 @@ class MarkerLocalizationNode(Node):
                 [0, 0, 0, 1],
             ])
 
-            # PoseStamped: marker in camera frame
+            # Publier TF: aruco_<id> → camera_frame (2D seulement)
+            t_camera_marker = TransformStamped()
+            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
+            t_camera_marker.child_frame_id = "camera_frame"
+
+            t_camera_marker.transform.translation.x = trans_inv[0]
+            t_camera_marker.transform.translation.y = trans_inv[1]
+            t_camera_marker.transform.translation.z = 0.0  # forcer 2D
+
+            t_camera_marker.transform.rotation.x = qx
+            t_camera_marker.transform.rotation.y = qy
+            t_camera_marker.transform.rotation.z = qz
+            t_camera_marker.transform.rotation.w = qw
+
+            self.tf_broadcaster.sendTransform(t_camera_marker)
+
+            # Publier la pose du marker dans camera_frame
             pose_msg = PoseStamped()
             pose_msg.header.stamp = self.get_clock().now().to_msg()
             pose_msg.header.frame_id = "camera_frame"
-            pose_msg.pose.position.x = x
-            pose_msg.pose.position.y = y
-            pose_msg.pose.position.z = 0.0  # Enforce 2D
+            pose_msg.pose.position.x = tvec[0][0]
+            pose_msg.pose.position.y = tvec[1][0]
+            pose_msg.pose.position.z = 0.0  # forcer 2D
 
             pose_msg.pose.orientation.x = qx
             pose_msg.pose.orientation.y = qy
@@ -188,7 +184,7 @@ class MarkerLocalizationNode(Node):
             self.pose_pub.publish(pose_msg)
 
             self.get_logger().info(
-                f"[Pose + TF] Marker {marker_id}: x={x:.2f}, y={y:.2f}, yaw={np.degrees(yaw):.1f}°"
+                f"[Pose + TF] Marker {marker_id}: x={tvec[0][0]:.2f}, y={tvec[1][0]:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
 
 
