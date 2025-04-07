@@ -69,7 +69,7 @@ class MarkerLocalizationNode(Node):
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (1536, 864)
+        self.size = (1536*3, 864*3)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -88,7 +88,7 @@ class MarkerLocalizationNode(Node):
 
         self.publish_static_transform()
 
-        self.timer = self.create_timer(1/5, self.process_frame)  # 5 Hz
+        self.timer = self.create_timer(1/2, self.process_frame)  # 5 Hz
         self.get_logger().info("MarkerLocalizationNode: started.")
 
     def publish_static_transform(self):
