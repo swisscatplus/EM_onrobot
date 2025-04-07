@@ -128,8 +128,8 @@ class MarkerLocalizationNode(Node):
             fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
             marker_center = np.mean(undistorted, axis=0)
             offset = np.array([cx, cy]) - marker_center
-            x_cam = self.camera_height * offset[0] / (fx * 2)
-            y_cam = self.camera_height * offset[1] / (fy * 2)
+            x_cam = self.camera_height * offset[0] / (fx / 2)
+            y_cam = self.camera_height * offset[1] / (fy / 2)
 
             # Yaw estimation from marker orientation
             top_center = np.mean(undistorted[0:2], axis=0)
