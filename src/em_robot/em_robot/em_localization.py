@@ -11,11 +11,6 @@ import cv2 as cv
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
 from geometry_msgs.msg import TransformStamped, PoseStamped
 from tf_transformations import (
-    quaternion_from_euler,
-    quaternion_matrix,
-    translation_matrix,
-    concatenate_matrices,
-    translation_from_matrix,
     quaternion_from_matrix
 )
 from picamera2 import Picamera2
@@ -41,6 +36,10 @@ class MarkerLocalizationNode(Node):
 
         cammat_list = config.get('camera_matrix', [])
         dist_list = config.get('dist_coeff', [])
+        # Ensure compatibility if dist_list is a string
+        if isinstance(dist_list, str):
+            dist_list = [float(x) for x in dist_list.strip().split()]
+
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
 
@@ -75,6 +74,8 @@ class MarkerLocalizationNode(Node):
         # Publisher for marker poses
         self.pose_pub = self.create_publisher(PoseStamped, 'aruco_markers_pose', 10)
 
+        self.marker_size = config.get('marker_size', 0.038)  # Default: 5cm
+
         self.frequency = 5
         self.timer_period = 1 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.process_frame)
@@ -90,11 +91,10 @@ class MarkerLocalizationNode(Node):
         static_transform.transform.translation.x = -0.192
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
-        quat = quaternion_from_euler(0.0, 0.0, 0.0)
-        static_transform.transform.rotation.x = quat[0]
-        static_transform.transform.rotation.y = quat[1]
-        static_transform.transform.rotation.z = quat[2]
-        static_transform.transform.rotation.w = quat[3]
+        static_transform.transform.rotation.x = 0.0
+        static_transform.transform.rotation.y = 0.0
+        static_transform.transform.rotation.z = 0.0
+        static_transform.transform.rotation.w = 1.0
 
         self.static_tf_broadcaster.sendTransform(static_transform)
         self.get_logger().info("Published static transform: camera_frame -> base_link ")
@@ -109,63 +109,88 @@ class MarkerLocalizationNode(Node):
 
         for marker in detections:
             marker_id = marker['id']
-            corners = marker['corners']  # shape: (4, 2)
+            corners = marker['corners'].astype(np.float32)
 
-            # Undistort corners
-            undistorted_corners = cv.undistortPoints(
-                np.expand_dims(corners, axis=1),
+            half_size = self.marker_size / 2
+            object_points = np.array([
+                [-half_size, half_size, 0],
+                [half_size, half_size, 0],
+                [half_size, -half_size, 0],
+                [-half_size, -half_size, 0]
+            ], dtype=np.float32)
+
+            success, rvec, tvec = cv.solvePnP(
+                object_points,
+                corners,
                 self.camera_matrix,
                 self.dist_coeffs,
-                P=self.camera_matrix
-            ).reshape(-1, 2)
-
-            marker_center = np.mean(corners, axis=0)
-            cx = self.camera_matrix[0, 2]
-            cy = self.camera_matrix[1, 2]
-            fx = self.camera_matrix[0, 0]
-            fy = self.camera_matrix[1, 1]
-            pixel_offset = np.array([cx, cy]) - marker_center
-
-            x_cam = self.camera_height * pixel_offset[0] / (fx * 2)
-            y_cam = self.camera_height * pixel_offset[1] / (fy * 2)
-            z_cam = 0.0
-
-            cam_in_marker_pos = np.array([x_cam, y_cam, z_cam])
-
-            top_center = np.mean(corners[0:2], axis=0)
-            bottom_center = np.mean(corners[2:4], axis=0)
-            dx = top_center[0] - bottom_center[0]
-            dy = top_center[1] - bottom_center[1]
-            yaw = np.arctan2(dx, -dy)
-
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
-
-            T_marker_cam = concatenate_matrices(
-                translation_matrix(cam_in_marker_pos),
-                quaternion_matrix(quat)
+                flags=cv.SOLVEPNP_ITERATIVE
             )
 
-            # Pose of marker in camera frame (no inverse)
-            trans = translation_from_matrix(T_marker_cam)
-            quat = quaternion_from_matrix(T_marker_cam)
+            if not success:
+                self.get_logger().warn(f"PnP failed for marker {marker_id}")
+                continue
 
+            rotation_matrix, _ = cv.Rodrigues(rvec)
+
+            # Full transform: marker → camera
+            T_marker_cam = np.eye(4)
+            T_marker_cam[:3, :3] = rotation_matrix
+            T_marker_cam[:3, 3] = tvec.T
+
+            # Inverse: camera → marker (for TF)
+            T_cam_marker = np.linalg.inv(T_marker_cam)
+            trans_inv = T_cam_marker[:3, 3]
+            quat_inv = quaternion_from_matrix(T_cam_marker)
+
+            # TF broadcast: aruco_<id> → camera_frame
+            t_camera_marker = TransformStamped()
+            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
+            t_camera_marker.child_frame_id = "camera_frame"
+
+            t_camera_marker.transform.translation.x = trans_inv[0]
+            t_camera_marker.transform.translation.y = trans_inv[1]
+            t_camera_marker.transform.translation.z = trans_inv[2]
+            t_camera_marker.transform.rotation.x = quat_inv[0]
+            t_camera_marker.transform.rotation.y = quat_inv[1]
+            t_camera_marker.transform.rotation.z = quat_inv[2]
+            t_camera_marker.transform.rotation.w = quat_inv[3]
+
+            self.tf_broadcaster.sendTransform(t_camera_marker)
+
+            # Extract 2D pose: x, y, yaw from T_marker_cam
+            x = tvec[0][0]
+            y = tvec[1][0]
+            yaw = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
+
+            # Convert yaw to quaternion (Z only)
+            qx, qy, qz, qw = quaternion_from_matrix([
+                [np.cos(yaw), -np.sin(yaw), 0, 0],
+                [np.sin(yaw), np.cos(yaw), 0, 0],
+                [0, 0, 1, 0],
+                [0, 0, 0, 1],
+            ])
+
+            # PoseStamped: marker in camera frame
             pose_msg = PoseStamped()
             pose_msg.header.stamp = self.get_clock().now().to_msg()
             pose_msg.header.frame_id = "camera_frame"
+            pose_msg.pose.position.x = x
+            pose_msg.pose.position.y = y
+            pose_msg.pose.position.z = 0.0  # Enforce 2D
 
-            pose_msg.pose.position.x = trans[0]
-            pose_msg.pose.position.y = trans[1]
-            pose_msg.pose.position.z = trans[2]
-            pose_msg.pose.orientation.x = quat[0]
-            pose_msg.pose.orientation.y = quat[1]
-            pose_msg.pose.orientation.z = quat[2]
-            pose_msg.pose.orientation.w = quat[3]
+            pose_msg.pose.orientation.x = qx
+            pose_msg.pose.orientation.y = qy
+            pose_msg.pose.orientation.z = qz
+            pose_msg.pose.orientation.w = qw
 
             self.pose_pub.publish(pose_msg)
+
             self.get_logger().info(
-                f"[Pose] Published marker_{marker_id} in camera_frame: "
-                f"x={trans[0]:.2f}, y={trans[1]:.2f}, z={trans[2]:.2f}"
+                f"[Pose + TF] Marker {marker_id}: x={x:.2f}, y={y:.2f}, yaw={np.degrees(yaw):.1f}°"
             )
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -177,6 +202,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
