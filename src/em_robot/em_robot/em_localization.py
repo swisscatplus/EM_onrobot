@@ -9,7 +9,7 @@ import numpy as np
 import cv2 as cv
 
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import TransformStamped, PoseStamped
 from tf_transformations import (
     quaternion_from_euler,
     quaternion_matrix,
@@ -49,7 +49,7 @@ class MarkerLocalizationNode(Node):
         if self.dist_coeffs.shape[0] < 4:
             raise ValueError("dist_coeff must have at least 4 values (k1, k2, p1, p2)!")
 
-        self.camera_height = config.get('camera_height', 0.381)#0.44)
+        self.camera_height = config.get('camera_height', 0.625)
 
         self.size = (1536, 864)
         self.picam2 = Picamera2()
@@ -72,8 +72,11 @@ class MarkerLocalizationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
+        # Publisher for marker poses
+        self.pose_pub = self.create_publisher(PoseStamped, 'aruco_markers_pose', 10)
+
         self.frequency = 5
-        self.timer_period = 1/self.frequency
+        self.timer_period = 1 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.process_frame)
 
         self.get_logger().info("MarkerLocalizationNode: started.")
@@ -142,29 +145,26 @@ class MarkerLocalizationNode(Node):
                 quaternion_matrix(quat)
             )
 
-            T_cam_marker = np.linalg.inv(T_marker_cam)
-            inv_trans = translation_from_matrix(T_cam_marker)
-            inv_quat = quaternion_from_matrix(T_cam_marker)
+            # Pose of marker in camera frame (no inverse)
+            trans = translation_from_matrix(T_marker_cam)
+            quat = quaternion_from_matrix(T_marker_cam)
 
-            t_camera_marker = TransformStamped()
-            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
-            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
-            t_camera_marker.child_frame_id = "camera_frame"
+            pose_msg = PoseStamped()
+            pose_msg.header.stamp = self.get_clock().now().to_msg()
+            pose_msg.header.frame_id = "camera_frame"
 
-            t_camera_marker.transform.translation.x = inv_trans[0]
-            t_camera_marker.transform.translation.y = inv_trans[1]
-            t_camera_marker.transform.translation.z = inv_trans[2]
+            pose_msg.pose.position.x = trans[0]
+            pose_msg.pose.position.y = trans[1]
+            pose_msg.pose.position.z = trans[2]
+            pose_msg.pose.orientation.x = quat[0]
+            pose_msg.pose.orientation.y = quat[1]
+            pose_msg.pose.orientation.z = quat[2]
+            pose_msg.pose.orientation.w = quat[3]
 
-            t_camera_marker.transform.rotation.x = inv_quat[0]
-            t_camera_marker.transform.rotation.y = inv_quat[1]
-            t_camera_marker.transform.rotation.z = inv_quat[2]
-            t_camera_marker.transform.rotation.w = inv_quat[3]
-
-            self.tf_broadcaster.sendTransform(t_camera_marker)
-
+            self.pose_pub.publish(pose_msg)
             self.get_logger().info(
-                f"[TF] Published: camera_frame ← aruco_{marker_id}: "
-                f"x={inv_trans[0]:.2f}, y={inv_trans[1]:.2f}, z={inv_trans[2]:.2f}, yaw={np.degrees(yaw):.1f}°"
+                f"[Pose] Published marker_{marker_id} in camera_frame: "
+                f"x={trans[0]:.2f}, y={trans[1]:.2f}, z={trans[2]:.2f}"
             )
 
 def main(args=None):
