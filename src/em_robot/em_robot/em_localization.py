@@ -83,7 +83,7 @@ class MarkerLocalizationNode(Node):
 
         self.frequency = 5
         self.timer_period = 1 / self.frequency
-        self.timer = self.create_timer(self.timer_period, self.process_frame_old)
+        self.timer = self.create_timer(self.timer_period, self.process_frame)
 
         self.get_logger().info("MarkerLocalizationNode: started.")
 
