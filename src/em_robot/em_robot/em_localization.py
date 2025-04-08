@@ -58,6 +58,8 @@ class MarkerLocalizationNode(Node):
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
 
+        self.last_transform = None
+
         cammat_list = config.get('camera_matrix', [])
         dist_list = config.get('dist_coeff', [])
         if isinstance(dist_list, str):
@@ -110,6 +112,10 @@ class MarkerLocalizationNode(Node):
 
         if not detections:
             self.get_logger().info("No markers detected.")
+            if self.last_transform is not None:
+                # Re-broadcast last known transform
+                self.last_transform.header.stamp = self.get_clock().now().to_msg()
+                self.tf_broadcaster.sendTransform(self.last_transform)
             return
 
         for marker in detections:
@@ -161,7 +167,9 @@ class MarkerLocalizationNode(Node):
             t_camera_marker.transform.rotation.y = quat_inv[1]
             t_camera_marker.transform.rotation.z = quat_inv[2]
             t_camera_marker.transform.rotation.w = quat_inv[3]
+
             self.tf_broadcaster.sendTransform(t_camera_marker)
+            self.last_transform = t_camera_marker  # <---- Store last valid transform
 
             # Publish PoseStamped
             pose_msg = PoseStamped()
