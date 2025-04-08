@@ -78,7 +78,7 @@ class MarkerLocalizationNode(Node):
         self.picam2.start()
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": 1.0 / self.camera_height
+            "LensPosition": 6.225 # 1.0 / self.camera_height
         })
 
         # ROS setup
