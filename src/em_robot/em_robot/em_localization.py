@@ -69,7 +69,7 @@ class MarkerLocalizationNode(Node):
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (1536, 864)
+        self.size = (3*1536, 3*864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
