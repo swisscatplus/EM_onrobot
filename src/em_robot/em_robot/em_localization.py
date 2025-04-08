@@ -69,7 +69,7 @@ class MarkerLocalizationNode(Node):
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (1536*3, 864*3)
+        self.size = (1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -78,7 +78,8 @@ class MarkerLocalizationNode(Node):
         self.picam2.start()
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": 6.225 # 1.0 / self.camera_height
+            "LensPosition": 9.0
+            #"LensPosition": 6.225 // Quand on teste à côté du bureau
         })
 
         # ROS setup
