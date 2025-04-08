@@ -65,11 +65,11 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.625)
+        self.camera_height = config.get('camera_height', 0.375)#0.625)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (3*1536, 3*864)
+        self.size = (4608, 2592) #(1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
