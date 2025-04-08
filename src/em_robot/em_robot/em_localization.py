@@ -78,7 +78,7 @@ class MarkerLocalizationNode(Node):
         self.picam2.start()
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": 9.0
+            "LensPosition": 6.0
             #"LensPosition": 6.225 // Quand on teste à côté du bureau
         })
 
