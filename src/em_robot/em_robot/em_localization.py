@@ -122,15 +122,23 @@ class MarkerLocalizationNode(Node):
 
         # Check if at least one aruco_<id> TF exists
         marker_has_tf = False
+        detected_ids = []
+        existing_tf_ids = []
+
         for marker in detections:
             marker_id = marker['id']
+            detected_ids.append(marker_id)
             frame_id = f"aruco_{marker_id}"
             try:
                 self.tf_buffer.lookup_transform('camera_frame', frame_id, rclpy.time.Time())
+                existing_tf_ids.append(marker_id)
                 marker_has_tf = True
-                break
+                break  # You can remove this 'break' if you want to collect all valid TFs
             except Exception:
                 continue
+
+        self.get_logger().info(f"Detected marker IDs: {detected_ids}")
+        self.get_logger().info(f"aruco_<id> TFs found: {existing_tf_ids}")
 
         if not marker_has_tf:
             self.get_logger().info("Detected markers, but none have existing TFs. Ignoring.")
