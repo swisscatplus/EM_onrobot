@@ -67,11 +67,11 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.375)
+        self.camera_height = config.get('camera_height', 0.375)#0.625)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (4608, 2592)
+        self.size = (4608, 2592) #(1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
@@ -81,6 +81,7 @@ class MarkerLocalizationNode(Node):
         self.picam2.set_controls({
             "AfMode": controls.AfModeEnum.Manual,
             "LensPosition": 6.0
+            #"LensPosition": 6.225 // Quand on teste à côté du bureau
         })
 
         # ROS setup
@@ -88,13 +89,9 @@ class MarkerLocalizationNode(Node):
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.pose_pub = self.create_publisher(PoseStamped, 'aruco_markers_pose', 10)
 
-        # TF Listener
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-
         self.publish_static_transform()
 
-        self.timer = self.create_timer(1/2, self.process_frame)  # 2 Hz
+        self.timer = self.create_timer(1/2, self.process_frame)  # 5 Hz
         self.get_logger().info("MarkerLocalizationNode: started.")
 
     def publish_static_transform(self):
@@ -116,32 +113,9 @@ class MarkerLocalizationNode(Node):
         if not detections:
             self.get_logger().info("No markers detected.")
             if self.last_transform is not None:
+                # Re-broadcast last known transform
                 self.last_transform.header.stamp = self.get_clock().now().to_msg()
                 self.tf_broadcaster.sendTransform(self.last_transform)
-            return
-
-        # Check if at least one aruco_<id> TF exists
-        marker_has_tf = False
-        detected_ids = []
-        existing_tf_ids = []
-
-        for marker in detections:
-            marker_id = marker['id']
-            detected_ids.append(marker_id)
-            frame_id = f"aruco_{marker_id}"
-            try:
-                self.tf_buffer.lookup_transform('camera_frame', frame_id, rclpy.time.Time())
-                existing_tf_ids.append(marker_id)
-                marker_has_tf = True
-                break  # You can remove this 'break' if you want to collect all valid TFs
-            except Exception:
-                continue
-
-        self.get_logger().info(f"Detected marker IDs: {detected_ids}")
-        self.get_logger().info(f"aruco_<id> TFs found: {existing_tf_ids}")
-
-        if not marker_has_tf:
-            self.get_logger().info("Detected markers, but none have existing TFs. Ignoring.")
             return
 
         for marker in detections:
@@ -161,8 +135,8 @@ class MarkerLocalizationNode(Node):
             fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
             marker_center = np.mean(undistorted, axis=0)
             offset = np.array([cx, cy]) - marker_center
-            x_cam = self.camera_height * offset[0] / fx
-            y_cam = self.camera_height * offset[1] / fy
+            x_cam = self.camera_height * offset[0] / (fx)
+            y_cam = self.camera_height * offset[1] / (fy)
 
             # Yaw estimation from marker orientation
             top_center = np.mean(undistorted[0:2], axis=0)
@@ -195,7 +169,7 @@ class MarkerLocalizationNode(Node):
             t_camera_marker.transform.rotation.w = quat_inv[3]
 
             self.tf_broadcaster.sendTransform(t_camera_marker)
-            self.last_transform = t_camera_marker  # Store last valid transform
+            self.last_transform = t_camera_marker  # <---- Store last valid transform
 
             # Publish PoseStamped
             pose_msg = PoseStamped()
