@@ -23,6 +23,14 @@ def generate_launch_description():
         output='screen',
     )
 
+    ekf = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_global_node',
+        parameters=['config_file'],
+        output='screen'
+    )
+
     localization_node = Node(
         package=pkg_name,
         executable='em_localization',
@@ -33,4 +41,5 @@ def generate_launch_description():
         movement_node,
         localization_node,
         #odom_node,
+        #ekf,
     ])

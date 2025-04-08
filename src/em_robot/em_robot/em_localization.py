@@ -96,13 +96,13 @@ class MarkerLocalizationNode(Node):
         static_transform = TransformStamped()
         static_transform.header.stamp = self.get_clock().now().to_msg()
         static_transform.header.frame_id = "camera_frame"
-        static_transform.child_frame_id = "base_link"
+        static_transform.child_frame_id = "odom"
         static_transform.transform.translation.x = -0.192
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0
         static_transform.transform.rotation.w = 1.0
         self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info("Published static transform: camera_frame → base_link")
+        self.get_logger().info("Published static transform: camera_frame → odom")
 
     def process_frame(self):
         frame = self.picam2.capture_array()
