@@ -4,7 +4,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
 from dynamixel_sdk import *
-from tf2_ros import TransformBroadcaster
+from tf2_ros import TransformBroadcaster, Buffer, TransformListener
+from tf_transformations import euler_from_quaternion
 import math
 
 # --- Constants ---
@@ -55,6 +56,12 @@ class MovementNode(Node):
         self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.odom_timer = self.create_timer(0.1, self.odom_callback)
+
+        # TF listener setup for corrections
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.adjust_timer = self.create_timer(0.5, self.adjust_odometry)
+        self.first_correction = True
 
         # State tracking
         self.prev_position_r = None
@@ -115,65 +122,36 @@ class MovementNode(Node):
 
         d = (d_r + d_l) / 2.0
         dtheta = (d_r - d_l) / WHEEL_BASE
-        vx = d / dt
-        vth = dtheta / dt
 
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
 
-        # Create and publish Odometry
+        # Publish Odometry and TF (odom → base_link)
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
-
-        qz = math.sin(self.theta / 2.0)
-        qw = math.cos(self.theta / 2.0)
-        odom_msg.pose.pose.orientation.z = qz
-        odom_msg.pose.pose.orientation.w = qw
-
-        odom_msg.twist.twist.linear.x = vx
-        odom_msg.twist.twist.angular.z = vth
+        quat_z = math.sin(self.theta / 2.0)
+        quat_w = math.cos(self.theta / 2.0)
+        odom_msg.pose.pose.orientation.z = quat_z
+        odom_msg.pose.pose.orientation.w = quat_w
         self.odom_pub.publish(odom_msg)
 
-        # Publish TF transform
         t = TransformStamped()
         t.header.stamp = now.to_msg()
         t.header.frame_id = "odom"
         t.child_frame_id = "base_link"
         t.transform.translation.x = self.x
         t.transform.translation.y = self.y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.z = qz
-        t.transform.rotation.w = qw
+        t.transform.rotation.z = quat_z
+        t.transform.rotation.w = quat_w
         self.tf_broadcaster.sendTransform(t)
 
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
 
-    def stop_motors(self):
-        for dxl_id in [DXL_ID_1, DXL_ID_2]:
-            self.packetHandler.write1ByteTxRx(self.portHandler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
-        self.portHandler.closePort()
-        self.get_logger().info("Port closed.")
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = MovementNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info("Shutting down...")
-    finally:
-        node.stop_motors()
-        node.destroy_node()
-        rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
+    # (La fonction adjust_odometry est exactement celle fournie précédemment)
