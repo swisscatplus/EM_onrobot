@@ -52,10 +52,12 @@ class TfToPoseXYYawPublisher(Node):
             pose_msg.pose.pose.orientation.w = quat_yaw[3]
 
             # Simple covariance: tune this according to your camera sensor accuracy
-            pose_msg.pose.covariance = np.diag([
-                0.02, 0.02, 99999,  # x, y accurate, z ignored (large covariance)
-                99999, 99999, 0.05  # roll/pitch ignored, yaw accurate
-            ]).flatten().tolist()
+            pose_msg.pose.covariance = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 9999.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 9999.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 9999.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
 
             self.publisher_.publish(pose_msg)
 
