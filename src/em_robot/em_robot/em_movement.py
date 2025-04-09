@@ -193,14 +193,14 @@ class MovementNode(Node):
         except Exception as e:
             self.get_logger().debug(f"Pas de transform disponible (map→base_link): {e}")
 
-    def main(args=None):
-        rclpy.init(args=args)
-        node = MovementNode()
-        try:
-            rclpy.spin(node)
-        except KeyboardInterrupt:
-            node.get_logger().info("Shutting down...")
-        finally:
-            node.stop_motors()
-            node.destroy_node()
-            rclpy.shutdown()
+def main(args=None):
+    rclpy.init(args=args)
+    node = MovementNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Shutting down...")
+    finally:
+        node.stop_motors()
+        node.destroy_node()
+        rclpy.shutdown()
