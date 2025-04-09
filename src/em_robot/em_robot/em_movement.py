@@ -56,7 +56,7 @@ class MovementNode(Node):
         self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.odom_timer = self.create_timer(0.1, self.odom_callback)
+        self.odom_timer = self.create_timer(1/30.0, self.odom_callback)
 
         self.external_cam_sub = self.create_subscription(
             PoseStamped, 'aruco_markers_pose', self.external_odom_callback, 10
