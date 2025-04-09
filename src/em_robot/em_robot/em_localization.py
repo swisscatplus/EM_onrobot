@@ -98,7 +98,7 @@ class MarkerLocalizationNode(Node):
         static_transform = TransformStamped()
         static_transform.header.stamp = self.get_clock().now().to_msg()
         static_transform.header.frame_id = "camera_frame"
-        static_transform.child_frame_id = "odom"
+        static_transform.child_frame_id = "cam_base_link"
         static_transform.transform.translation.x = -0.192
         static_transform.transform.translation.y = 0.0
         static_transform.transform.translation.z = 0.0

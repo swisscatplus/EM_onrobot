@@ -15,8 +15,8 @@ ekf_filter_node:
     odom0: "odomWheel"
     odom0_config: [true, true, false,   # x, y, yaw positions
                    false, false, true,   # yaw rate (angular velocity)
-                   false, false, false,  # unused fields (z, roll, pitch)
-                   false, false, false,
+                   true, false, false,  # unused fields (z, roll, pitch)
+                   false, false, true,
                    false, false, false]
     odom0_differential: false
     odom0_relative: false

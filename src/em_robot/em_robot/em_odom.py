@@ -1,115 +1,73 @@
-#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped, PoseWithCovarianceStamped
-from tf2_ros import TransformBroadcaster, Buffer, TransformListener
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from tf2_ros import Buffer, TransformListener
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 import numpy as np
-import math
 
-
-class OdomCorrectionNode(Node):
-    """
-    Corrects wheel odometry using camera pose estimates every 0.5s.
-    - Subscribes to `odomWheel` (wheel odometry).
-    - Subscribes to `camera_pose` (camera-based localization).
-    - Computes `map → odom` correction every 0.5s.
-    - Publishes TF for `map → odom`.
-    """
-
+class TfToPoseXYYawPublisher(Node):
     def __init__(self):
-        super().__init__('odom_correction_node')
-        self.get_logger().info("OdomCorrectionNode started")
+        super().__init__('tf_to_pose_xy_yaw_publisher')
 
-        # Subscribe to odometry from wheels
-        self.odom_sub = self.create_subscription(
-            Odometry, 'odomWheel', self.odom_callback, 10)
+        self.publisher_ = self.create_publisher(
+            PoseWithCovarianceStamped,
+            '/camera_pose',
+            10
+        )
 
-        # Subscribe to camera localization data
-        self.camera_sub = self.create_subscription(
-            PoseWithCovarianceStamped, 'camera_pose', self.camera_callback, 10)
-
-        # Transform Broadcaster
-        self.tf_broadcaster = TransformBroadcaster(self)
-
-        # TF Buffer & Listener to get odometry transforms
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        # Storage for last received values
-        self.last_wheel_odom = None
-        self.last_camera_pose = None
+        # Timer at 30Hz
+        self.timer = self.create_timer(1.0 / 2.0, self.publish_pose)
 
-        # Timer to publish correction every 0.5s
-        self.timer = self.create_timer(0.5, self.publish_correction_tf)
+    def publish_pose(self):
+        try:
+            now = rclpy.time.Time()
+            trans = self.tf_buffer.lookup_transform(
+                'map',
+                'cam_base_link',
+                now,
+                timeout=rclpy.duration.Duration(seconds=0.6)
+            )
 
-    def odom_callback(self, msg):
-        """ Stores the latest wheel odometry data """
-        self.last_wheel_odom = msg
+            # Extract yaw only from quaternion
+            quat = trans.transform.rotation
+            (_, _, yaw) = euler_from_quaternion([quat.x, quat.y, quat.z, quat.w])
 
-    def camera_callback(self, msg):
-        """ Stores the latest camera pose data """
-        self.last_camera_pose = msg
+            # Construct quaternion with yaw only (roll and pitch = 0)
+            quat_yaw = quaternion_from_euler(0, 0, yaw)
 
-    def publish_correction_tf(self):
-        """
-        Publishes `map → odom` transform based on the latest camera localization.
-        This corrects odometry drift while ensuring smooth operation.
-        """
-        if self.last_camera_pose is None or self.last_wheel_odom is None:
-            self.get_logger().warning("Waiting for both odometry and camera data...")
-            return
+            pose_msg = PoseWithCovarianceStamped()
+            pose_msg.header.stamp = trans.header.stamp
+            pose_msg.header.frame_id = 'map'
 
-        # Get Camera Pose in `map` frame
-        cam_x = self.last_camera_pose.pose.pose.position.x
-        cam_y = self.last_camera_pose.pose.pose.position.y
+            pose_msg.pose.pose.position.x = trans.transform.translation.x
+            pose_msg.pose.pose.position.y = trans.transform.translation.y
+            pose_msg.pose.pose.position.z = 0.0  # explicitly zero, not used by EKF
 
-        # Get Wheel Odometry Pose in `odom` frame
-        odom_x = self.last_wheel_odom.pose.pose.position.x
-        odom_y = self.last_wheel_odom.pose.pose.position.y
+            pose_msg.pose.pose.orientation.x = quat_yaw[0]
+            pose_msg.pose.pose.orientation.y = quat_yaw[1]
+            pose_msg.pose.pose.orientation.z = quat_yaw[2]
+            pose_msg.pose.pose.orientation.w = quat_yaw[3]
 
-        # Compute the correction needed (error between `map` and `odom`)
-        correction_x = cam_x - odom_x
-        correction_y = cam_y - odom_y
+            # Simple covariance: tune this according to your camera sensor accuracy
+            pose_msg.pose.covariance = np.diag([
+                0.02, 0.02, 99999,  # x, y accurate, z ignored (large covariance)
+                99999, 99999, 0.05  # roll/pitch ignored, yaw accurate
+            ]).flatten().tolist()
 
-        # Get heading (yaw) from orientation quaternion (camera pose)
-        q = self.last_camera_pose.pose.pose.orientation
-        yaw = math.atan2(2.0 * (q.w * q.z), 1.0 - 2.0 * (q.z * q.z))
+            self.publisher_.publish(pose_msg)
 
-        # Publish the correction transform `map → odom`
-        correction_tf = TransformStamped()
-        correction_tf.header.stamp = self.get_clock().now().to_msg()
-        correction_tf.header.frame_id = "map"
-        correction_tf.child_frame_id = "odom"
-
-        correction_tf.transform.translation.x = correction_x
-        correction_tf.transform.translation.y = correction_y
-        correction_tf.transform.translation.z = 0.0
-
-        qz = math.sin(yaw / 2.0)
-        qw = math.cos(yaw / 2.0)
-        correction_tf.transform.rotation.x = 0.0
-        correction_tf.transform.rotation.y = 0.0
-        correction_tf.transform.rotation.z = qz
-        correction_tf.transform.rotation.w = qw
-
-        self.tf_broadcaster.sendTransform(correction_tf)
-
-        self.get_logger().info(
-            f"Published correction TF: map → odom (x={correction_x:.3f}, y={correction_y:.3f}, yaw={yaw:.3f} rad)")
-
+        except Exception as ex:
+            self.get_logger().warn(f'TF lookup failed: {ex}')
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OdomCorrectionNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info("Shutting down OdomCorrectionNode...")
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    node = TfToPoseXYYawPublisher()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

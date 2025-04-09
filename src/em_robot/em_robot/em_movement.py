@@ -55,12 +55,12 @@ class MovementNode(Node):
         # ROS setup
         self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
+        # self.tf_broadcaster = TransformBroadcaster(self)
         self.odom_timer = self.create_timer(1/30.0, self.odom_callback)
 
-        self.external_cam_sub = self.create_subscription(
-            PoseStamped, 'aruco_markers_pose', self.external_odom_callback, 10
-        )
+        # self.external_cam_sub = self.create_subscription(
+        #     PoseStamped, 'aruco_markers_pose', self.external_odom_callback, 10
+        # )
 
         # State tracking
         self.prev_position_r = None
@@ -111,10 +111,14 @@ class MovementNode(Node):
         delta_r = current_position_r - self.prev_position_r
         delta_l = current_position_l - self.prev_position_l
 
-        if delta_r > ENCODER_RESOLUTION / 2: delta_r -= ENCODER_RESOLUTION
-        elif delta_r < -ENCODER_RESOLUTION / 2: delta_r += ENCODER_RESOLUTION
-        if delta_l > ENCODER_RESOLUTION / 2: delta_l -= ENCODER_RESOLUTION
-        elif delta_l < -ENCODER_RESOLUTION / 2: delta_l += ENCODER_RESOLUTION
+        if delta_r > ENCODER_RESOLUTION / 2:
+            delta_r -= ENCODER_RESOLUTION
+        elif delta_r < -ENCODER_RESOLUTION / 2:
+            delta_r += ENCODER_RESOLUTION
+        if delta_l > ENCODER_RESOLUTION / 2:
+            delta_l -= ENCODER_RESOLUTION
+        elif delta_l < -ENCODER_RESOLUTION / 2:
+            delta_l += ENCODER_RESOLUTION
 
         rad_r = delta_r * (2.0 * math.pi / ENCODER_RESOLUTION)
         rad_l = delta_l * (2.0 * math.pi / ENCODER_RESOLUTION)
@@ -129,36 +133,58 @@ class MovementNode(Node):
         d = (d_r + d_l) / 2.0
         dtheta = (d_r - d_l) / WHEEL_BASE
 
+        vx = d / dt
+        vth = dtheta / dt
+
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
 
-        # Publish Odometry and TF (odom → base_link)
+        # Publish Odometry without TF
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
+
+        # Position
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         quat_z = math.sin(self.theta / 2.0)
         quat_w = math.cos(self.theta / 2.0)
         odom_msg.pose.pose.orientation.z = quat_z
         odom_msg.pose.pose.orientation.w = quat_w
+
+        # Velocity (important for EKF)
+        odom_msg.twist.twist.linear.x = vx
+        odom_msg.twist.twist.angular.z = vth
+
+        # Covariance (adjust based on accuracy)
+        odom_msg.pose.covariance = [
+            0.1, 0, 0, 0, 0, 0,
+            0, 0.1, 0, 0, 0, 0,
+            0, 0, 99999, 0, 0, 0,
+            0, 0, 0, 99999, 0, 0,
+            0, 0, 0, 0, 99999, 0,
+            0, 0, 0, 0, 0, 0.2
+        ]
+
+        odom_msg.twist.covariance = [
+            0.05, 0, 0, 0, 0, 0,
+            0, 0.05, 0, 0, 0, 0,
+            0, 0, 99999, 0, 0, 0,
+            0, 0, 0, 99999, 0, 0,
+            0, 0, 0, 0, 99999, 0,
+            0, 0, 0, 0, 0, 0.1
+        ]
+
         self.odom_pub.publish(odom_msg)
 
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = "odom"
-        t.child_frame_id = "base_link"
-        t.transform.translation.x = self.x
-        t.transform.translation.y = self.y
-        t.transform.rotation.z = quat_z
-        t.transform.rotation.w = quat_w
-        self.tf_broadcaster.sendTransform(t)
+        # DO NOT publish TF here anymore
 
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
+
 
 def main(args=None):
     rclpy.init(args=args)
