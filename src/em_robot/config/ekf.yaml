@@ -12,7 +12,7 @@ ekf_filter_node:
     world_frame: "odom"
 
     # High-rate wheel odometry (less trusted)
-    odom0: "/odomWheel"
+    odom0: "odomWheel"
     odom0_config: [true, true, false,   # x, y, yaw positions
                    false, false, true,   # yaw rate (angular velocity)
                    true, false, false,  # unused fields (z, roll, pitch)
@@ -29,7 +29,7 @@ ekf_filter_node:
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
 
     # Lower-rate camera odometry (more trusted)
-    pose0: "/camera_pose"   # Use the sensor message published on "camera_pose"
+    pose0: "camera_pose"   # Use the sensor message published on "camera_pose"
     pose0_frame: "map"     # The measurement is now expressed in the map frame
     pose0_config: [true, true, false,   # x, y, yaw positions
                    false, false, true,   # yaw rate (angular velocity)
