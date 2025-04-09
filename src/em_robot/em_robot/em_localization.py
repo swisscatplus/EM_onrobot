@@ -115,8 +115,8 @@ class MarkerLocalizationNode(Node):
             self.get_logger().info("No markers detected.")
             if self.last_transform is not None:
                 # Re-broadcast last known transform
-                self.last_transform.header.stamp = self.get_clock().now().to_msg()
-                self.tf_broadcaster.sendTransform(self.last_transform)
+                #self.last_transform.header.stamp = self.get_clock().now().to_msg()
+                #self.tf_broadcaster.sendTransform(self.last_transform)
             return
 
         for marker in detections:
