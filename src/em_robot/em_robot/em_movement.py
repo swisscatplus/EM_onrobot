@@ -6,6 +6,7 @@ from nav_msgs.msg import Odometry
 from dynamixel_sdk import *
 from tf2_ros import TransformBroadcaster, Buffer, TransformListener
 from tf_transformations import euler_from_quaternion
+from geometry_msgs.msg import TransformStamped, PoseStamped
 import math
 
 # --- Constants ---
@@ -57,11 +58,9 @@ class MovementNode(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         self.odom_timer = self.create_timer(0.1, self.odom_callback)
 
-        # TF listener setup for corrections
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.adjust_timer = self.create_timer(0.5, self.adjust_odometry)
-        self.first_correction = True
+        self.external_cam_sub = self.create_subscription(
+            PoseStamped, 'aruco_markers_pose', self.external_odom_callback, 10
+        )
 
         # State tracking
         self.prev_position_r = None
@@ -73,6 +72,13 @@ class MovementNode(Node):
 
     def convert_to_signed(self, val):
         return val - 4294967296 if val > 2147483647 else val
+
+    def external_odom_callback(self, msg: PoseStamped):
+        # Reset internal state based on external odometry
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+        self.get_logger().info("Odometry reset from external source.")
 
     def cmd_vel_callback(self, msg: Twist):
         v = msg.linear.x
@@ -153,45 +159,6 @@ class MovementNode(Node):
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
-
-    def adjust_odometry(self):
-        try:
-            now = rclpy.time.Time()
-            trans = self.tf_buffer.lookup_transform('map', 'base_link', now,
-                                                    timeout=rclpy.duration.Duration(seconds=0.1))
-
-            # Extraction de la translation et rotation corrigée
-            x_corrige = trans.transform.translation.x
-            y_corrige = trans.transform.translation.y
-            orientation_q = trans.transform.rotation
-            _, _, theta_corrige = euler_from_quaternion([
-                orientation_q.x,
-                orientation_q.y,
-                orientation_q.z,
-                orientation_q.w])
-
-            # Correction initiale (ou régulière si besoin)
-            if self.first_correction:
-                self.x = x_corrige
-                self.y = y_corrige
-                self.theta = theta_corrige
-                self.first_correction = False
-                self.get_logger().info("Correction initiale par caméra appliquée.")
-            else:
-                # Optionnel : corriger régulièrement ou seulement lors de grandes différences
-                delta_x = x_corrige - self.x
-                delta_y = y_corrige - self.y
-                delta_theta = theta_corrige - self.theta
-
-                seuil_correction = 0.05  # 5 cm et ~3°
-                if abs(delta_x) > seuil_correction or abs(delta_y) > seuil_correction or abs(delta_theta) > 0.05:
-                    self.x += delta_x
-                    self.y += delta_y
-                    self.theta += delta_theta
-                    self.get_logger().info("Odometry corrigée par caméra.")
-
-        except Exception as e:
-            self.get_logger().debug(f"Pas de transform disponible (map→base_link): {e}")
 
 def main(args=None):
     rclpy.init(args=args)
