@@ -67,7 +67,8 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.375)#0.625)
+        #self.camera_height = config.get('camera_height', 0.375)
+        self.camera_height = config.get('camera_height', 0.625)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
