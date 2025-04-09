@@ -11,7 +11,7 @@ import math
 
 # --- Constants ---
 WHEEL_RADIUS = 0.035  # 35 mm = 0.035 m
-WHEEL_BASE = 0.130    # 130 mm = 0.130 m
+WHEEL_BASE = 0.131    # 130 mm = 0.130 m
 ENCODER_RESOLUTION = 4096
 
 # Control Table Addresses
@@ -169,8 +169,8 @@ class MovementNode(Node):
         ]
 
         odom_msg.twist.covariance = [
-            0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
+            0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 99999.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 99999.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 0.0, 99999.0, 0.0,
