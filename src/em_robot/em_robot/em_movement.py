@@ -154,4 +154,53 @@ class MovementNode(Node):
         self.prev_position_l = current_position_l
         self.prev_time = now
 
-    # (La fonction adjust_odometry est exactement celle fournie précédemment)
+    def adjust_odometry(self):
+        try:
+            now = rclpy.time.Time()
+            trans = self.tf_buffer.lookup_transform('map', 'base_link', now,
+                                                    timeout=rclpy.duration.Duration(seconds=0.1))
+
+            # Extraction de la translation et rotation corrigée
+            x_corrige = trans.transform.translation.x
+            y_corrige = trans.transform.translation.y
+            orientation_q = trans.transform.rotation
+            _, _, theta_corrige = euler_from_quaternion([
+                orientation_q.x,
+                orientation_q.y,
+                orientation_q.z,
+                orientation_q.w])
+
+            # Correction initiale (ou régulière si besoin)
+            if self.first_correction:
+                self.x = x_corrige
+                self.y = y_corrige
+                self.theta = theta_corrige
+                self.first_correction = False
+                self.get_logger().info("Correction initiale par caméra appliquée.")
+            else:
+                # Optionnel : corriger régulièrement ou seulement lors de grandes différences
+                delta_x = x_corrige - self.x
+                delta_y = y_corrige - self.y
+                delta_theta = theta_corrige - self.theta
+
+                seuil_correction = 0.05  # 5 cm et ~3°
+                if abs(delta_x) > seuil_correction or abs(delta_y) > seuil_correction or abs(delta_theta) > 0.05:
+                    self.x += delta_x
+                    self.y += delta_y
+                    self.theta += delta_theta
+                    self.get_logger().info("Odometry corrigée par caméra.")
+
+        except Exception as e:
+            self.get_logger().debug(f"Pas de transform disponible (map→base_link): {e}")
+
+    def main(args=None):
+        rclpy.init(args=args)
+        node = MovementNode()
+        try:
+            rclpy.spin(node)
+        except KeyboardInterrupt:
+            node.get_logger().info("Shutting down...")
+        finally:
+            node.stop_motors()
+            node.destroy_node()
+            rclpy.shutdown()
