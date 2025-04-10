@@ -4,10 +4,16 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 pkg_name = 'em_robot'
-config_file = os.path.join(
+config_ekf = os.path.join(
     get_package_share_directory(pkg_name),
     'config',
     'ekf.yaml'
+)
+
+config_imu = os.path.join(
+    get_package_share_directory('bno055'),
+    'config',
+    'bno055_params.yaml'
 )
 
 def generate_launch_description():
@@ -27,8 +33,14 @@ def generate_launch_description():
         package='robot_localization',
         executable='ekf_node',
         name='ekf_filter_node',
-        parameters=[config_file],
+        parameters=[config_ekf],
         output='screen'
+    )
+
+    imu = Node(
+        package='bno055',
+        executable='bno055',
+        parameters=[config_imu]
     )
 
     localization_node = Node(
@@ -42,4 +54,5 @@ def generate_launch_description():
         localization_node,
         odom_node,
         ekf,
+        imu,
     ])
