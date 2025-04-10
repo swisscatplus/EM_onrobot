@@ -37,6 +37,7 @@ from bno055.params.NodeParameters import NodeParameters
 from bno055.sensor.SensorService import SensorService
 import rclpy
 from rclpy.node import Node
+import time
 
 
 class Bno055Node(Node):
@@ -75,6 +76,8 @@ class Bno055Node(Node):
 
         # Connect to BNO055 device:
         connector.connect()
+
+        time.sleep(2)
 
         # Instantiate the sensor Service API:
         self.sensor = SensorService(self, connector, self.param)
