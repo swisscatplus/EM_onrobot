@@ -7,6 +7,7 @@ ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-pack
 # Build your ROS application
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
+COPY src/bno055 src/bno055
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot bno055
 
 # Copy the entrypoint script
