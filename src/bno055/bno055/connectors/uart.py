@@ -90,7 +90,7 @@ class UART(Connector):
 
         try:
             self.serialConnection.write(buf_out)
-            buf_in = bytearray(self.serialConnection.read(2 + length))
+            buf_in = bytearray(self.serialConnection.read())
         except Exception as e:  # noqa: B902
             raise TransmissionException('Transmission error: %s' % e)
 
