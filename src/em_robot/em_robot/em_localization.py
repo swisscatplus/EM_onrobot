@@ -109,8 +109,8 @@ class MarkerLocalizationNode(Node):
         # New static transform: bno055 → base_link
         static_transform_imu = TransformStamped()
         static_transform_imu.header.stamp = self.get_clock().now().to_msg()
-        static_transform_imu.header.frame_id = "bno055"
-        static_transform_imu.child_frame_id = "base_link"
+        static_transform_imu.header.frame_id = "base_link"
+        static_transform_imu.child_frame_id = "bnoO55"
         static_transform_imu.transform.translation.x = 0.0
         static_transform_imu.transform.translation.y = 0.0
         static_transform_imu.transform.translation.z = 0.0
