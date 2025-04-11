@@ -50,9 +50,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        movement_node,
-        localization_node,
-        odom_node,
-        ekf,
+        #movement_node,
+        #localization_node,
+        #odom_node,
+        #ekf,
         imu,
     ])
