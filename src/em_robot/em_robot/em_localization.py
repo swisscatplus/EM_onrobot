@@ -96,16 +96,31 @@ class MarkerLocalizationNode(Node):
         self.get_logger().info("MarkerLocalizationNode: started.")
 
     def publish_static_transform(self):
-        static_transform = TransformStamped()
-        static_transform.header.stamp = self.get_clock().now().to_msg()
-        static_transform.header.frame_id = "camera_frame"
-        static_transform.child_frame_id = "cam_base_link"
-        static_transform.transform.translation.x = -0.192
-        static_transform.transform.translation.y = 0.0
-        static_transform.transform.translation.z = 0.0
-        static_transform.transform.rotation.w = 1.0
-        self.static_tf_broadcaster.sendTransform(static_transform)
-        self.get_logger().info("Published static transform: camera_frame → odom")
+        # Existing transform: camera_frame → cam_base_link
+        static_transform_cam = TransformStamped()
+        static_transform_cam.header.stamp = self.get_clock().now().to_msg()
+        static_transform_cam.header.frame_id = "camera_frame"
+        static_transform_cam.child_frame_id = "cam_base_link"
+        static_transform_cam.transform.translation.x = -0.192
+        static_transform_cam.transform.translation.y = 0.0
+        static_transform_cam.transform.translation.z = 0.0
+        static_transform_cam.transform.rotation.w = 1.0
+
+        # New static transform: bno055 → base_link
+        static_transform_imu = TransformStamped()
+        static_transform_imu.header.stamp = self.get_clock().now().to_msg()
+        static_transform_imu.header.frame_id = "bno055"
+        static_transform_imu.child_frame_id = "base_link"
+        static_transform_imu.transform.translation.x = 0.0
+        static_transform_imu.transform.translation.y = 0.0
+        static_transform_imu.transform.translation.z = 0.0
+        static_transform_imu.transform.rotation.x = 0.0
+        static_transform_imu.transform.rotation.y = 0.0
+        static_transform_imu.transform.rotation.z = 0.0
+        static_transform_imu.transform.rotation.w = 1.0
+
+        self.static_tf_broadcaster.sendTransform([static_transform_cam, static_transform_imu])
+        self.get_logger().info("Published static transforms: camera_frame → cam_base_link, bno055 → base_link")
 
     def process_frame(self):
         frame = self.picam2.capture_array()

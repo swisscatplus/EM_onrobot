@@ -1,8 +1,8 @@
 ekf_filter_node:
   ros__parameters:
-    frequency: 30.0             # EKF update rate (Hz)
-    sensor_timeout: 0.033         # Increased to accommodate the 0.5 s camera update period
-    two_d_mode: true            # Restrict the filter to 2D (x, y, yaw)
+    frequency: 30.0
+    sensor_timeout: 0.033
+    two_d_mode: true
     transform_time_offset: 0.0
     transform_timeout: 0.0
     publish_tf: true
@@ -11,11 +11,11 @@ ekf_filter_node:
     base_link_frame: "base_link"
     world_frame: "map"
 
-    # High-rate wheel odometry (less trusted)
+    # High-rate wheel odometry
     odom0: "odomWheel"
-    odom0_config: [true, true, false,   # x, y, yaw positions
-                   false, false, true,   # yaw rate (angular velocity)
-                   true, true, false,  # unused fields (z, roll, pitch)
+    odom0_config: [true, true, false,
+                   false, false, true,
+                   true, true, false,
                    false, false, true,
                    false, false, false]
     odom0_differential: false
@@ -28,12 +28,12 @@ ekf_filter_node:
                             0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.05]
 
-    # Lower-rate camera odometry (more trusted)
-    pose0: "camera_pose"   # Use the sensor message published on "camera_pose"
-    pose0_frame: "map"     # The measurement is now expressed in the map frame
-    pose0_config: [true, true, false,   # x, y, yaw positions
-                   false, false, true,   # yaw rate (angular velocity)
-                   false, false, false,  # unused fields (z, roll, pitch)
+    # Lower-rate camera odometry
+    pose0: "camera_pose"
+    pose0_frame: "map"
+    pose0_config: [true, true, false,
+                   false, false, true,
+                   false, false, false,
                    false, false, false,
                    false, false, false]
     pose0_differential: false
@@ -45,3 +45,15 @@ ekf_filter_node:
                             0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
+
+    # BNO055 IMU (angles are highly trusted)
+    imu0: "/bno055/imu"
+    imu0_config: [false, false, false,   # No position
+                  false, false, true,    # Yaw velocity (only yaw in 2D mode)
+                  false, false, false,   # No linear acceleration
+                  true, true, true,      # Roll, pitch, yaw angles (trusted)
+                  false, false, false]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
