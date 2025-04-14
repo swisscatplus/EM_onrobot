@@ -10,6 +10,7 @@ import cv2 as cv
 
 from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster, Buffer, TransformListener
 from geometry_msgs.msg import TransformStamped, PoseStamped
+from nav_msgs.msg import Odometry
 from tf_transformations import (
     quaternion_from_euler,
     quaternion_from_matrix,
@@ -22,8 +23,7 @@ from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
-
-# --- ArUco Detection Function (inlined) ---
+# --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, detector_params)
@@ -40,10 +40,9 @@ def detect_aruco_corners(frame):
 
     results = []
     for corners, id_ in zip(corners_list, ids.flatten()):
-        c = corners[0]  # (1,4,2) → (4,2)
+        c = corners[0]
         results.append({'id': int(id_), 'corners': c})
     return results
-
 
 # --- Main Node ---
 class MarkerLocalizationNode(Node):
@@ -67,60 +66,54 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        #self.camera_height = config.get('camera_height', 0.375)
         self.camera_height = config.get('camera_height', 0.625)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (4608, 2592) #(1536, 864)
+        self.size = (4608, 2592)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({
-            "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": 6.0
-            #"LensPosition": 6.225 // Quand on teste à côté du bureau
-        })
+        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 6.0})
 
         # ROS setup
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
         self.pose_pub = self.create_publisher(PoseStamped, 'aruco_markers_pose', 10)
+        self.odom_sub = self.create_subscription(Odometry, '/odometry/filtered', self.odom_callback, 10)
+        self.latest_odom_pose = None
 
         self.publish_static_transform()
-
-        self.timer = self.create_timer(1/2, self.process_frame)  # 5 Hz
+        self.timer = self.create_timer(1/2, self.process_frame)
         self.get_logger().info("MarkerLocalizationNode: started.")
 
+    def odom_callback(self, msg: Odometry):
+        position = msg.pose.pose.position
+        orientation = msg.pose.pose.orientation
+        pose_matrix = concatenate_matrices(
+            translation_matrix([position.x, position.y, position.z]),
+            quaternion_matrix([orientation.x, orientation.y, orientation.z, orientation.w])
+        )
+        self.latest_odom_pose = pose_matrix
+
     def publish_static_transform(self):
-        # Existing transform: camera_frame → cam_base_link
         static_transform_cam = TransformStamped()
         static_transform_cam.header.stamp = self.get_clock().now().to_msg()
         static_transform_cam.header.frame_id = "camera_frame"
-        static_transform_cam.child_frame_id = "cam_base_link"
+        static_transform_cam.child_frame_id = "odom"
         static_transform_cam.transform.translation.x = -0.192
         static_transform_cam.transform.translation.y = 0.0
         static_transform_cam.transform.translation.z = 0.0
         static_transform_cam.transform.rotation.w = 1.0
 
-        # New static transform: bno055 → base_link
-        # static_transform_imu = TransformStamped()
-        # static_transform_imu.header.stamp = self.get_clock().now().to_msg()
-        # static_transform_imu.header.frame_id = "base_link"
-        # static_transform_imu.child_frame_id = "base_link"
-        # static_transform_imu.transform.translation.x = 0.0
-        # static_transform_imu.transform.translation.y = 0.0
-        # static_transform_imu.transform.translation.z = 0.0
-        # static_transform_imu.transform.rotation.x = 0.0
-        # static_transform_imu.transform.rotation.y = 0.0
-        # static_transform_imu.transform.rotation.z = 0.0
-        # static_transform_imu.transform.rotation.w = 1.0
-
-        self.static_tf_broadcaster.sendTransform([static_transform_cam])#, static_transform_imu])
-        self.get_logger().info("Published static transforms: camera_frame → cam_base_link, bno055 → base_link")
+        self.static_tf_broadcaster.sendTransform([static_transform_cam])
+        self.get_logger().info("Published static transform: camera_frame → odom")
 
     def process_frame(self):
         frame = self.picam2.capture_array()
@@ -128,17 +121,12 @@ class MarkerLocalizationNode(Node):
 
         if not detections:
             self.get_logger().info("No markers detected.")
-            #if self.last_transform is not None:
-                # Re-broadcast last known transform
-                #self.last_transform.header.stamp = self.get_clock().now().to_msg()
-                #self.tf_broadcaster.sendTransform(self.last_transform)
-            #return
+            return
 
         for marker in detections:
             marker_id = marker['id']
             corners = marker['corners'].astype(np.float32)
 
-            # Undistort corners
             undistorted = cv.undistortPoints(
                 np.expand_dims(corners, axis=1),
                 self.camera_matrix,
@@ -146,22 +134,19 @@ class MarkerLocalizationNode(Node):
                 P=self.camera_matrix
             ).reshape(-1, 2)
 
-            # Marker position (approx)
             cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
             fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
             marker_center = np.mean(undistorted, axis=0)
             offset = np.array([cx, cy]) - marker_center
-            x_cam = self.camera_height * offset[0] / (fx)
-            y_cam = self.camera_height * offset[1] / (fy)
+            x_cam = self.camera_height * offset[0] / fx
+            y_cam = self.camera_height * offset[1] / fy
 
-            # Yaw estimation from marker orientation
             top_center = np.mean(undistorted[0:2], axis=0)
             bottom_center = np.mean(undistorted[2:4], axis=0)
             dx = top_center[0] - bottom_center[0]
             dy = top_center[1] - bottom_center[1]
             yaw = np.arctan2(dx, -dy)
 
-            # Transform: marker → camera
             quat = quaternion_from_euler(0.0, 0.0, yaw)
             T_marker_cam = concatenate_matrices(
                 translation_matrix([x_cam, y_cam, 0.0]),
@@ -171,7 +156,6 @@ class MarkerLocalizationNode(Node):
             trans = translation_from_matrix(T_cam_marker)
             quat_inv = quaternion_from_matrix(T_cam_marker)
 
-            # Broadcast TF
             t_camera_marker = TransformStamped()
             t_camera_marker.header.stamp = self.get_clock().now().to_msg()
             t_camera_marker.header.frame_id = f"aruco_{marker_id}"
@@ -185,9 +169,8 @@ class MarkerLocalizationNode(Node):
             t_camera_marker.transform.rotation.w = quat_inv[3]
 
             self.tf_broadcaster.sendTransform(t_camera_marker)
-            self.last_transform = t_camera_marker  # <---- Store last valid transform
+            self.last_transform = t_camera_marker
 
-            # Publish PoseStamped
             pose_msg = PoseStamped()
             pose_msg.header.stamp = self.get_clock().now().to_msg()
             pose_msg.header.frame_id = "camera_frame"
@@ -200,9 +183,54 @@ class MarkerLocalizationNode(Node):
             pose_msg.pose.orientation.w = quat[3]
             self.pose_pub.publish(pose_msg)
 
-            self.get_logger().info(
-                f"[Undistorted] Marker {marker_id}: x={x_cam:.3f}, y={y_cam:.3f}, yaw={np.degrees(yaw):.1f}°"
-            )
+            # Compute map -> odom using tf lookup
+            aruco_frame = f"aruco_{marker_id}"
+            try:
+                tf_map_to_aruco = self.tf_buffer.lookup_transform(
+                    "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
+                )
+
+                T_map_aruco = concatenate_matrices(
+                    translation_matrix([
+                        tf_map_to_aruco.transform.translation.x,
+                        tf_map_to_aruco.transform.translation.y,
+                        tf_map_to_aruco.transform.translation.z
+                    ]),
+                    quaternion_matrix([
+                        tf_map_to_aruco.transform.rotation.x,
+                        tf_map_to_aruco.transform.rotation.y,
+                        tf_map_to_aruco.transform.rotation.z,
+                        tf_map_to_aruco.transform.rotation.w
+                    ])
+                )
+
+                if self.latest_odom_pose is None:
+                    self.get_logger().warn("No EKF pose available yet. Skipping map->odom update.")
+                    return
+
+                T_odom_base = self.latest_odom_pose
+                T_map_odom = T_map_aruco @ np.linalg.inv(T_odom_base)
+
+                trans_map_odom = translation_from_matrix(T_map_odom)
+                quat_map_odom = quaternion_from_matrix(T_map_odom)
+
+                t_map_odom = TransformStamped()
+                t_map_odom.header.stamp = self.get_clock().now().to_msg()
+                t_map_odom.header.frame_id = "map"
+                t_map_odom.child_frame_id = "odom"
+                t_map_odom.transform.translation.x = trans_map_odom[0]
+                t_map_odom.transform.translation.y = trans_map_odom[1]
+                t_map_odom.transform.translation.z = 0.0
+                t_map_odom.transform.rotation.x = quat_map_odom[0]
+                t_map_odom.transform.rotation.y = quat_map_odom[1]
+                t_map_odom.transform.rotation.z = quat_map_odom[2]
+                t_map_odom.transform.rotation.w = quat_map_odom[3]
+
+                self.tf_broadcaster.sendTransform(t_map_odom)
+                self.get_logger().info(f"Updated map->odom using TF from {aruco_frame}.")
+
+            except Exception as e:
+                self.get_logger().warn(f"Could not get map -> {aruco_frame} TF: {e}")
 
 
 def main(args=None):

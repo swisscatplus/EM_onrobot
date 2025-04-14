@@ -46,29 +46,5 @@ ekf_filter_node:
 #                            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
 #                            0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
 
-    # BNO055 IMU (angles are highly trusted)
-    imu0: "/bno055/imu"
-    imu0_config: [false, false, false,   # No position
-                  false, false, true,    # Yaw velocity (only yaw in 2D mode)
-                  false, false, false,   # No linear acceleration
-                  true, true, true,      # Roll, pitch, yaw angles (trusted)
-                  false, false, false]
-    imu0_differential: false
-    imu0_relative: true
-    imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true
-    imu0_pose_covariance: [ 0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.0, 0.01 ]
-
-    imu0_twist_covariance: [ 0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
-                             0.0, 0.0, 0.0, 0.02, 0.0, 0.0,
-                             0.0, 0.0, 0.0, 0.0, 0.02, 0.0,
-                             0.0, 0.0, 0.0, 0.0, 0.0, 0.02 ]
 
 
