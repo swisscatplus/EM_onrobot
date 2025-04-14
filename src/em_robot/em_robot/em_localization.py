@@ -89,6 +89,9 @@ class MarkerLocalizationNode(Node):
         self.odom_sub = self.create_subscription(Odometry, '/odometry/filtered', self.odom_callback, 10)
         self.latest_odom_pose = None
 
+        self.last_map_to_odom = None
+        self.map_odom_timer = self.create_timer(0.05, self.broadcast_last_map_to_odom)  # 20 Hz
+
         self.publish_static_transform()
         self.timer = self.create_timer(1/2, self.process_frame)
         self.get_logger().info("MarkerLocalizationNode: started.")
@@ -114,6 +117,11 @@ class MarkerLocalizationNode(Node):
 
         self.static_tf_broadcaster.sendTransform([static_transform_cam])
         self.get_logger().info("Published static transform: camera_frame → cam_base_link")
+
+    def broadcast_last_map_to_odom(self):
+        if self.last_map_to_odom:
+            self.last_map_to_odom.header.stamp = self.get_clock().now().to_msg()
+            self.tf_broadcaster.sendTransform(self.last_map_to_odom)
 
     def process_frame(self):
         frame = self.picam2.capture_array()
@@ -203,7 +211,7 @@ class MarkerLocalizationNode(Node):
                     ])
                 )
 
-                T_camera_cam_base = translation_matrix([-0.192, 0.0, 0.0])  # static transform
+                T_camera_cam_base = translation_matrix([-0.192, 0.0, 0.0])
                 T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
 
                 if self.latest_odom_pose is None:
@@ -228,6 +236,7 @@ class MarkerLocalizationNode(Node):
                 t_map_odom.transform.rotation.z = quat_map_odom[2]
                 t_map_odom.transform.rotation.w = quat_map_odom[3]
 
+                self.last_map_to_odom = t_map_odom
                 self.tf_broadcaster.sendTransform(t_map_odom)
                 self.get_logger().info(f"Updated map->odom using TF from {aruco_frame}.")
 
