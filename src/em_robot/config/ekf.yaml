@@ -1,43 +1,49 @@
 ekf_filter_node:
   ros__parameters:
-    frequency: 30.0  # EKF update rate
+    frequency: 30.0
     sensor_timeout: 0.05
     two_d_mode: true
-    transform_time_offset: 0.0
-    transform_timeout: 0.0
-    map_frame: "map"
+
+    #map_frame: "map"
     odom_frame: "odom"
     base_link_frame: "base_link"
     world_frame: "odom"
     publish_tf: true
 
-    # ======= Wheel Odometry (Primary Linear Source) =======
+    # ===================== Wheel Odometry =====================
     odom0: "odomWheel"
-    odom0_config: [false, false, false,     # Position x, y
+    odom0_config: [false, false, false,   # Position (not used)
                    false, false, false,   # Orientation (not used)
                    true, true, false,     # Linear velocity x, y
-                   false, false, true,   # Angular velocity
-                   false, false, false]   # No acceleration
-    odom0_differential: false
-    odom0_relative: false
+                   false, false, true,    # Angular velocity z (yaw rate)
+                   false, false, false]   # Acceleration
+
+    odom0_differential: false       # already integrated
+    odom0_relative: true            # it's relative to starting point
     odom0_queue_size: 10
+    odom0_pose_covariance: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.2, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 99999.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 99999.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 99999.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
+    odom0_twist_covariance: [0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+                             0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
+                             0.0, 0.0, 99999.0, 0.0, 0.0, 0.0,
+                             0.0, 0.0, 0.0, 99999.0, 0.0, 0.0,
+                             0.0, 0.0, 0.0, 0.0, 99999.0, 0.0,
+                             0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
 
-    odom0_pose_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.0, 1.57]
-
-    # ======= IMU (BNO055) — Orientation & Yaw Rate Only =======
+    # ===================== IMU =====================
     imu0: "/bno055/imu"
-    imu0_config: [false, false, false,     # No position
-                  false, false, true,      # Only yaw velocity
-                  false, false, false,     # No linear acceleration
-                  false, false, true,        # Roll, pitch, yaw (from fused IMU)
-                  true, false, false]
+    imu0_config: [false, false, false,   # Position
+                  false, false, true,    # Angular velocity (yaw only)
+                  false, false, false,   # No linear acceleration
+                  false, false, true,    # Orientation (yaw only)
+                  false, false, false]
+
     imu0_differential: false
-    imu0_relative: false
+    imu0_relative: true
     imu0_queue_size: 10
     imu0_remove_gravitational_acceleration: true
 
@@ -47,10 +53,17 @@ ekf_filter_node:
                            0.0, 0.0, 0.0, 0.001, 0.0, 0.0,
                            0.0, 0.0, 0.0, 0.0, 0.001, 0.0,
                            0.0, 0.0, 0.0, 0.0, 0.0, 0.0001]
-
     imu0_twist_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.02, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.02, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
+
+    # Optional: Smoothing
+    process_noise_covariance: [0.05, 0, 0, 0, 0, 0,
+                               0, 0.05, 0, 0, 0, 0,
+                               0, 0, 0.06, 0, 0, 0,
+                               0, 0, 0, 0.03, 0, 0,
+                               0, 0, 0, 0, 0.03, 0,
+                               0, 0, 0, 0, 0, 0.06]
