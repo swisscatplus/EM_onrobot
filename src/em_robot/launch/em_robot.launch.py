@@ -23,6 +23,14 @@ def generate_launch_description():
         output='screen',
     )
 
+    imu_broadcast = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_bno055_tf',
+        arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'bno055'],
+        output='screen'
+    )
+
     odom_node = Node(
         package=pkg_name,
         executable='em_odom',
@@ -51,6 +59,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         imu,
+        imu_broadcast,
         movement_node,
         localization_node,
         odom_node,
