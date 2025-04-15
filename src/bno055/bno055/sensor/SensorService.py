@@ -104,7 +104,8 @@ class SensorService:
             'P4': bytes(b'\x24\x03'),
             'P5': bytes(b'\x21\x02'),
             'P6': bytes(b'\x21\x07'),
-            'P7': bytes(b'\x24\x05')
+            'P7': bytes(b'\x24\x05'),
+            'P8': bytes(b'\x38\x04')
         }
         if not (self.con.transmit(registers.BNO055_AXIS_MAP_CONFIG_ADDR, 2,
                                   mount_positions[self.param.placement_axis_remap.value])):
