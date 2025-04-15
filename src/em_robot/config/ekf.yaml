@@ -21,8 +21,6 @@ ekf_filter_node:
     odom0_differential: false
     odom0_relative: true
     odom0_queue_size: 10
-    odom0_pose_rejection_threshold: 0.01   # max linear delta ≈ 0.3 / 30
-    odom0_twist_rejection_threshold: 0.3   # max linear velocity (modifiable)
 
     odom0_pose_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
