@@ -14,9 +14,9 @@ ekf_filter_node:
     # ======= Wheel Odometry (Primary Linear Source) =======
     odom0: "odomWheel"
     odom0_config: [true, true, false,     # Position x, y
-                   false, false, false,   # Orientation (not used)
+                   false, false, true,   # Orientation (not used)
                    true, true, false,     # Linear velocity x, y
-                   false, false, false,   # Angular velocity
+                   false, false, true,   # Angular velocity
                    false, false, false]   # No acceleration
     odom0_differential: false
     odom0_relative: true
