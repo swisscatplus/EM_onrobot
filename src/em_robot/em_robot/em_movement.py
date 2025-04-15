@@ -32,7 +32,7 @@ class MovementNode(Node):
         self.get_logger().info('MovementNode started')
 
         # Declare and get parameters
-        self.declare_parameter("max_speed", 0.3)
+        self.declare_parameter("max_speed", 1000.0)
         self.declare_parameter("odom_rate", 30.0)
         self.max_speed = self.get_parameter("max_speed").value
         self.odom_rate = self.get_parameter("odom_rate").value
