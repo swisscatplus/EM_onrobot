@@ -1,8 +1,10 @@
 ekf_filter_node:
   ros__parameters:
     frequency: 30.0
-    sensor_timeout: 0.05
+    sensor_timeout: 0.1
     two_d_mode: true
+    #print_diagnostics: true
+
 
     #map_frame: "map"
     odom_frame: "odom"
