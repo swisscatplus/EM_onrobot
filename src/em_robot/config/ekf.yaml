@@ -1,6 +1,6 @@
 ekf_filter_node:
   ros__parameters:
-    frequency: 30.0
+    frequency: 30.0  # EKF update rate
     sensor_timeout: 0.1
     two_d_mode: true
     transform_time_offset: 0.0
@@ -11,64 +11,48 @@ ekf_filter_node:
     world_frame: "odom"
     publish_tf: true
 
-    # High-rate wheel odometry
+    # ======= Wheel Odometry (Primary Linear Source) =======
     odom0: "odomWheel"
-    odom0_config: [true, true, false,
-                   false, false, true,
-                   true, true, false,
-                   false, false, true,
-                   false, false, false]
+    odom0_config: [true, true, false,     # Position x, y
+                   false, false, false,   # Orientation (not used)
+                   true, true, false,     # Linear velocity x, y
+                   false, false, false,   # Angular velocity
+                   false, false, false]   # No acceleration
     odom0_differential: false
     odom0_relative: true
     odom0_queue_size: 10
-    odom0_pose_covariance: [0.05, 0.0, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.05, 0.0, 0.0, 0.0, 0.0,
+    odom0_pose_rejection_threshold: 0.01   # max linear delta ≈ 0.3 / 30
+    odom0_twist_rejection_threshold: 0.3   # max linear velocity (modifiable)
+
+    odom0_pose_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
 
-    # Lower-rate camera odometry
-#    pose0: "camera_pose"
-#    pose0_frame: "map"
-#    pose0_config: [true, true, false,
-#                   false, false, true,
-#                   false, false, false,
-#                   false, false, false,
-#                   false, false, false]
-#    pose0_differential: false
-#    pose0_relative: false
-#    pose0_queue_size: 10
-#    pose0_pose_covariance: [0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
-#                            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
-#                            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
-#                            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-#                            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-#                            0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
-
-    # BNO055 IMU (angles are highly trusted)
+    # ======= IMU (BNO055) — Orientation & Yaw Rate Only =======
     imu0: "/bno055/imu"
-    imu0_config: [false, false, false,   # No position
-                  false, false, true,    # Yaw velocity (only yaw in 2D mode)
-                  false, false, false,   # No linear acceleration
-                  true, true, true,      # Roll, pitch, yaw angles (trusted)
+    imu0_config: [false, false, false,     # No position
+                  false, false, true,      # Only yaw velocity
+                  false, false, false,     # No linear acceleration
+                  false, false, true,        # Roll, pitch, yaw (from fused IMU)
                   false, false, false]
     imu0_differential: false
     imu0_relative: true
     imu0_queue_size: 10
     imu0_remove_gravitational_acceleration: true
-    imu0_pose_covariance: [ 0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.0, 0.01 ]
 
-    imu0_twist_covariance: [ 0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
-                             0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
-                             0.0, 0.0, 0.0, 0.02, 0.0, 0.0,
-                             0.0, 0.0, 0.0, 0.0, 0.02, 0.0,
-                             0.0, 0.0, 0.0, 0.0, 0.0, 0.02 ]
+    imu0_pose_covariance: [0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.001, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.001, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
 
-
+    imu0_twist_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.02, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.02, 0.0,
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.02]

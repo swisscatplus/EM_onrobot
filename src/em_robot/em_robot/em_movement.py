@@ -4,9 +4,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
 from dynamixel_sdk import *
-from tf2_ros import TransformBroadcaster, Buffer, TransformListener
 from tf_transformations import euler_from_quaternion
-from geometry_msgs.msg import TransformStamped, PoseStamped
 import math
 
 # --- Constants ---
@@ -23,7 +21,7 @@ ADDR_PRESENT_POSITION = 132
 DXL_ID_1 = 2  # Right
 DXL_ID_2 = 1  # Left
 BAUDRATE = 57600
-DEVICENAME = '/dev/dynamixel'#'/dev/ttyUSB0'
+DEVICENAME = '/dev/dynamixel'
 TORQUE_ENABLE = 1
 TORQUE_DISABLE = 0
 
@@ -32,6 +30,13 @@ class MovementNode(Node):
     def __init__(self):
         super().__init__('movement_node')
         self.get_logger().info('MovementNode started')
+
+        # Declare and get parameters
+        self.declare_parameter("max_speed", 0.3)
+        self.declare_parameter("odom_rate", 30.0)
+        self.max_speed = self.get_parameter("max_speed").value
+        self.odom_rate = self.get_parameter("odom_rate").value
+        self.max_pos_step = self.max_speed / self.odom_rate
 
         # Initialize Dynamixel communication
         self.portHandler = PortHandler(DEVICENAME)
@@ -55,12 +60,7 @@ class MovementNode(Node):
         # ROS setup
         self.subscription = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         self.odom_pub = self.create_publisher(Odometry, 'odomWheel', 10)
-        # self.tf_broadcaster = TransformBroadcaster(self)
-        self.odom_timer = self.create_timer(1/30.0, self.odom_callback)
-
-        # self.external_cam_sub = self.create_subscription(
-        #     PoseStamped, 'aruco_markers_pose', self.external_odom_callback, 10
-        # )
+        self.odom_timer = self.create_timer(1.0 / self.odom_rate, self.odom_callback)
 
         # State tracking
         self.prev_position_r = None
@@ -73,15 +73,8 @@ class MovementNode(Node):
     def convert_to_signed(self, val):
         return val - 4294967296 if val > 2147483647 else val
 
-    def external_odom_callback(self, msg: PoseStamped):
-        # Reset internal state based on external odometry
-        self.x = 0.0
-        self.y = 0.0
-        self.theta = 0.0
-        self.get_logger().info("Odometry reset from external source.")
-
     def cmd_vel_callback(self, msg: Twist):
-        v = msg.linear.x
+        v = max(min(msg.linear.x, self.max_speed), -self.max_speed)
         w = msg.angular.z
 
         motor_speed_r = int((v + (w * WHEEL_BASE / 2)) * 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi))
@@ -136,17 +129,26 @@ class MovementNode(Node):
         vx = d / dt
         vth = dtheta / dt
 
+        # Clamp velocity
+        if abs(vx) > self.max_speed:
+            self.get_logger().warn(f"Clamping vx {vx:.3f} to max {self.max_speed}")
+            vx = math.copysign(self.max_speed, vx)
+
+        # Clamp positional step
+        if abs(d) > self.max_pos_step:
+            self.get_logger().warn(f"Clamping d {d:.4f} to max step {self.max_pos_step:.4f}")
+            d = math.copysign(self.max_pos_step, d)
+            vx = d / dt
+
         self.x += d * math.cos(self.theta + dtheta / 2.0)
         self.y += d * math.sin(self.theta + dtheta / 2.0)
         self.theta += dtheta
 
-        # Publish Odometry without TF
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = "odom"
         odom_msg.child_frame_id = "base_link"
 
-        # Position
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         quat_z = math.sin(self.theta / 2.0)
@@ -154,11 +156,9 @@ class MovementNode(Node):
         odom_msg.pose.pose.orientation.z = quat_z
         odom_msg.pose.pose.orientation.w = quat_w
 
-        # Velocity (important for EKF)
         odom_msg.twist.twist.linear.x = vx
         odom_msg.twist.twist.angular.z = vth
 
-        # Covariance (adjust based on accuracy)
         odom_msg.pose.covariance = [
             0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 0.1, 0.0, 0.0, 0.0, 0.0,
@@ -179,11 +179,13 @@ class MovementNode(Node):
 
         self.odom_pub.publish(odom_msg)
 
-        # DO NOT publish TF here anymore
-
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
         self.prev_time = now
+
+    def stop_motors(self):
+        self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_1, ADDR_GOAL_VELOCITY, 0)
+        self.packetHandler.write4ByteTxRx(self.portHandler, DXL_ID_2, ADDR_GOAL_VELOCITY, 0)
 
 
 def main(args=None):
