@@ -1,7 +1,7 @@
 ekf_filter_node:
   ros__parameters:
     frequency: 30.0  # EKF update rate
-    sensor_timeout: 0.1
+    sensor_timeout: 0.05
     two_d_mode: true
     transform_time_offset: 0.0
     transform_timeout: 0.0
@@ -10,6 +10,16 @@ ekf_filter_node:
     base_link_frame: "base_link"
     world_frame: "odom"
     publish_tf: true
+
+    process_noise_covariance: [
+      0.05, 0, 0, 0, 0, 0,
+      0, 0.05, 0, 0, 0, 0,
+      0, 0, 0.1, 0, 0, 0,
+      0, 0, 0, 0.05, 0, 0,
+      0, 0, 0, 0, 0.05, 0,
+      0, 0, 0, 0, 0, 0.01  # angular z process noise (more responsive)
+    ]
+
 
     # ======= Wheel Odometry (Primary Linear Source) =======
     odom0: "odomWheel"
@@ -27,7 +37,7 @@ ekf_filter_node:
                             0.0, 0.0, 0.1, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.1, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.1, 0.0,
-                            0.0, 0.0, 0.0, 0.0, 0.0, 0.1]
+                            0.0, 0.0, 0.0, 0.0, 0.0, 0.2]
 
     # ======= IMU (BNO055) — Orientation & Yaw Rate Only =======
     imu0: "/bno055/imu"
@@ -46,7 +56,7 @@ ekf_filter_node:
                            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
                            0.0, 0.0, 0.0, 0.001, 0.0, 0.0,
                            0.0, 0.0, 0.0, 0.0, 0.001, 0.0,
-                           0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0001]
 
     imu0_twist_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
