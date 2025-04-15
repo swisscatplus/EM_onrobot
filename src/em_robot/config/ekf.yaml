@@ -17,7 +17,7 @@ ekf_filter_node:
     odom0_config: [false, false, false,   # Position (not used)
                    false, false, false,   # Orientation (not used)
                    true, true, false,     # Linear velocity x, y
-                   false, false, true,    # Angular velocity z (yaw rate)
+                   false, false, false,    # Angular velocity z (yaw rate)
                    false, false, false]   # Acceleration
 
     odom0_differential: false       # already integrated
@@ -41,7 +41,7 @@ ekf_filter_node:
     imu0_config: [false, false, false,   # Position
                   false, false, true,    # Angular velocity (yaw only)
                   false, false, false,   # No linear acceleration
-                  false, false, true,    # Orientation (yaw only)
+                  false, false, false,    # Orientation (yaw only)
                   false, false, false]
 
     imu0_differential: false
@@ -54,7 +54,7 @@ ekf_filter_node:
                            0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
                            0.0, 0.0, 0.0, 0.001, 0.0, 0.0,
                            0.0, 0.0, 0.0, 0.0, 0.001, 0.0,
-                           0.0, 0.0, 0.0, 0.0, 0.0, 0.0001]
+                           0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
     imu0_twist_covariance: [0.02, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.02, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.02, 0.0, 0.0, 0.0,
