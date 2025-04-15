@@ -39,9 +39,9 @@ ekf_filter_node:
     # ===================== IMU =====================
     imu0: "/bno055/imu"
     imu0_config: [false, false, false,   # Position
-                  false, false, false,    # Angular velocity (yaw only)
+                  false, false, true,    # Angular velocity (yaw only)
                   false, false, false,   # No linear acceleration
-                  false, false, false,    # Orientation (yaw only)
+                  false, false, true,    # Orientation (yaw only)
                   false, false, false]
 
     imu0_differential: false
