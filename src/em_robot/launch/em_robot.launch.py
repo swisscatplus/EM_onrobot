@@ -27,7 +27,7 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_bno055_tf',
-        arguments=['0', '0', '0', '0', '0', '0', 'base_link', 'bno055'],
+        arguments=['0', '0', '0', '0', '-1.57', '0', 'base_link', 'bno055'],
         output='screen'
     )
 
