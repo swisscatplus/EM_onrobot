@@ -66,18 +66,18 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.625)
+        self.camera_height = config.get('camera_height', 0.375)#0.625)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (4608, 2592)
+        self.size = (1536, 864)#(4608, 2592)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 6.0})
+        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 8.0})#6.0})
 
         # ROS setup
         self.tf_broadcaster = TransformBroadcaster(self)
