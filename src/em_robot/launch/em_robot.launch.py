@@ -62,6 +62,6 @@ def generate_launch_description():
         imu_broadcast,
         movement_node,
         localization_node,
-        odom_node,
+        #odom_node,
         ekf,
     ])
