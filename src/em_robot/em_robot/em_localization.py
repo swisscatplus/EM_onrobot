@@ -131,117 +131,119 @@ class MarkerLocalizationNode(Node):
             self.get_logger().info("No markers detected.")
             return
 
-        for marker in detections:
-            marker_id = marker['id']
-            corners = marker['corners'].astype(np.float32)
+        # Prendre uniquement le premier marqueur détecté
+        marker = detections[0]
+        marker_id = marker['id']
+        self.get_logger().info(f"Using marker ID {marker_id} for localization.")
+        corners = marker['corners'].astype(np.float32)
 
-            undistorted = cv.undistortPoints(
-                np.expand_dims(corners, axis=1),
-                self.camera_matrix,
-                self.dist_coeffs,
-                P=self.camera_matrix
-            ).reshape(-1, 2)
+        undistorted = cv.undistortPoints(
+            np.expand_dims(corners, axis=1),
+            self.camera_matrix,
+            self.dist_coeffs,
+            P=self.camera_matrix
+        ).reshape(-1, 2)
 
-            cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
-            fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
-            marker_center = np.mean(undistorted, axis=0)
-            offset = np.array([cx, cy]) - marker_center
-            x_cam = self.camera_height * offset[0] / fx
-            y_cam = self.camera_height * offset[1] / fy
+        cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
+        fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
+        marker_center = np.mean(undistorted, axis=0)
+        offset = np.array([cx, cy]) - marker_center
+        x_cam = self.camera_height * offset[0] / fx
+        y_cam = self.camera_height * offset[1] / fy
 
-            top_center = np.mean(undistorted[0:2], axis=0)
-            bottom_center = np.mean(undistorted[2:4], axis=0)
-            dx = top_center[0] - bottom_center[0]
-            dy = top_center[1] - bottom_center[1]
-            yaw = np.arctan2(dx, -dy)
+        top_center = np.mean(undistorted[0:2], axis=0)
+        bottom_center = np.mean(undistorted[2:4], axis=0)
+        dx = top_center[0] - bottom_center[0]
+        dy = top_center[1] - bottom_center[1]
+        yaw = np.arctan2(dx, -dy)
 
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
-            T_marker_cam = concatenate_matrices(
-                translation_matrix([x_cam, y_cam, 0.0]),
-                quaternion_matrix(quat)
+        quat = quaternion_from_euler(0.0, 0.0, yaw)
+        T_marker_cam = concatenate_matrices(
+            translation_matrix([x_cam, y_cam, 0.0]),
+            quaternion_matrix(quat)
+        )
+        T_aruco_camera = np.linalg.inv(T_marker_cam)
+        trans = translation_from_matrix(T_aruco_camera)
+        quat_inv = quaternion_from_matrix(T_aruco_camera)
+
+        t_camera_marker = TransformStamped()
+        t_camera_marker.header.stamp = self.get_clock().now().to_msg()
+        t_camera_marker.header.frame_id = f"aruco_{marker_id}"
+        t_camera_marker.child_frame_id = "camera_frame"
+        t_camera_marker.transform.translation.x = trans[0]
+        t_camera_marker.transform.translation.y = trans[1]
+        t_camera_marker.transform.translation.z = 0.0
+        t_camera_marker.transform.rotation.x = quat_inv[0]
+        t_camera_marker.transform.rotation.y = quat_inv[1]
+        t_camera_marker.transform.rotation.z = quat_inv[2]
+        t_camera_marker.transform.rotation.w = quat_inv[3]
+
+        self.tf_broadcaster.sendTransform(t_camera_marker)
+        self.last_transform = t_camera_marker
+
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+        pose_msg.header.frame_id = "camera_frame"
+        pose_msg.pose.position.x = x_cam
+        pose_msg.pose.position.y = y_cam
+        pose_msg.pose.position.z = 0.0
+        pose_msg.pose.orientation.x = quat[0]
+        pose_msg.pose.orientation.y = quat[1]
+        pose_msg.pose.orientation.z = quat[2]
+        pose_msg.pose.orientation.w = quat[3]
+        self.pose_pub.publish(pose_msg)
+
+        aruco_frame = f"aruco_{marker_id}"
+        try:
+            tf_map_to_aruco = self.tf_buffer.lookup_transform(
+                "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
             )
-            T_aruco_camera = np.linalg.inv(T_marker_cam)
-            trans = translation_from_matrix(T_aruco_camera)
-            quat_inv = quaternion_from_matrix(T_aruco_camera)
 
-            t_camera_marker = TransformStamped()
-            t_camera_marker.header.stamp = self.get_clock().now().to_msg()
-            t_camera_marker.header.frame_id = f"aruco_{marker_id}"
-            t_camera_marker.child_frame_id = "camera_frame"
-            t_camera_marker.transform.translation.x = trans[0]
-            t_camera_marker.transform.translation.y = trans[1]
-            t_camera_marker.transform.translation.z = 0.0
-            t_camera_marker.transform.rotation.x = quat_inv[0]
-            t_camera_marker.transform.rotation.y = quat_inv[1]
-            t_camera_marker.transform.rotation.z = quat_inv[2]
-            t_camera_marker.transform.rotation.w = quat_inv[3]
+            T_map_aruco = concatenate_matrices(
+                translation_matrix([
+                    tf_map_to_aruco.transform.translation.x,
+                    tf_map_to_aruco.transform.translation.y,
+                    tf_map_to_aruco.transform.translation.z
+                ]),
+                quaternion_matrix([
+                    tf_map_to_aruco.transform.rotation.x,
+                    tf_map_to_aruco.transform.rotation.y,
+                    tf_map_to_aruco.transform.rotation.z,
+                    tf_map_to_aruco.transform.rotation.w
+                ])
+            )
 
-            self.tf_broadcaster.sendTransform(t_camera_marker)
-            self.last_transform = t_camera_marker
+            T_camera_cam_base = translation_matrix([-0.192, 0.0, 0.0])
+            T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
 
-            pose_msg = PoseStamped()
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-            pose_msg.header.frame_id = "camera_frame"
-            pose_msg.pose.position.x = x_cam
-            pose_msg.pose.position.y = y_cam
-            pose_msg.pose.position.z = 0.0
-            pose_msg.pose.orientation.x = quat[0]
-            pose_msg.pose.orientation.y = quat[1]
-            pose_msg.pose.orientation.z = quat[2]
-            pose_msg.pose.orientation.w = quat[3]
-            self.pose_pub.publish(pose_msg)
+            if self.latest_odom_pose is None:
+                self.get_logger().warn("No EKF pose available yet. Skipping map->odom update.")
+                return
 
-            aruco_frame = f"aruco_{marker_id}"
-            try:
-                tf_map_to_aruco = self.tf_buffer.lookup_transform(
-                    "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
-                )
+            T_odom_base = self.latest_odom_pose
+            T_map_odom = T_map_cam_base @ np.linalg.inv(T_odom_base)
 
-                T_map_aruco = concatenate_matrices(
-                    translation_matrix([
-                        tf_map_to_aruco.transform.translation.x,
-                        tf_map_to_aruco.transform.translation.y,
-                        tf_map_to_aruco.transform.translation.z
-                    ]),
-                    quaternion_matrix([
-                        tf_map_to_aruco.transform.rotation.x,
-                        tf_map_to_aruco.transform.rotation.y,
-                        tf_map_to_aruco.transform.rotation.z,
-                        tf_map_to_aruco.transform.rotation.w
-                    ])
-                )
+            trans_map_odom = translation_from_matrix(T_map_odom)
+            quat_map_odom = quaternion_from_matrix(T_map_odom)
 
-                T_camera_cam_base = translation_matrix([-0.192, 0.0, 0.0])
-                T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
+            t_map_odom = TransformStamped()
+            t_map_odom.header.stamp = self.get_clock().now().to_msg()
+            t_map_odom.header.frame_id = "map"
+            t_map_odom.child_frame_id = "odom"
+            t_map_odom.transform.translation.x = trans_map_odom[0]
+            t_map_odom.transform.translation.y = trans_map_odom[1]
+            t_map_odom.transform.translation.z = 0.0
+            t_map_odom.transform.rotation.x = quat_map_odom[0]
+            t_map_odom.transform.rotation.y = quat_map_odom[1]
+            t_map_odom.transform.rotation.z = quat_map_odom[2]
+            t_map_odom.transform.rotation.w = quat_map_odom[3]
 
-                if self.latest_odom_pose is None:
-                    self.get_logger().warn("No EKF pose available yet. Skipping map->odom update.")
-                    return
+            self.last_map_to_odom = t_map_odom
+            self.tf_broadcaster.sendTransform(t_map_odom)
+            self.get_logger().info(f"Updated map->odom using TF from {aruco_frame}.")
 
-                T_odom_base = self.latest_odom_pose
-                T_map_odom = T_map_cam_base @ np.linalg.inv(T_odom_base)
-
-                trans_map_odom = translation_from_matrix(T_map_odom)
-                quat_map_odom = quaternion_from_matrix(T_map_odom)
-
-                t_map_odom = TransformStamped()
-                t_map_odom.header.stamp = self.get_clock().now().to_msg()
-                t_map_odom.header.frame_id = "map"
-                t_map_odom.child_frame_id = "odom"
-                t_map_odom.transform.translation.x = trans_map_odom[0]
-                t_map_odom.transform.translation.y = trans_map_odom[1]
-                t_map_odom.transform.translation.z = 0.0
-                t_map_odom.transform.rotation.x = quat_map_odom[0]
-                t_map_odom.transform.rotation.y = quat_map_odom[1]
-                t_map_odom.transform.rotation.z = quat_map_odom[2]
-                t_map_odom.transform.rotation.w = quat_map_odom[3]
-
-                self.last_map_to_odom = t_map_odom
-                self.tf_broadcaster.sendTransform(t_map_odom)
-                self.get_logger().info(f"Updated map->odom using TF from {aruco_frame}.")
-
-            except Exception as e:
-                self.get_logger().warn(f"Could not get map -> {aruco_frame} TF: {e}")
+        except Exception as e:
+            self.get_logger().warn(f"Could not get map -> {aruco_frame} TF: {e}")
 
 
 def main(args=None):
