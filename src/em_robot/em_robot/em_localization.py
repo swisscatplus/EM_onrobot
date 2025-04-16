@@ -66,18 +66,18 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.375)#0.625)
+        self.camera_height = config.get('camera_height', 0.375)
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
-        self.size = (1536, 864)#(4608, 2592)
+        self.size = (1536, 864)
         self.picam2 = Picamera2()
         preview_config = self.picam2.create_preview_configuration(
             main={"format": 'XRGB8888', "size": self.size}
         )
         self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 8.0})#6.0})
+        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 8.0})
 
         # ROS setup
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -90,7 +90,8 @@ class MarkerLocalizationNode(Node):
         self.latest_odom_pose = None
 
         self.last_map_to_odom = None
-        self.map_odom_timer = self.create_timer(0.05, self.broadcast_last_map_to_odom)  # 20 Hz
+        self.last_marker_time = self.get_clock().now()
+        self.map_odom_timer = self.create_timer(0.2, self.broadcast_last_map_to_odom)  # 5 Hz
 
         self.publish_static_transform()
         self.timer = self.create_timer(1/5, self.process_frame)
@@ -120,8 +121,13 @@ class MarkerLocalizationNode(Node):
 
     def broadcast_last_map_to_odom(self):
         if self.last_map_to_odom:
-            self.last_map_to_odom.header.stamp = self.get_clock().now().to_msg()
-            self.tf_broadcaster.sendTransform(self.last_map_to_odom)
+            now = self.get_clock().now()
+            age = (now - self.last_marker_time).nanoseconds / 1e9
+            if age < 120.0:
+                self.last_map_to_odom.header.stamp = now.to_msg()
+                self.tf_broadcaster.sendTransform(self.last_map_to_odom)
+            else:
+                self.get_logger().warn("Last marker update is too old — map->odom skipped.")
 
     def process_frame(self):
         frame = self.picam2.capture_array()
@@ -131,11 +137,9 @@ class MarkerLocalizationNode(Node):
             self.get_logger().info("No markers detected.")
             return
 
-        # Prendre uniquement le premier marqueur détecté
         for marker in detections:
             marker_id = marker['id']
             self.get_logger().info(f"Checking marker ID {marker_id}...")
-
             corners = marker['corners'].astype(np.float32)
 
             undistorted = cv.undistortPoints(
@@ -201,7 +205,7 @@ class MarkerLocalizationNode(Node):
                 )
             except Exception as e:
                 self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
-                continue  # try next marker
+                continue
 
             T_map_aruco = concatenate_matrices(
                 translation_matrix([
@@ -243,10 +247,9 @@ class MarkerLocalizationNode(Node):
             t_map_odom.transform.rotation.w = quat_map_odom[3]
 
             self.last_map_to_odom = t_map_odom
-            #self.tf_broadcaster.sendTransform(t_map_odom)
+            self.last_marker_time = self.get_clock().now()
             self.get_logger().info(f"Updated map->odom using marker {marker_id}")
-            break  # stop after one valid marker
-
+            break
 
 def main(args=None):
     rclpy.init(args=args)
@@ -258,7 +261,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
