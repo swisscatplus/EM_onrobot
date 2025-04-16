@@ -25,23 +25,35 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
- 
+
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
+
 def generate_launch_description():
     ld = LaunchDescription()
+
     config = os.path.join(
         get_package_share_directory('bno055'),
         'config',
         'bno055_params.yaml'
-        )
-        
-    node=Node(
-        package = 'bno055',
-        executable = 'bno055',
-        parameters = [config]
     )
-    ld.add_action(node)
+
+    bno055_node = Node(
+        package='bno055',
+        executable='bno055',
+        parameters=[config]
+    )
+
+    imu_transformer_node = Node(
+        package='bno055',
+        executable='imuTransformer',
+        name='imu_transformer',
+        output='screen'
+    )
+
+    ld.add_action(bno055_node)
+    ld.add_action(imu_transformer_node)
+
     return ld
