@@ -142,12 +142,8 @@ class MarkerLocalizationNode(Node):
     def broadcast_last_map_to_odom(self):
         if self.last_map_to_odom:
             now = self.get_clock().now()
-            age = (now - self.last_marker_time).nanoseconds / 1e9
-            if age < 120.0:
-                self.last_map_to_odom.header.stamp = now.to_msg()
-                self.tf_broadcaster.sendTransform(self.last_map_to_odom)
-            else:
-                self.get_logger().warn("Last marker update is too old — map->odom skipped.")
+            self.last_map_to_odom.header.stamp = now.to_msg()
+            self.tf_broadcaster.sendTransform(self.last_map_to_odom)
 
     def process_frame(self):
         frame = self.picam2.capture_array()
