@@ -66,7 +66,7 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.375)
+        self.camera_height = config.get('camera_height', 0.337) #375
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
@@ -91,6 +91,7 @@ class MarkerLocalizationNode(Node):
 
         self.last_map_to_odom = None
         self.last_marker_time = self.get_clock().now()
+        self.publish_initial_map_to_odom()
         self.map_odom_timer = self.create_timer(0.2, self.broadcast_last_map_to_odom)  # 5 Hz
 
         self.publish_static_transform()
@@ -118,6 +119,25 @@ class MarkerLocalizationNode(Node):
 
         self.static_tf_broadcaster.sendTransform([static_transform_cam])
         self.get_logger().info("Published static transform: camera_frame → cam_base_link")
+
+    def publish_initial_map_to_odom(self):
+        """Broadcast identity transform from map to odom at startup"""
+        self.get_logger().warn("Publishing initial static map → odom transform at (0, 0, 0)")
+
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "map"
+        t.child_frame_id = "odom"
+        t.transform.translation.x = 0.0
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+        t.transform.rotation.w = 1.0
+
+        self.last_map_to_odom = t  # Allow re-broadcast every 0.2s by timer
+        self.tf_broadcaster.sendTransform(t)
 
     def broadcast_last_map_to_odom(self):
         if self.last_map_to_odom:
