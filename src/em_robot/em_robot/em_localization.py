@@ -124,6 +124,8 @@ class MarkerLocalizationNode(Node):
         """Broadcast identity transform from map to odom at startup"""
         self.get_logger().warn("Publishing initial static map → odom transform at (0, 0, 0)")
 
+        quat = quaternion_from_euler(0.0, 0.0, 3.1415)
+
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
@@ -131,11 +133,10 @@ class MarkerLocalizationNode(Node):
         t.transform.translation.x = 0.49
         t.transform.translation.y = 3.225
         t.transform.translation.z = 0.0
-        quat = quaternion_from_euler(0.0, 0.0, 3.1415)
-        t.pose.orientation.x = quat[0]
-        t.pose.orientation.y = quat[1]
-        t.pose.orientation.z = quat[2]
-        t.pose.orientation.w = quat[3]
+        t.pose.rotation.x = quat[0]
+        t.pose.rotation.y = quat[1]
+        t.pose.rotation.z = quat[2]
+        t.pose.rotation.w = quat[3]
 
         self.last_map_to_odom = t  # Allow re-broadcast every 0.2s by timer
         self.tf_broadcaster.sendTransform(t)
