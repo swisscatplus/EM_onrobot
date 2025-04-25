@@ -8,7 +8,7 @@ from tf_transformations import euler_from_quaternion
 import math
 
 # --- Constants ---
-WHEEL_RADIUS = 0.035  # 35 mm = 0.035 m
+WHEEL_RADIUS = 0.0375  # 35 mm = 0.035 m
 WHEEL_BASE = 0.131    # 130 mm = 0.130 m
 ENCODER_RESOLUTION = 4096
 
