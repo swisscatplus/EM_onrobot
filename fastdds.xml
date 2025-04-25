@@ -9,7 +9,6 @@
       </interfaceWhiteList>
     </transport_descriptor>
   </transport_descriptors>
-
   <participant>
     <rtps>
       <useBuiltinTransports>false</useBuiltinTransports>

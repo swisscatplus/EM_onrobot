@@ -128,12 +128,12 @@ class MarkerLocalizationNode(Node):
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
         t.child_frame_id = "odom"
-        t.transform.translation.x = 0.0
-        t.transform.translation.y = 0.0
+        t.transform.translation.x = 0.49
+        t.transform.translation.y = 3.225
         t.transform.translation.z = 0.0
         t.transform.rotation.x = 0.0
         t.transform.rotation.y = 0.0
-        t.transform.rotation.z = 0.0
+        t.transform.rotation.z = 3.1415
         t.transform.rotation.w = 1.0
 
         self.last_map_to_odom = t  # Allow re-broadcast every 0.2s by timer
