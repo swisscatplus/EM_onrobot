@@ -131,10 +131,11 @@ class MarkerLocalizationNode(Node):
         t.transform.translation.x = 0.49
         t.transform.translation.y = 3.225
         t.transform.translation.z = 0.0
-        t.transform.rotation.x = 0.0
-        t.transform.rotation.y = 0.0
-        t.transform.rotation.z = 3.1415
-        t.transform.rotation.w = 1.0
+        quat = quaternion_from_euler(0.0, 0.0, 3.1415)
+        t.pose.orientation.x = quat[0]
+        t.pose.orientation.y = quat[1]
+        t.pose.orientation.z = quat[2]
+        t.pose.orientation.w = quat[3]
 
         self.last_map_to_odom = t  # Allow re-broadcast every 0.2s by timer
         self.tf_broadcaster.sendTransform(t)
