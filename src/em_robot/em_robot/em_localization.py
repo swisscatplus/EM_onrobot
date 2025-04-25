@@ -124,7 +124,7 @@ class MarkerLocalizationNode(Node):
         """Broadcast identity transform from map to odom at startup"""
         self.get_logger().warn("Publishing initial static map → odom transform at (0, 0, 0)")
 
-        quat = quaternion_from_euler(0.0, 0.0, 1.5*3.1415)
+        quat = quaternion_from_euler(0.0, 0.0, 0.5*3.1415)
 
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
