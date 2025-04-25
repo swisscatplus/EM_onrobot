@@ -138,7 +138,7 @@ class MarkerLocalizationNode(Node):
         t.transform.rotation.z = quat[2]
         t.transform.rotation.w = quat[3]
 
-        self.last_map_to_odom = t  # Allow re-broadcast every 0.2s by timer
+        self.last_map_to_odom = t
         self.tf_broadcaster.sendTransform(t)
 
     def broadcast_last_map_to_odom(self):
