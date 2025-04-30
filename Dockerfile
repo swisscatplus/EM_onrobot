@@ -8,9 +8,9 @@ RUN pip install smbus2
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 
 # === ADD FASTDDS CONFIG FILE ===
-RUN mkdir -p /root/.ros
-COPY fastdds.xml /root/.ros/fastdds.xml
-ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
+#RUN mkdir -p /root/.ros
+#COPY fastdds.xml /root/.ros/fastdds.xml
+#ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 # === BUILD ROS WORKSPACE ===
 WORKDIR /ros2_ws
