@@ -154,12 +154,12 @@ class MarkerLocalizationNode(Node):
         detections = None # uncomment when you want to remove camera
         if not detections:
 
-            self.get_logger().info("No markers detected.")
+            #self.get_logger().info("No markers detected.")
             return
 
         for marker in detections:
             marker_id = marker['id']
-            self.get_logger().info(f"Checking marker ID {marker_id}...")
+            #self.get_logger().info(f"Checking marker ID {marker_id}...")
             corners = marker['corners'].astype(np.float32)
 
             undistorted = cv.undistortPoints(
@@ -224,7 +224,7 @@ class MarkerLocalizationNode(Node):
                     "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
                 )
             except Exception as e:
-                self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
+                #self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
                 continue
 
             T_map_aruco = concatenate_matrices(
@@ -268,7 +268,7 @@ class MarkerLocalizationNode(Node):
 
             self.last_map_to_odom = t_map_odom
             self.last_marker_time = self.get_clock().now()
-            self.get_logger().info(f"Updated map->odom using marker {marker_id}")
+            #self.get_logger().info(f"Updated map->odom using marker {marker_id}")
             break
 
 def main(args=None):
