@@ -10,6 +10,7 @@ source /ros2_ws/install/setup.bash
 export ROS_DOMAIN_ID=10
 
 # Ensure Fast DDS profile path is active (optional but safe)
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 # Execute passed command
