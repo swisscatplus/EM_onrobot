@@ -23,6 +23,8 @@ from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
+from em_robot.srv import SetInitialPose
+
 # --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()
@@ -98,6 +100,8 @@ class MarkerLocalizationNode(Node):
         self.timer = self.create_timer(1/5, self.process_frame)
         self.get_logger().info("MarkerLocalizationNode: started.")
 
+        self.set_pose_srv = self.create_service(SetInitialPose, 'set_initial_pose', self.handle_set_initial_pose)
+
     def odom_callback(self, msg: Odometry):
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
@@ -124,7 +128,7 @@ class MarkerLocalizationNode(Node):
         """Broadcast identity transform from map to odom at startup"""
         self.get_logger().warn("Publishing initial static map → odom transform at (0, 0, 0)")
 
-        quat = quaternion_from_euler(0.0, 0.0, 0.0*3.1415)
+        quat = quaternion_from_euler(0.0, 0.0, 0.5*3.1415)
 
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
@@ -140,6 +144,27 @@ class MarkerLocalizationNode(Node):
 
         self.last_map_to_odom = t
         self.tf_broadcaster.sendTransform(t)
+
+    def handle_set_initial_pose(self, request, response):
+        quat = quaternion_from_euler(0.0, 0.0, request.yaw)
+
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "map"
+        t.child_frame_id = "odom"
+        t.transform.translation.x = request.x
+        t.transform.translation.y = request.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
+
+        self.last_map_to_odom = t
+        self.tf_broadcaster.sendTransform(t)
+        self.get_logger().info(f"Manually set map → odom to x={request.x}, y={request.y}, yaw={request.yaw}")
+        response.success = True
+        return response
 
     def broadcast_last_map_to_odom(self):
         if self.last_map_to_odom:
