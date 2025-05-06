@@ -13,6 +13,7 @@ COPY fastdds.xml /root/.ros/fastdds.xml
 ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 
+
 # === BUILD ROS WORKSPACE ===
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
