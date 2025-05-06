@@ -1,23 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-    <transport_descriptors>
-        <transport_descriptor>
-            <transport_id>CustomTcpTransportAllowlist</transport_id>
-            <type>TCPv4</type>
-            <interfaces>
-                <allowlist>
-                    <interface name="192.168.0.102" netmask_filter="AUTO"/>
-                </allowlist>
-            </interfaces>
-        </transport_descriptor>
-    </transport_descriptors>
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>udp_transport</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>192.168.0.102</address>
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
 
-    <participant profile_name="CustomTcpTransportAllowlistParticipant">
-        <rtps>
-            <useBuiltinTransports>false</useBuiltinTransports>
-            <userTransports>
-                <transport_id>CustomTcpTransportAllowlist</transport_id>
-            </userTransports>
-        </rtps>
-    </participant>
+  <participant profile_name="default_participant_profile" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>udp_transport</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
 </profiles>
