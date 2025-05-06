@@ -159,7 +159,7 @@ class MarkerLocalizationNode(Node):
         t.transform.rotation.y = quat[1]
         t.transform.rotation.z = quat[2]
         t.transform.rotation.w = quat[3]
-        
+
 
         self.last_map_to_odom = t
         self.tf_broadcaster.sendTransform(t)
