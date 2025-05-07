@@ -21,7 +21,7 @@
   <build_depend>rclpy</build_depend>
   <build_depend>geometry_msgs</build_depend>
   <build_depend>robot_localization</build_depend>
-  <exec_depend>em_robot_srv</exec_depend>
+  <depend>em_robot_srv</depend>
   <depend>python3-transforms3d</depend>
   <depend>python3-libcamera</depend>
   <depend>python3-picamera2</depend>
