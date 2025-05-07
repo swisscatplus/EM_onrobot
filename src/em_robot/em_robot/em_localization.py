@@ -23,7 +23,7 @@ from picamera2 import Picamera2
 from libcamera import controls
 from ament_index_python.packages import get_package_share_directory
 
-from em_robot.srv import SetInitialPose
+from em_robot_srv.srv import SetInitialPose
 
 # --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
