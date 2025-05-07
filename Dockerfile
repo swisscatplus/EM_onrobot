@@ -16,9 +16,9 @@ ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 # === BUILD ROS WORKSPACE ===
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
-COPY src/bno055 src/bno055
 COPY src/em_robot_srv src/em_robot_srv
-RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot bno055
+COPY src/bno055 src/bno055
+RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot bno055 em_robot_srv
 
 # === ENTRYPOINT ===
 COPY entrypoint.sh /entrypoint.sh
