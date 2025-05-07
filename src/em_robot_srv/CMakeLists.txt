@@ -11,9 +11,15 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
+set(msg_files
+  "srv/SetInitialPose.srv"
+)
+
+
 # Generate messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetInitialPose.srv"
+  DEPENDENCIES std_msgs
 )
 
 # Ensure that message generation happens before Python setup
