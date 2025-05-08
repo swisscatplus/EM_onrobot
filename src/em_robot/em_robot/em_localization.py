@@ -146,24 +146,40 @@ class MarkerLocalizationNode(Node):
         self.tf_broadcaster.sendTransform(t)
 
     def handle_set_initial_pose(self, request, response):
-        quat = quaternion_from_euler(0.0, 0.0, request.yaw)
+        quat_map_base = quaternion_from_euler(0.0, 0.0, request.yaw)
+        T_map_base = concatenate_matrices(
+            translation_matrix([request.x, request.y, 0.0]),
+            quaternion_matrix(quat_map_base)
+        )
+
+        if self.latest_odom_pose is None:
+            self.get_logger().warn("No odometry available, cannot set initial pose.")
+            response.success = False
+            return response
+
+        T_odom_base = self.latest_odom_pose
+        T_map_odom = T_map_base @ np.linalg.inv(T_odom_base)
+
+        trans_map_odom = translation_from_matrix(T_map_odom)
+        quat_map_odom = quaternion_from_matrix(T_map_odom)
 
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
         t.child_frame_id = "odom"
-        t.transform.translation.x = request.x
-        t.transform.translation.y = request.y
+        t.transform.translation.x = trans_map_odom[0]
+        t.transform.translation.y = trans_map_odom[1]
         t.transform.translation.z = 0.0
-        t.transform.rotation.x = quat[0]
-        t.transform.rotation.y = quat[1]
-        t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
-
+        t.transform.rotation.x = quat_map_odom[0]
+        t.transform.rotation.y = quat_map_odom[1]
+        t.transform.rotation.z = quat_map_odom[2]
+        t.transform.rotation.w = quat_map_odom[3]
 
         self.last_map_to_odom = t
         self.tf_broadcaster.sendTransform(t)
-        self.get_logger().info(f"Manually set map → odom to x={request.x}, y={request.y}, yaw={request.yaw}")
+
+        self.get_logger().info(
+            f"Updated map→odom based on initial pose x={request.x}, y={request.y}, yaw={request.yaw}")
         response.success = True
         return response
 
