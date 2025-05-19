@@ -193,7 +193,7 @@ class MarkerLocalizationNode(Node):
         frame = self.picam2.capture_array()
         detections = detect_aruco_corners(frame)
 
-        detections = None # uncomment when you want to remove camera
+        #detections = None # uncomment when you want to remove camera
         if not detections:
 
             #self.get_logger().info("No markers detected.")
