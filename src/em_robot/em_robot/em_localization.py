@@ -215,8 +215,20 @@ class MarkerLocalizationNode(Node):
             fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
             marker_center = np.mean(undistorted, axis=0)
             offset = np.array([cx, cy]) - marker_center
-            x_cam = self.camera_height * offset[0] / fx
-            y_cam = self.camera_height * offset[1] / fy
+
+            aruco_frame = f"aruco_{marker_id}"
+            try:
+                tf_map_to_aruco = self.tf_buffer.lookup_transform(
+                    "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
+                )
+            except Exception as e:
+                #self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
+                continue
+
+            marker_height = tf_map_to_aruco.transform.translation.z
+
+            x_cam = marker_height * offset[0] / fx
+            y_cam = marker_height * offset[1] / fy
 
             top_center = np.mean(undistorted[0:2], axis=0)
             bottom_center = np.mean(undistorted[2:4], axis=0)
@@ -259,15 +271,6 @@ class MarkerLocalizationNode(Node):
             pose_msg.pose.orientation.z = quat[2]
             pose_msg.pose.orientation.w = quat[3]
             self.pose_pub.publish(pose_msg)
-
-            aruco_frame = f"aruco_{marker_id}"
-            try:
-                tf_map_to_aruco = self.tf_buffer.lookup_transform(
-                    "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
-                )
-            except Exception as e:
-                #self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
-                continue
 
             T_map_aruco = concatenate_matrices(
                 translation_matrix([
