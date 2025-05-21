@@ -21,7 +21,8 @@ ADDR_PRESENT_POSITION = 132
 DXL_ID_1 = 2  # Right
 DXL_ID_2 = 1  # Left
 BAUDRATE = 57600
-DEVICENAME = '/dev/dynamixel'
+#DEVICENAME = '/dev/dynamixel'
+DEVICENAME = '/dev/ttyAMA10'
 TORQUE_ENABLE = 1
 TORQUE_DISABLE = 0
 
