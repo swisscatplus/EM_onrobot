@@ -23,6 +23,7 @@ setup(
         'python3-transforms3d',
         'pyyaml',
     ],
+    
     zip_safe=True,
     maintainer='mariano',
     maintainer_email='edy.mariano@epfl.com',
