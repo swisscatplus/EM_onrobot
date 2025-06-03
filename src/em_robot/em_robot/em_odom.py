@@ -16,7 +16,6 @@ class TfToPoseXYYawPublisher(Node):
             10
         )
 
-
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
