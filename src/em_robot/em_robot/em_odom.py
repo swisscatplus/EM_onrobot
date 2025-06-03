@@ -53,7 +53,7 @@ class TfToPoseXYYawPublisher(Node):
             pose_msg = PoseWithCovarianceStamped()
             pose_msg.header.stamp = trans.header.stamp
             pose_msg.header.frame_id = 'map'
-            
+
 
             pose_msg.pose.pose.position.x = trans.transform.translation.x
             pose_msg.pose.pose.position.y = trans.transform.translation.y
