@@ -15,7 +15,7 @@ class TfToPoseXYYawPublisher(Node):
             '/camera_pose',
             10
         )
-        
+
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
