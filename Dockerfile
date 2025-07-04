@@ -2,7 +2,7 @@ FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
-RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
+RUN apt update && apt install -y python3-smbus i2c-tools python3-dev python3-colcon-common-extensions
 RUN pip install smbus2
 
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
