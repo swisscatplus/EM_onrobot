@@ -24,15 +24,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libcap-dev \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     gstreamer1.0-plugins-base \
-    ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
  && rm -rf /var/lib/apt/lists/*
 
 ##############################
-# 2) Python deps (allow pip in system env on Noble: PEP 668)
+# 2) Python deps (PEP 668-safe)
 ##############################
+# Allow pip installs into the system environment on Noble (no pip upgrade)
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN pip3 install --no-cache-dir --upgrade pip \
- && pip3 install --no-cache-dir dynamixel_sdk meson
+RUN python3 -m pip install --no-cache-dir dynamixel_sdk meson
 
 ##############################
 # 3) Clone & build libcamera (with Python)
@@ -72,14 +71,10 @@ RUN meson setup build -Dpykms=enabled \
 ##############################
 # 5) Extra Python packages for camera
 ##############################
-RUN pip3 install --no-cache-dir picamera2 opencv-python
+RUN python3 -m pip install --no-cache-dir picamera2 opencv-python
 
 ##############################
 # 6) Runtime env
 ##############################
-
-# If native libs landed in /usr/local, ensure they’re found
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
-
-# (Optional) rosdep init if you use rosdep inside the container
-# RUN rosdep init || true
+# If native libs installed into /usr/local, ensure they’re found
+ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
