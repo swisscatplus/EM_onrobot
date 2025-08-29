@@ -25,6 +25,7 @@ from ament_index_python.packages import get_package_share_directory
 
 from em_robot_srv.srv import SetInitialPose
 
+
 # --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()

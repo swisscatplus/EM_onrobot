@@ -4,6 +4,7 @@ set -e
 # Ensure Fast DDS profile path is active (optional but safe)
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 #export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
 export FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 # Source ROS 2
