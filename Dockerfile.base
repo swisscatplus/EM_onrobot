@@ -27,9 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 ##############################
-# 2) Python deps (PEP 668-safe)
+# 2) Python deps that are safe system-wide (PEP 668 OK)
 ##############################
-# Allow pip installs into the system environment on Noble (no pip upgrade)
+# Allow pip to install into system env for these lightweight deps (no numpy churn)
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN python3 -m pip install --no-cache-dir dynamixel_sdk meson
 
@@ -69,9 +69,16 @@ RUN meson setup build -Dpykms=enabled \
  && ninja -C build install
 
 ##############################
-# 5) Extra Python packages for camera
+# 5) Camera Python stack in a venv (to avoid numpy uninstall conflicts)
 ##############################
-RUN python3 -m pip install --no-cache-dir picamera2 opencv-python
+# Create a venv that can still see system site-packages (so it finds libcamera’s Python bindings)
+RUN python3 -m venv /opt/camvenv --system-site-packages
+# Install camera libs into the venv only (isolates newer numpy/opencv from Debian’s numpy)
+RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
+ && /opt/camvenv/bin/python -m pip install --no-cache-dir picamera2 opencv-python
+
+# Make the venv active by default for shells/ENTRYPOINTs
+ENV PATH="/opt/camvenv/bin:${PATH}"
 
 ##############################
 # 6) Runtime env
