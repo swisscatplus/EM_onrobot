@@ -7,6 +7,9 @@ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 export FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
+# venv with picamera2/opencv
+source /opt/camvenv/bin/activate
+
 # Source ROS 2
 source /opt/ros/$ROS_DISTRO/setup.bash
 # Source local workspace
