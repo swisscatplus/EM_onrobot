@@ -27,18 +27,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 ##############################
-# 2) Python deps that are safe system-wide (PEP 668 OK)
+# 2) Python deps (safe system-wide)
 ##############################
-# Allow pip to install into system env for these lightweight deps (no numpy churn)
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN python3 -m pip install --no-cache-dir dynamixel_sdk meson
 
 ##############################
-# 3) Clone & build libcamera (with Python)
+# 3) Build & install libcamera (with Python)
 ##############################
 RUN mkdir -p /packages
 WORKDIR /packages
-
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
 RUN meson setup build --buildtype=release \
@@ -69,19 +67,35 @@ RUN meson setup build -Dpykms=enabled \
  && ninja -C build install
 
 ##############################
-# 5) Camera Python stack in a venv (to avoid numpy uninstall conflicts)
+# 5) Camera Python stack in a venv
 ##############################
-# Create a venv that can still see system site-packages (so it finds libcamera’s Python bindings)
+# venv can see system site-packages (so it can find distro modules)
 RUN python3 -m venv /opt/camvenv --system-site-packages
-# Install camera libs into the venv only (isolates newer numpy/opencv from Debian’s numpy)
 RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
  && /opt/camvenv/bin/python -m pip install --no-cache-dir picamera2 opencv-python
 
-# Make the venv active by default for shells/ENTRYPOINTs
+# Add system locations where libcamera's Python module is installed to venv's sys.path
+RUN /opt/camvenv/bin/python - <<'PY'
+import sys, site, pathlib
+ver=f"{sys.version_info[0]}.{sys.version_info[1]}"
+pth=pathlib.Path(site.getsitepackages()[-1])/"libcamera_system_paths.pth"
+pth.write_text(
+    f"/usr/local/lib/python{ver}/site-packages\n"
+    f"/usr/local/lib/python{ver}/dist-packages\n"
+    f"/usr/lib/python3/dist-packages\n"
+)
+print("Wrote", pth)
+PY
+
+# Make the venv first on PATH for shells/ENTRYPOINTs
 ENV PATH="/opt/camvenv/bin:${PATH}"
 
 ##############################
 # 6) Runtime env
 ##############################
-# If native libs installed into /usr/local, ensure they’re found
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Ensure native libs from /usr/local are found at runtime
+ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# (optional) clean build sources to trim image
+WORKDIR /
+RUN rm -rf /packages
