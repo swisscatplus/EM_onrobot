@@ -47,16 +47,23 @@ RUN test -f "/opt/ros/${ROS_DISTRO}/setup.sh" || (echo "Missing /opt/ros/${ROS_D
  && /opt/camvenv/bin/python -m colcon version-check || true \
  && /opt/camvenv/bin/python -m colcon build --packages-select em_robot bno055 em_robot_srv
 
-# ---------- Entrypoint ----------
+# ---- Entrypoint ----
 RUN cat > /entrypoint.sh << 'SH'
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail                      # <- no -u
 export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+
+# Make sure these are defined (harmless if already set)
+export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
+export COLCON_CURRENT_PREFIX=${COLCON_CURRENT_PREFIX:-}
+
+# Source environments
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source /opt/camvenv/bin/activate
 source /ros2_ws/install/setup.bash
+
+# Launch
 exec python -m ros2 launch em_robot em_robot.launch.py
 SH
 RUN chmod +x /entrypoint.sh
-
 ENTRYPOINT ["/entrypoint.sh"]
