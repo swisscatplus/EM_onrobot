@@ -7,7 +7,7 @@ ENV PATH="/opt/camvenv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# Colcon via apt (on l'exécutera avec le Python du venv)
+# Colcon via apt (on l'exécute avec le Python du venv)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-dev python3-smbus i2c-tools build-essential git \
       python3-colcon-common-extensions \

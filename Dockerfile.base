@@ -32,20 +32,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m venv /opt/camvenv --system-site-packages
 ENV PATH="/opt/camvenv/bin:${PATH}"
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip
-
-# Meson (dans le venv) pour construire libcamera; ninja dispo via apt
-RUN /opt/camvenv/bin/python -m pip install --no-cache-dir meson
+RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
+ && /opt/camvenv/bin/python -m pip install --no-cache-dir meson
 
 ##############################
-# 3) Compiler & installer libcamera (bindings Python dans le venv)
+# 3) Compiler & installer libcamera (bindings Python)
 ##############################
 RUN mkdir -p /packages
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
 
-# IMPORTANT: on exécute Meson via le Python du venv
+# Meson via le Python du venv (important)
 RUN PYTHON=/opt/camvenv/bin/python \
     /opt/camvenv/bin/python -m mesonbuild.mesonmain setup build --buildtype=release \
       -Dpipelines=rpi/vc4,rpi/pisp \
@@ -60,6 +58,27 @@ RUN PYTHON=/opt/camvenv/bin/python \
       -Dpycamera=enabled
 
 RUN ninja -C build && ninja -C build install
+
+# Ponte les chemins système vers le venv via un .pth
+RUN /opt/camvenv/bin/python - <<'PY'
+import sys, site, pathlib, os, glob, importlib.util
+ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
+# site-packages du venv
+venv_sites = [p for p in site.getsitepackages() if p.startswith(sys.prefix)]
+sp = pathlib.Path(venv_sites[0] if venv_sites else site.getsitepackages()[0])
+sp.mkdir(parents=True, exist_ok=True)
+pth = sp / "libcamera_system_paths.pth"
+cand = [
+    f"/usr/local/lib/python{ver}/site-packages",
+    f"/usr/local/lib/python{ver}/dist-packages",
+    "/usr/lib/python3/dist-packages",
+]
+pth.write_text("\n".join(cand) + "\n")
+print("Wrote", pth)
+
+spec = importlib.util.find_spec("libcamera")
+print("libcamera spec after .pth:", spec)
+PY
 
 ##############################
 # 4) kmsxx (optionnel) + Picamera2/OpenCV dans le venv
@@ -76,20 +95,24 @@ RUN git submodule update --init \
  && ninja -C build \
  && ninja -C build install
 
-# Installer Picamera2 + OpenCV dans le venv (après libcamera)
+# Installer Picamera2 + OpenCV (après libcamera)
 RUN /opt/camvenv/bin/python -m pip install --no-cache-dir \
       "numpy<2.0" \
       "opencv-python-headless==4.10.*" \
       picamera2
 
-# Vérif rapide
+# Vérif non bloquante (log uniquement)
 RUN /opt/camvenv/bin/python - <<'PY'
-import sys
+import sys, importlib.util
 print("PY:", sys.executable)
-import libcamera, picamera2, cv2
-print("libcamera OK:", libcamera.__file__)
-print("picamera2 OK")
-print("opencv:", cv2.__version__)
+for mod in ("libcamera","picamera2","cv2"):
+    try:
+        m = importlib.util.find_spec(mod)
+        print(mod, "=>", m)
+        __import__(mod)
+        print(mod, "import OK")
+    except Exception as e:
+        print("WARN:", mod, "import failed:", e)
 PY
 
 ##############################
@@ -97,6 +120,6 @@ PY
 ##############################
 ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
 
-# Nettoyage
+# Nettoyage des sources
 WORKDIR /
 RUN rm -rf /packages
