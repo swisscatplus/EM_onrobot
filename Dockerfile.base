@@ -1,4 +1,4 @@
-# === ROS 2 Jazzy on Ubuntu 24.04 (Noble) ===
+# === ROS 2 Jazzy sur Ubuntu 24.04 (Noble) ===
 FROM ros:jazzy-ros-base-noble
 SHELL ["/bin/bash", "-c"]
 
@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     ROS_DISTRO=jazzy
 
 ##############################
-# 1) System deps & ROS pkgs
+# 1) Dépendances système & ROS
 ##############################
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ninja-build pkg-config cmake git curl ca-certificates \
@@ -27,42 +27,48 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 ##############################
-# 2) Créer le venv cam (visible par défaut)
+# 2) Créer le venv caméra
 ##############################
 RUN python3 -m venv /opt/camvenv --system-site-packages
 ENV PATH="/opt/camvenv/bin:${PATH}"
-# Evite les histoires de PEP 668 si on installe quelques libs système
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip
 
+# Meson (dans le venv) pour construire libcamera; ninja dispo via apt
+RUN /opt/camvenv/bin/python -m pip install --no-cache-dir meson
+
 ##############################
-# 3) Compiler & installer libcamera (Python dans le venv)
+# 3) Compiler & installer libcamera (bindings Python dans le venv)
 ##############################
 RUN mkdir -p /packages
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
-# IMPORTANT: on force Meson à utiliser le Python du venv
-RUN PYTHON=/opt/camvenv/bin/python meson setup build --buildtype=release \
-    -Dpipelines=rpi/vc4,rpi/pisp \
-    -Dipas=rpi/vc4,rpi/pisp \
-    -Dv4l2=true \
-    -Dgstreamer=enabled \
-    -Dtest=false \
-    -Dlc-compliance=disabled \
-    -Dcam=disabled \
-    -Dqcam=disabled \
-    -Ddocumentation=disabled \
-    -Dpycamera=enabled
+
+# IMPORTANT: on exécute Meson via le Python du venv
+RUN PYTHON=/opt/camvenv/bin/python \
+    /opt/camvenv/bin/python -m mesonbuild.mesonmain setup build --buildtype=release \
+      -Dpipelines=rpi/vc4,rpi/pisp \
+      -Dipas=rpi/vc4,rpi/pisp \
+      -Dv4l2=true \
+      -Dgstreamer=enabled \
+      -Dtest=false \
+      -Dlc-compliance=disabled \
+      -Dcam=disabled \
+      -Dqcam=disabled \
+      -Ddocumentation=disabled \
+      -Dpycamera=enabled
+
 RUN ninja -C build && ninja -C build install
 
 ##############################
-# 4) kmsxx (optionnel) + install Picamera2/OpenCV dans le venv
+# 4) kmsxx (optionnel) + Picamera2/OpenCV dans le venv
 ##############################
 WORKDIR /packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libfmt-dev libdrm-dev libcap-dev \
  && rm -rf /var/lib/apt/lists/*
+
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init \
@@ -87,10 +93,10 @@ print("opencv:", cv2.__version__)
 PY
 
 ##############################
-# 5) Runtime env
+# 5) Runtime
 ##############################
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
 
-# Nettoyage des sources (minceur)
+# Nettoyage
 WORKDIR /
 RUN rm -rf /packages
