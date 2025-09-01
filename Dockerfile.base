@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     gstreamer1.0-plugins-base \
     meson \
-    python3-dev \   # NEW: headers Python pour compiler le module
+    python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # ---- Build & install libcamera (Python bindings go to /usr/local/...) ----
