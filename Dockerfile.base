@@ -1,15 +1,14 @@
-# === ROS 2 Jazzy sur Ubuntu 24.04 (Noble) ===
+# === ROS 2 Jazzy on Ubuntu 24.04 (Noble) ===
 FROM ros:jazzy-ros-base-noble
 SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    ROS_DISTRO=jazzy
+    ROS_DISTRO=jazzy \
+    PIP_BREAK_SYSTEM_PACKAGES=1
 
-##############################
-# 1) Dépendances système & ROS
-##############################
+# System/ROS deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ninja-build pkg-config cmake git curl ca-certificates \
     python3 python3-pip python3-venv python3-colcon-common-extensions \
@@ -26,26 +25,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gstreamer1.0-plugins-base \
  && rm -rf /var/lib/apt/lists/*
 
-##############################
-# 2) Créer le venv caméra
-##############################
-RUN python3 -m venv /opt/camvenv --system-site-packages
-ENV PATH="/opt/camvenv/bin:${PATH}"
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
- && /opt/camvenv/bin/python -m pip install --no-cache-dir meson
+# Meson in system Python for building libcamera
+RUN python3 -m pip install --no-cache-dir --upgrade pip \
+ && python3 -m pip install --no-cache-dir meson
 
-##############################
-# 3) Compiler & installer libcamera (bindings Python)
-##############################
+# ---- Build & install libcamera (with Python bindings) ----
 RUN mkdir -p /packages
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
-
-# Meson via le Python du venv (important)
-RUN PYTHON=/opt/camvenv/bin/python \
-    /opt/camvenv/bin/python -m mesonbuild.mesonmain setup build --buildtype=release \
+# Use system python so bindings land in /usr/local/lib/pythonX.Y/site-packages
+RUN PYTHON=/usr/bin/python3 \
+    python3 -m mesonbuild.mesonmain setup build --buildtype=release \
       -Dpipelines=rpi/vc4,rpi/pisp \
       -Dipas=rpi/vc4,rpi/pisp \
       -Dv4l2=true \
@@ -55,71 +46,30 @@ RUN PYTHON=/opt/camvenv/bin/python \
       -Dcam=disabled \
       -Dqcam=disabled \
       -Ddocumentation=disabled \
-      -Dpycamera=enabled
-
-RUN ninja -C build && ninja -C build install
-
-# Ponte les chemins système vers le venv via un .pth
-RUN /opt/camvenv/bin/python - <<'PY'
-import sys, site, pathlib, os, glob, importlib.util
-ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
-# site-packages du venv
-venv_sites = [p for p in site.getsitepackages() if p.startswith(sys.prefix)]
-sp = pathlib.Path(venv_sites[0] if venv_sites else site.getsitepackages()[0])
-sp.mkdir(parents=True, exist_ok=True)
-pth = sp / "libcamera_system_paths.pth"
-cand = [
-    f"/usr/local/lib/python{ver}/site-packages",
-    f"/usr/local/lib/python{ver}/dist-packages",
-    "/usr/lib/python3/dist-packages",
-]
-pth.write_text("\n".join(cand) + "\n")
-print("Wrote", pth)
-
-spec = importlib.util.find_spec("libcamera")
-print("libcamera spec after .pth:", spec)
-PY
-
-##############################
-# 4) kmsxx (optionnel) + Picamera2/OpenCV dans le venv
-##############################
-WORKDIR /packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libfmt-dev libdrm-dev libcap-dev \
- && rm -rf /var/lib/apt/lists/*
-
-RUN git clone https://github.com/tomba/kmsxx.git
-WORKDIR /packages/kmsxx
-RUN git submodule update --init \
- && meson setup build -Dpykms=enabled \
+      -Dpycamera=enabled \
  && ninja -C build \
  && ninja -C build install
 
-# Installer Picamera2 + OpenCV (après libcamera)
-RUN /opt/camvenv/bin/python -m pip install --no-cache-dir \
+# Picamera2 + OpenCV (system-wide)
+RUN python3 -m pip install --no-cache-dir \
       "numpy<2.0" \
       "opencv-python-headless==4.10.*" \
       picamera2
 
-# Vérif non bloquante (log uniquement)
-RUN /opt/camvenv/bin/python - <<'PY'
+# Quick non-fatal check (logs only)
+RUN python3 - <<'PY'
 import sys, importlib.util
-print("PY:", sys.executable)
-for mod in ("libcamera","picamera2","cv2"):
-    try:
-        m = importlib.util.find_spec(mod)
-        print(mod, "=>", m)
-        __import__(mod)
-        print(mod, "import OK")
-    except Exception as e:
-        print("WARN:", mod, "import failed:", e)
+print("sys.executable:", sys.executable)
+for m in ("libcamera","picamera2","cv2"):
+    spec = importlib.util.find_spec(m)
+    print(m, "=>", spec)
+    __import__(m)
+print("Imports OK")
 PY
 
-##############################
-# 5) Runtime
-##############################
+# Native libs path (if needed)
 ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
 
-# Nettoyage des sources
+# Slim down
 WORKDIR /
 RUN rm -rf /packages
