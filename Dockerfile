@@ -2,12 +2,11 @@
 FROM ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
 SHELL ["/bin/bash", "-c"]
 
-# Base ROS + venv en PATH
 ENV ROS_DISTRO=jazzy
 ENV PATH="/opt/camvenv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
-# Dépendances runtime utiles + colcon (depuis apt)
+# Dépendances utiles (colcon depuis apt OK, on l'exécutera via le python du venv)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-dev python3-smbus i2c-tools build-essential git \
       python3-colcon-common-extensions \
@@ -38,10 +37,12 @@ COPY src/em_robot_srv src/em_robot_srv
 COPY src/bno055 src/bno055
 
 # ---------- Build ----------
-# On utilise colcon d'apt mais on FORCE l'interpréteur du venv pour ament_python
+# IMPORTANT : on exécute colcon avec le Python du venv,
+# ainsi les scripts installés auront un shebang -> /opt/camvenv/bin/python
 RUN test -f "/opt/ros/${ROS_DISTRO}/setup.sh" || (echo "Missing /opt/ros/${ROS_DISTRO}/setup.sh" && exit 2) \
  && . "/opt/ros/${ROS_DISTRO}/setup.sh" \
- && COLCON_PYTHON_EXECUTABLE=/opt/camvenv/bin/python colcon build --packages-select em_robot bno055 em_robot_srv
+ && /opt/camvenv/bin/python -m colcon version-check || true \
+ && /opt/camvenv/bin/python -m colcon build --packages-select em_robot bno055 em_robot_srv
 
 # ---- Entrypoint ----
 RUN cat > /entrypoint.sh << 'SH'
@@ -54,7 +55,7 @@ source "/opt/ros/$ROS_DISTRO/setup.bash"
 source /opt/camvenv/bin/activate
 source /ros2_ws/install/setup.bash
 
-# Rendez visibles aux scripts Python du venv les modules système (libcamera…)
+# Sécurité : si libcamera est sous /usr/local, expose-le au venv
 pyver="$(python - <<'PY'
 import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")
 PY
