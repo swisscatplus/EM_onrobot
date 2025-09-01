@@ -1,14 +1,14 @@
 # === ROS 2 Jazzy on Ubuntu 24.04 (Noble) ===
 FROM ros:jazzy-ros-base-noble
-
 SHELL ["/bin/bash", "-c"]
+
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     ROS_DISTRO=jazzy
 
 ##############################
-# 1) System dependencies & ROS packages
+# 1) System deps & ROS pkgs
 ##############################
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ninja-build pkg-config cmake git curl ca-certificates \
@@ -27,19 +27,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 ##############################
-# 2) Python deps (safe system-wide)
+# 2) Créer le venv cam (visible par défaut)
 ##############################
+RUN python3 -m venv /opt/camvenv --system-site-packages
+ENV PATH="/opt/camvenv/bin:${PATH}"
+# Evite les histoires de PEP 668 si on installe quelques libs système
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
-RUN python3 -m pip install --no-cache-dir dynamixel_sdk meson
+RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip
 
 ##############################
-# 3) Build & install libcamera (with Python)
+# 3) Compiler & installer libcamera (Python dans le venv)
 ##############################
 RUN mkdir -p /packages
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
-RUN meson setup build --buildtype=release \
+# IMPORTANT: on force Meson à utiliser le Python du venv
+RUN PYTHON=/opt/camvenv/bin/python meson setup build --buildtype=release \
     -Dpipelines=rpi/vc4,rpi/pisp \
     -Dipas=rpi/vc4,rpi/pisp \
     -Dv4l2=true \
@@ -53,7 +57,7 @@ RUN meson setup build --buildtype=release \
 RUN ninja -C build && ninja -C build install
 
 ##############################
-# 4) kmsxx with Python bindings
+# 4) kmsxx (optionnel) + install Picamera2/OpenCV dans le venv
 ##############################
 WORKDIR /packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -61,45 +65,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
-RUN git submodule update --init
-RUN meson setup build -Dpykms=enabled \
+RUN git submodule update --init \
+ && meson setup build -Dpykms=enabled \
  && ninja -C build \
  && ninja -C build install
 
-##############################
-# 5) Camera Python stack in a venv
-##############################
-# venv can see system site-packages (so it can find distro modules)
-RUN python3 -m venv /opt/camvenv --system-site-packages
-RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
- && /opt/camvenv/bin/python -m pip install --no-cache-dir picamera2 opencv-python
+# Installer Picamera2 + OpenCV dans le venv (après libcamera)
+RUN /opt/camvenv/bin/python -m pip install --no-cache-dir \
+      "numpy<2.0" \
+      "opencv-python-headless==4.10.*" \
+      picamera2
 
-# Add system locations where libcamera's Python module is installed to venv's sys.path
+# Vérif rapide
 RUN /opt/camvenv/bin/python - <<'PY'
-import sys, site, pathlib
-ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
-# Prefer the venv's site-packages
-venv_sites = [p for p in site.getsitepackages() if p.startswith(sys.prefix)]
-sp = pathlib.Path(venv_sites[0] if venv_sites else site.getsitepackages()[0])
-sp.mkdir(parents=True, exist_ok=True)
-pth = sp / "libcamera_system_paths.pth"
-pth.write_text(
-    f"/usr/local/lib/python{ver}/site-packages\n"
-    f"/usr/local/lib/python{ver}/dist-packages\n"
-    f"/usr/lib/python3/dist-packages\n"
-)
-print("Wrote", pth)
+import sys
+print("PY:", sys.executable)
+import libcamera, picamera2, cv2
+print("libcamera OK:", libcamera.__file__)
+print("picamera2 OK")
+print("opencv:", cv2.__version__)
 PY
 
-# Make the venv first on PATH for shells/ENTRYPOINTs
-ENV PATH="/opt/camvenv/bin:${PATH}"
-
 ##############################
-# 6) Runtime env
+# 5) Runtime env
 ##############################
-# Ensure native libs from /usr/local are found at runtime
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
+ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# (optional) clean build sources to trim image
+# Nettoyage des sources (minceur)
 WORKDIR /
 RUN rm -rf /packages
