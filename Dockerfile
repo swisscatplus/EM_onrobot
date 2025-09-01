@@ -20,8 +20,8 @@ RUN python3 -m pip install --no-cache-dir \
 # (OPTIONAL) Fast-DDS profile — comment these envs if you still see XML parser warnings
 RUN mkdir -p /root/.ros
 COPY fastdds.xml /root/.ros/fastdds.xml
-# ENV FASTDDS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
-# ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
+#ENV FASTDDS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
+ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 
 # ---------- Source ----------

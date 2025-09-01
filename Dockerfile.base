@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     gstreamer1.0-plugins-base \
     meson \
+    python3-dev \   # NEW: headers Python pour compiler le module
  && rm -rf /var/lib/apt/lists/*
 
 # ---- Build & install libcamera (Python bindings go to /usr/local/...) ----
@@ -46,6 +47,16 @@ RUN PYTHON=/usr/bin/python3 \
  && ninja -C build \
  && ninja -C build install
 
+# NEW: Rendre les site-packages sous /usr/local visibles par Python (24.04 / multiarch)
+RUN set -euo pipefail; \
+    PYVER="$(python3 -c 'import sys;print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')"; \
+    ARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"; \
+    SITE_LOCAL="/usr/local/lib/python${PYVER}/site-packages"; \
+    SITE_MULTI="/usr/local/lib/${ARCH}/python${PYVER}/site-packages"; \
+    mkdir -p /usr/lib/python3/dist-packages; \
+    printf '%s\n%s\n' "$SITE_LOCAL" "$SITE_MULTI" > /usr/lib/python3/dist-packages/zz-local-libcamera.pth; \
+    echo "Wrote .pth with: $SITE_LOCAL and $SITE_MULTI"
+
 # Picamera2 + OpenCV (system-wide)
 RUN python3 -m pip install --no-cache-dir \
       "numpy<2.0" \
@@ -54,8 +65,10 @@ RUN python3 -m pip install --no-cache-dir \
 
 # Quick non-fatal check (prints info; does not fail the build)
 RUN python3 - <<'PY'
-import sys, importlib.util
+import sys, importlib.util, site
 print("sys.executable:", sys.executable)
+print("sys.path contains:")
+for p in sys.path: print("  -", p)
 for m in ("libcamera","picamera2","cv2"):
     spec = importlib.util.find_spec(m)
     print(m, "=>", spec)
@@ -64,7 +77,7 @@ print("Imports OK")
 PY
 
 # Native libs path (if needed)
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
+ENV LD_LIBRARY_PATH="/usr/local/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH):/usr/local/lib"
 
 # Slim down
 WORKDIR /
