@@ -6,19 +6,18 @@ ENV ROS_DISTRO=jazzy \
     PYTHONUNBUFFERED=1 \
     LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# Extra runtime deps (colcon already installed in base)
+# Extra runtime deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-dev python3-smbus i2c-tools build-essential git \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps used by your nodes (system-wide)
+# Python deps used by your nodes (system-wide) — fixes serial/dynamixel errors
 RUN python3 -m pip install --no-cache-dir \
       smbus2 \
       pyserial \
       dynamixel_sdk
 
-# Fast-DDS profile (OPTIONAL). If you keep seeing XMLPARSER warnings,
-# either ensure this file exists or comment the env var below.
+# (OPTIONAL) Fast-DDS profile — comment these envs if you still see XML parser warnings
 RUN mkdir -p /root/.ros
 COPY fastdds.xml /root/.ros/fastdds.xml
 # ENV FASTDDS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
@@ -40,13 +39,11 @@ RUN cat > /entrypoint.sh << 'SH'
 #!/usr/bin/env bash
 set -eo pipefail
 export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
-# If you really want to use FastDDS XML, uncomment the two envs in the Dockerfile above
 
 # 1) ROS env, 2) overlay
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 source /ros2_ws/install/setup.bash
 
-# Launch
 exec ros2 launch em_robot em_robot.launch.py
 SH
 RUN chmod +x /entrypoint.sh
