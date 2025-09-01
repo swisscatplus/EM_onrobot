@@ -48,14 +48,13 @@ RUN PYTHON=/usr/bin/python3 \
  && ninja -C build install
 
 # NEW: Rendre les site-packages sous /usr/local visibles par Python (24.04 / multiarch)
-RUN set -euo pipefail; \
-    PYVER="$(python3 -c 'import sys;print(f\"{sys.version_info.major}.{sys.version_info.minor}\")')"; \
+RUN set -e; \
+    PYVER="$(python3 -c 'import sys; print(\"%d.%d\" % (sys.version_info[0], sys.version_info[1]))')"; \
     ARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH)"; \
-    SITE_LOCAL="/usr/local/lib/python${PYVER}/site-packages"; \
-    SITE_MULTI="/usr/local/lib/${ARCH}/python${PYVER}/site-packages"; \
     mkdir -p /usr/lib/python3/dist-packages; \
-    printf '%s\n%s\n' "$SITE_LOCAL" "$SITE_MULTI" > /usr/lib/python3/dist-packages/zz-local-libcamera.pth; \
-    echo "Wrote .pth with: $SITE_LOCAL and $SITE_MULTI"
+    printf "/usr/local/lib/python%s/site-packages\n/usr/local/lib/%s/python%s/site-packages\n" "$PYVER" "$ARCH" "$PYVER" \
+      > /usr/lib/python3/dist-packages/zz-local-libcamera.pth
+
 
 # Picamera2 + OpenCV (system-wide)
 RUN python3 -m pip install --no-cache-dir \
