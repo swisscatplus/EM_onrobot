@@ -63,7 +63,7 @@ source /opt/camvenv/bin/activate
 source /ros2_ws/install/setup.bash
 
 # Launch
-exec python -m ros2 launch em_robot em_robot.launch.py
+exec ros2 launch em_robot em_robot.launch.py
 SH
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
