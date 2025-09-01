@@ -77,8 +77,12 @@ RUN /opt/camvenv/bin/python -m pip install --no-cache-dir --upgrade pip \
 # Add system locations where libcamera's Python module is installed to venv's sys.path
 RUN /opt/camvenv/bin/python - <<'PY'
 import sys, site, pathlib
-ver=f"{sys.version_info[0]}.{sys.version_info[1]}"
-pth=pathlib.Path(site.getsitepackages()[-1])/"libcamera_system_paths.pth"
+ver = f"{sys.version_info[0]}.{sys.version_info[1]}"
+# Prefer the venv's site-packages
+venv_sites = [p for p in site.getsitepackages() if p.startswith(sys.prefix)]
+sp = pathlib.Path(venv_sites[0] if venv_sites else site.getsitepackages()[0])
+sp.mkdir(parents=True, exist_ok=True)
+pth = sp / "libcamera_system_paths.pth"
 pth.write_text(
     f"/usr/local/lib/python{ver}/site-packages\n"
     f"/usr/local/lib/python{ver}/dist-packages\n"
@@ -94,7 +98,7 @@ ENV PATH="/opt/camvenv/bin:${PATH}"
 # 6) Runtime env
 ##############################
 # Ensure native libs from /usr/local are found at runtime
-ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/lib/aarch64-linux-gnu:/usr/local/lib"
 
 # (optional) clean build sources to trim image
 WORKDIR /

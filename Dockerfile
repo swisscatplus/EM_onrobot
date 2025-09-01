@@ -6,13 +6,13 @@ ENV ROS_DISTRO=jazzy
 ENV PATH="/opt/camvenv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
 
-# Runtime deps (colcon from apt; we'll force venv python via env var)
+# Runtime deps (colcon from apt; we’ll force venv Python for ament_python)
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3-dev python3-smbus i2c-tools build-essential git \
       python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps INTO the venv (only what the app needs on top of base)
+# App-specific Python deps into the venv
 RUN /opt/camvenv/bin/python -m pip install --no-cache-dir smbus2
 
 # Fast-DDS profile (optional)
@@ -45,7 +45,7 @@ source "/opt/ros/$ROS_DISTRO/setup.bash"
 source /opt/camvenv/bin/activate
 source /ros2_ws/install/setup.bash
 
-# Extra safety: ensure libcamera (installed system-wide) is visible to the venv
+# Extra safety: in case the venv misses system libcamera paths
 pyver="$(python - <<'PY'
 import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}")
 PY
