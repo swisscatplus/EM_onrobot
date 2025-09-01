@@ -37,6 +37,8 @@ RUN cat > /entrypoint.sh << 'SH'
 set -euo pipefail
 export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 
+
+
 # ROS environment
 source "/opt/ros/$ROS_DISTRO/setup.bash"
 # venv where cv2/picamera2 live
