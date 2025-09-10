@@ -74,26 +74,27 @@ It is responsible for:
   - Convertisseur DC/DC to 12V DTJ1524S12
   - 3D printed Mobile Robot
 
-- **Software**
-  - ROS 2 nodes (all inside Docker):
+
+- **Software** 
+  - OS installed on the RPi5 (recommended : Raspberry pi OS)
+  - ROS 2 packages (all inside Docker):
     - `em_robot` → motor control and odometry  
     - `bno055` → IMU driver  
-    - `em_robot_srv` → service definitions  
-  - EKF node fusing wheel odometry and IMU  
-  - Camera-based ArUco detection for map corrections  
+    - `em_robot_srv` → service definitions
 
 ---
 
 ## Deployment of a New Robot
 
 ### Hardware Setup
-- Two batteries: **5 V** (for RPi) and **12 V** (for motors).  
-  - Use the **USB2 port** to power the RPi with the 5 V battery.  
-  - Ensure batteries are charged above 30–40 % for stable operation.  
-- Place the RPi within Wi-Fi range (`TP-Link_03DC` in the lab).  
+- Mount and wire the robot using the CAD and Electrical Schematics
+- Insert the fully charged battery into the back holder
+- Wait some time for the Raspberry Pi to initialize
+- Place the RPi within Wi-Fi range.
 
 ### Networking
 - Ensure **PC and RPi are on the same network**.  
+- For that, configure a **static IP** on the RPi which should be the same as the one found in **fastdds.xml** (for example : 192.168.0.101)
 - Match the **ROS_DOMAIN_ID** on both PC and RPi (default = `10`):  
   ```bash
   echo "export ROS_DOMAIN_ID=10" >> ~/.bashrc
@@ -102,21 +103,13 @@ It is responsible for:
   ```dockerfile
   ENV ROS_DOMAIN_ID=10
   ```
-- Configure a **static IP** on the RPi using `/etc/network/interfaces`.  
-- Add DNS servers in `/etc/resolv.conf`:  
-  ```ini
-  nameserver 8.8.8.8
-  nameserver 8.8.4.4
-  ```
-- Reboot the RPi and confirm connectivity.  
-
 ---
 
 ## Docker Installation (recommended)
 
 1. **SSH into the RPi**:  
    ```bash
-   ssh swisscat@<robot-ip>
+   ssh <rpi-name>@<robot-ip>
    ```
 
 2. **Install Docker** on the RPi:  
@@ -179,7 +172,7 @@ colcon build --packages-select em_robot em_robot_srv bno055
 
 1. Connect to the RPi:
    ```bash
-   ssh swisscat@<robot-ip>
+   ssh <rpi-name>>@<robot-ip>
    ```
 
 2. Start the container:
@@ -187,14 +180,7 @@ colcon build --packages-select em_robot em_robot_srv bno055
    ./run.sh robot1
    ```
 
-3. To run nodes individually inside the container:
-   ```bash
-   ros2 run em_robot motors_node     # publishes wheel odometry
-   ros2 run bno055 bno055            # publishes /bno055/imu
-   ros2 run em_robot cam_node        # publishes camera correction
-   ```
-
-4. From your PC, send velocity commands:
+3. From your PC, send velocity commands:
    ```bash
    ros2 topic pub /cmd_vel geometry_msgs/Twist "linear:
      x: 0.3
@@ -248,12 +234,7 @@ EM_onrobot/
 
 ## Improvements & Roadmap
 
-- Replace odometry with **Dynamixel ROS 2 driver** once integrated.  
-- Improve camera-based map correction under different lighting conditions.  
-- Extend support for **multi-robot deployments**.  
-- Add **MPC-based navigation** for path following.  
-- Expand documentation with troubleshooting and advanced usage examples.  
-- Strengthen **CI/CD pipelines** for automated builds and tests.  
+- Expand documentation with troubleshooting and advanced usage examples.
 
 ---
 
