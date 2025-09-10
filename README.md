@@ -6,7 +6,7 @@
 
   <h1 align="center">EM_onrobot</h1>
 
-  <p align="center">
+  <p align="left">
     Onboard localization and control stack for the SWISSCAT mobile robot, developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
     <br />
     Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>.
