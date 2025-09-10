@@ -144,7 +144,7 @@ The `EM_onrobot` repository contains the software and hardware resources for the
 
 4. **Run the container**:  
    ```bash
-   ./run.sh robot1   # optional namespace argument
+   ./deploy.sh
    ```
 
 ---
@@ -184,7 +184,7 @@ colcon build --packages-select em_robot em_robot_srv bno055
 
 2. Start the container:
    ```bash
-   ./run.sh robot1
+   ./deploy.sh
    ```
 
 3. From your PC, send velocity commands:
