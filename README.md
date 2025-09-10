@@ -1,7 +1,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/swisscatplus/EM_onrobot">
-    <img src="images/logo.png" alt="Logo" height="80">
+    <img src="pictures/logo.png" alt="Logo" height="80">
   </a>
 
   <h1 align="center">EM_onrobot</h1>
