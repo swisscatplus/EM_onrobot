@@ -7,8 +7,11 @@
   <h1 align="center">EM_onrobot</h1>
 </div>
 
-- Onboard localization and control stack for the SWISSCAT mobile robot, developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
-- <br /> Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>. <br /> Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
+- Onboard localization and control stack for the SWISSCAT mobile robot, 
+developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
+- Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, 
+a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>.
+Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
 
 ---
 
@@ -29,16 +32,25 @@
 
 ## Overview
 
-The `EM_onrobot` repository contains the software that runs directly on the mobile robot.  
-It is responsible for:
+## Overview
 
-- Controlling the **DYNAMIXEL XC430-W150** differential-drive motors.  
-- Reading **encoder odometry** directly through the Dynamixel SDK.  
-- Collecting **IMU data** from the Bosch **BNO055** sensor.  
-- Running an **Extended Kalman Filter (EKF)** to fuse IMU and wheel odometry.  
-- Using the **camera with ArUco markers** to correct drift in the odometry (map correction).  
-- Publishing ROS 2 topics for robot state and subscribing to `/cmd_vel` for motion commands.  
-- Providing containerized deployment with Docker for easy setup and reproducibility.  
+The `EM_onrobot` repository contains the software and hardware resources for the SwissCat+ in-house mobile robot.
+
+### Software
+- Controls the two **DYNAMIXEL XC430-W150** differential-drive motors.  
+- Reads **encoder odometry** directly through the Dynamixel SDK.  
+- Collects **IMU data** from the Bosch **BNO055** sensor.  
+- Runs an **Extended Kalman Filter (EKF)** to fuse IMU and wheel odometry.  
+- Uses the **camera with ArUco markers** for drift correction in odometry (map correction).  
+- Publishes **ROS 2 topics** for robot localization and subscribes to `/cmd_vel` for motion commands.  
+
+### Hardware
+- Includes the **3D-printable mechanical design** of the robot’s case (recommended material: PLA).  
+- Provides the **electrical schematics** for wiring and integration.  
+
+### Deployment
+- Supports **containerized deployment with Docker** for easy setup and reproducibility.  
+
 
 ---
 
@@ -58,20 +70,20 @@ It is responsible for:
 
 - **Hardware**
   - Raspberry Pi 5  
-  - DYNAMIXEL XC430-W150 motors
+  - 2x DYNAMIXEL XC430-W150 motors
   - DYNAMIXEL U2D2 Power Hub
   - DYNAMIXEL U2D2
-  - Pololu Scooter/Skate Wheel 70×25mm - Black (3272)
+  - 2x Pololu Scooter/Skate Wheel 70×25mm - Black (3272)
   - Bosch BNO055 IMU  
   - Raspberry Pi Camera Module 3 Wide  
   - Bosch Professional GBA 18V (5AH recommended)
-  - Convertisseur DC/DC to 5V DTJ1524S05
-  - Convertisseur DC/DC to 12V DTJ1524S12
-  - 3D printed Mobile Robot
+  - Converter DC/DC to 5V DTJ1524S05
+  - Converter DC/DC to 12V DTJ1524S12
+  - 3D printed Mobile Robot Case
 
 
 - **Software** 
-  - OS installed on the RPi5 (recommended : Raspberry pi OS)
+  - OS installed on the RPi5 (recommended : Raspberry pi OS using Imager software) 
   - ROS 2 packages (all inside Docker):
     - `em_robot` → motor control and odometry  
     - `bno055` → IMU driver (The `src/bno055` package in this repository is a modified version of the original `flynneva/bno055` code, adapted to work with this application.)
@@ -82,7 +94,7 @@ It is responsible for:
 ## Deployment of a New Robot
 
 ### Hardware Setup
-- Mount and wire the robot using the CAD and Electrical Schematics
+- Mount and wire the robot according to the CAD and Electrical Schematics
 - Insert the fully charged battery into the back holder
 - Wait some time for the Raspberry Pi to initialize
 - Place the RPi within Wi-Fi range.
