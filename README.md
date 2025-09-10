@@ -5,15 +5,10 @@
   </a>
 
   <h1 align="center">EM_onrobot</h1>
-
-  <p align="left">
-    Onboard localization and control stack for the SWISSCAT mobile robot, developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
-    <br />
-    Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>.
-    <br />
-    Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
-  </p>
 </div>
+
+- Onboard localization and control stack for the SWISSCAT mobile robot, developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
+- <br /> Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>. <br /> Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
 
 ---
 
@@ -34,7 +29,7 @@
 
 ## Overview
 
-The `EM_onrobot` repository contains the software that runs on the mobile robot.  
+The `EM_onrobot` repository contains the software that runs directly on the mobile robot.  
 It is responsible for:
 
 - Controlling the **DYNAMIXEL XC430-W150** differential-drive motors.  
