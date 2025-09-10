@@ -1,0 +1,262 @@
+<br />
+<div align="center">
+  <a href="https://github.com/swisscatplus/EM_onrobot">
+    <img src="images/logo.png" alt="Logo" height="80">
+  </a>
+
+  <h1 align="center">EM_onrobot</h1>
+
+  <p align="center">
+    Onboard localization and control stack for the SWISSCAT mobile robot, developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
+    <br />
+    Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>.
+    <br />
+    Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
+  </p>
+</div>
+
+---
+
+## Overview
+
+The `EM_onrobot` repository contains the software that runs on the mobile robot.  
+It is responsible for:
+
+- Controlling the **DYNAMIXEL XC430-W150** differential-drive motors.  
+- Reading **encoder odometry** directly through the Dynamixel SDK.  
+- Collecting **IMU data** from the Bosch **BNO055** sensor.  
+- Running an **Extended Kalman Filter (EKF)** to fuse IMU and wheel odometry.  
+- Using the **camera with ArUco markers** to correct drift in the odometry (map correction).  
+- Publishing ROS 2 topics for robot state and subscribing to `/cmd_vel` for motion commands.  
+- Providing containerized deployment with Docker for easy setup and reproducibility.  
+
+---
+
+## Versions & Software
+
+- **OS**: Ubuntu 22.04 (on Raspberry Pi OS 64-bit for Raspberry Pi 5)  
+- **ROS 2**: Humble 
+- **Docker image (recommended)**:  
+  ```
+  ghcr.io/swisscatplus/em_onrobot/em_robot:latest
+  ```
+- **Dependencies (local runs)**: see [Local Installation](#local-installation-advanced)
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)  
+2. [System Architecture](#system-architecture)  
+3. [Deployment of a New Robot](#deployment-of-a-new-robot)  
+4. [Docker Installation (recommended)](#docker-installation-recommended)  
+5. [Local Installation (advanced)](#local-installation-advanced)  
+6. [How to Run](#how-to-run)  
+7. [ROS 2 Interfaces](#ros-2-interfaces)  
+8. [Project Structure](#project-structure)  
+9. [Improvements & Roadmap](#improvements--roadmap)  
+10. [License](#license)  
+
+---
+
+## System Architecture
+
+- **Hardware**
+  - Raspberry Pi 5  
+  - DYNAMIXEL XC430-W150 motors
+  - DYNAMIXEL U2D2 Power Hub
+  - DYNAMIXEL U2D2
+  - Pololu Scooter/Skate Wheel 70×25mm - Black (3272)
+  - Bosch BNO055 IMU  
+  - Raspberry Pi Camera Module 3 Wide  
+  - Bosch Professional GBA 18V (5AH recommended)
+  - Convertisseur DC/DC to 5V DTJ1524S05
+  - Convertisseur DC/DC to 12V DTJ1524S12
+  - 3D printed Mobile Robot
+
+- **Software**
+  - ROS 2 nodes (all inside Docker):
+    - `em_robot` → motor control and odometry  
+    - `bno055` → IMU driver  
+    - `em_robot_srv` → service definitions  
+  - EKF node fusing wheel odometry and IMU  
+  - Camera-based ArUco detection for map corrections  
+
+---
+
+## Deployment of a New Robot
+
+### Hardware Setup
+- Two batteries: **5 V** (for RPi) and **12 V** (for motors).  
+  - Use the **USB2 port** to power the RPi with the 5 V battery.  
+  - Ensure batteries are charged above 30–40 % for stable operation.  
+- Place the RPi within Wi-Fi range (`TP-Link_03DC` in the lab).  
+
+### Networking
+- Ensure **PC and RPi are on the same network**.  
+- Match the **ROS_DOMAIN_ID** on both PC and RPi (default = `10`):  
+  ```bash
+  echo "export ROS_DOMAIN_ID=10" >> ~/.bashrc
+  ```
+  Or in the Dockerfile:  
+  ```dockerfile
+  ENV ROS_DOMAIN_ID=10
+  ```
+- Configure a **static IP** on the RPi using `/etc/network/interfaces`.  
+- Add DNS servers in `/etc/resolv.conf`:  
+  ```ini
+  nameserver 8.8.8.8
+  nameserver 8.8.4.4
+  ```
+- Reboot the RPi and confirm connectivity.  
+
+---
+
+## Docker Installation (recommended)
+
+1. **SSH into the RPi**:  
+   ```bash
+   ssh swisscat@<robot-ip>
+   ```
+
+2. **Install Docker** on the RPi:  
+   ```bash
+   sudo apt-get update
+   sudo apt-get install ca-certificates curl gnupg
+   sudo install -m 0755 -d /etc/apt/keyrings
+   curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+   sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+   echo      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" |      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+   sudo apt-get update
+   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   sudo groupadd docker
+   sudo gpasswd -a $USER docker
+   newgrp docker
+   docker run hello-world
+   ```
+
+3. **Pull the container image**:  
+   ```bash
+   docker pull ghcr.io/swisscatplus/em_onrobot/em_robot:latest
+   ```
+
+4. **Run the container**:  
+   ```bash
+   ./run.sh robot1   # optional namespace argument
+   ```
+
+---
+
+## Local Installation (advanced)
+
+Running outside Docker is not the primary workflow, but it is possible.  
+From the [Dockerfile](./Dockerfile), the required local dependencies are:
+
+### System packages
+```bash
+sudo apt update
+sudo apt install python3-smbus i2c-tools python3-dev
+```
+
+### Python packages
+```bash
+pip install smbus2
+```
+
+### ROS 2 packages
+Make sure you have ROS 2 Humble installed with `colcon` and build tools.  
+Then build the workspace:
+```bash
+cd ros2_ws
+colcon build --packages-select em_robot em_robot_srv bno055
+```
+
+---
+
+## How to Run
+
+1. Connect to the RPi:
+   ```bash
+   ssh swisscat@<robot-ip>
+   ```
+
+2. Start the container:
+   ```bash
+   ./run.sh robot1
+   ```
+
+3. To run nodes individually inside the container:
+   ```bash
+   ros2 run em_robot motors_node     # publishes wheel odometry
+   ros2 run bno055 bno055            # publishes /bno055/imu
+   ros2 run em_robot cam_node        # publishes camera correction
+   ```
+
+4. From your PC, send velocity commands:
+   ```bash
+   ros2 topic pub /cmd_vel geometry_msgs/Twist "linear:
+     x: 0.3
+     y: 0.0
+     z: 0.0
+   angular:
+     x: 0.0
+     y: 0.0
+     z: 0.5"
+   ```
+
+---
+
+## ROS 2 Interfaces
+
+### Topics
+| Topic                | Type                                    | Description                                    |
+|----------------------|-----------------------------------------|------------------------------------------------|
+| `/left_ticks_counts` | `std_msgs/Int16`                        | Encoder ticks from left wheel                  |
+| `/right_ticks_counts`| `std_msgs/Int16`                        | Encoder ticks from right wheel                 |
+| `/bno055/imu`        | `sensor_msgs/Imu`                       | Orientation and acceleration from BNO055       |
+| `/edi/cam`           | `geometry_msgs/PoseWithCovarianceStamped` | Pose correction from camera + ArUco markers   |
+| `/cmd_vel`           | `geometry_msgs/Twist`                   | Input velocity command for differential drive  |
+
+### Parameters
+| Parameter      | Type   | Description                                                   |
+|----------------|--------|---------------------------------------------------------------|
+| `namespace`    | string | Namespace prefix for topics/nodes per robot                   |
+| `config_file`  | string | Path to camera calibration file (ArUco positions, intrinsics) |
+
+---
+
+## Project Structure
+
+```
+EM_onrobot/
+├── Dockerfile            # Build instructions for em_robot image
+├── Dockerfile.base       # Base image with ROS 2 and dependencies
+├── entrypoint.sh         # Container entrypoint script
+├── fastdds.xml           # Fast DDS configuration
+├── src/
+│   ├── em_robot/         # Main robot package (motors, camera, odometry)
+│   ├── em_robot_srv/     # ROS 2 service definitions
+│   ├── bno055/           # External Bosch BNO055 driver
+│   └── test.py           # Example script
+├── images/logo.png
+└── README.md
+```
+
+---
+
+## Improvements & Roadmap
+
+- Replace odometry with **Dynamixel ROS 2 driver** once integrated.  
+- Improve camera-based map correction under different lighting conditions.  
+- Extend support for **multi-robot deployments**.  
+- Add **MPC-based navigation** for path following.  
+- Expand documentation with troubleshooting and advanced usage examples.  
+- Strengthen **CI/CD pipelines** for automated builds and tests.  
+
+---
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
