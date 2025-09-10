@@ -70,15 +70,15 @@ The `EM_onrobot` repository contains the software and hardware resources for the
 
 - **Hardware**
   - Raspberry Pi 5  
-  - 2x DYNAMIXEL XC430-W150 motors
+  - 2x DYNAMIXEL Motors (XC430-W150)
   - DYNAMIXEL U2D2 Power Hub
   - DYNAMIXEL U2D2
   - 2x Pololu Scooter/Skate Wheel 70×25mm - Black (3272)
-  - Bosch BNO055 IMU  
+  - Bosch BNO055 IMU Adafruit Board (2472)
   - Raspberry Pi Camera Module 3 Wide  
   - Bosch Professional GBA 18V (5AH recommended)
-  - Converter DC/DC to 5V DTJ1524S05
-  - Converter DC/DC to 12V DTJ1524S12
+  - Converter DC/DC to 5V (DTJ1524S05)
+  - Converter DC/DC to 12V (DTJ1524S12)
   - 3D printed Mobile Robot Case
 
 
