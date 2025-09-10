@@ -17,6 +17,21 @@
 
 ---
 
+## Table of Contents
+
+1. [Overview](#overview)  
+2. [System Architecture](#system-architecture)  
+3. [Deployment of a New Robot](#deployment-of-a-new-robot)  
+4. [Docker Installation (recommended)](#docker-installation-recommended)  
+5. [Local Installation (advanced)](#local-installation-advanced)  
+6. [How to Run](#how-to-run)  
+7. [ROS 2 Interfaces](#ros-2-interfaces)  
+8. [Project Structure](#project-structure)  
+9. [Improvements & Roadmap](#improvements--roadmap)  
+10. [License](#license)  
+
+---
+
 ## Overview
 
 The `EM_onrobot` repository contains the software that runs on the mobile robot.  
@@ -44,21 +59,6 @@ It is responsible for:
 
 ---
 
-## Table of Contents
-
-1. [Overview](#overview)  
-2. [System Architecture](#system-architecture)  
-3. [Deployment of a New Robot](#deployment-of-a-new-robot)  
-4. [Docker Installation (recommended)](#docker-installation-recommended)  
-5. [Local Installation (advanced)](#local-installation-advanced)  
-6. [How to Run](#how-to-run)  
-7. [ROS 2 Interfaces](#ros-2-interfaces)  
-8. [Project Structure](#project-structure)  
-9. [Improvements & Roadmap](#improvements--roadmap)  
-10. [License](#license)  
-
----
-
 ## System Architecture
 
 - **Hardware**
@@ -79,7 +79,7 @@ It is responsible for:
   - OS installed on the RPi5 (recommended : Raspberry pi OS)
   - ROS 2 packages (all inside Docker):
     - `em_robot` → motor control and odometry  
-    - `bno055` → IMU driver  
+    - `bno055` → IMU driver (The `src/bno055` package in this repository is a modified version of the original `flynneva/bno055` code, adapted to work with this application.)
     - `em_robot_srv` → service definitions
 
 ---
@@ -241,3 +241,7 @@ EM_onrobot/
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
+
+It also includes code from [flynneva/bno055](https://github.com/flynneva/bno055),
+which is licensed under the [BSD 3-Clause License](https://github.com/flynneva/bno055/blob/main/LICENSE).
+
