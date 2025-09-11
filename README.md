@@ -187,17 +187,55 @@ colcon build --packages-select em_robot em_robot_srv bno055
    ./deploy.sh
    ```
 
-3. From your PC, send velocity commands:
-   ```bash
-   ros2 topic pub /cmd_vel geometry_msgs/Twist "linear:
-     x: 0.3
-     y: 0.0
-     z: 0.0
-   angular:
-     x: 0.0
-     y: 0.0
-     z: 0.5"
-   ```
+3.  **Test movement:**
+
+    **Important:** This is a **two-wheeled differential drive
+    robot**. That means it can only move using:
+
+    -   **Linear X** → forward/backward motion (both wheels turning in
+        the same direction).
+    -   **Angular Z (yaw)** → rotation on the spot or turning (wheels
+        turning at different speeds).
+
+    All other fields (`linear.y`, `linear.z`, `angular.x`, `angular.y`)
+    are ignored.
+
+    You have two options for testing:
+
+    -   **Direct velocity commands (use with caution):**
+
+        You can publish a velocity command directly, but be aware that
+        the robot will **keep moving until you explicitly send another
+        command with zero velocity**. For example:
+
+        ``` bash
+        ros2 topic pub /cmd_vel geometry_msgs/Twist "linear:
+          x: 0.3
+          y: 0.0
+          z: 0.0
+        angular:
+          x: 0.0
+          y: 0.0
+          z: 0.5"
+        ```
+
+        To stop the robot, send the same command again but with all
+        values set to `0.0`.
+
+    -   **Safer option: use teleop:**
+
+        The recommended way to test is to use the
+        [teleop_twist_keyboard](https://index.ros.org/p/teleop_twist_keyboard/)
+        package. This allows you to control the robot interactively from
+        your PC with the keyboard:
+
+        ``` bash
+        ros2 run teleop_twist_keyboard teleop_twist_keyboard
+        ```
+
+        You can also connect a **gaming controller** and map the
+        joystick to publish commands on `/cmd_vel` for smoother and
+        safer manual control.
 
 ---
 
@@ -211,12 +249,6 @@ colcon build --packages-select em_robot em_robot_srv bno055
 | `/bno055/imu`        | `sensor_msgs/Imu`                       | Orientation and acceleration from BNO055       |
 | `/edi/cam`           | `geometry_msgs/PoseWithCovarianceStamped` | Pose correction from camera + ArUco markers   |
 | `/cmd_vel`           | `geometry_msgs/Twist`                   | Input velocity command for differential drive  |
-
-### Parameters
-| Parameter      | Type   | Description                                                   |
-|----------------|--------|---------------------------------------------------------------|
-| `namespace`    | string | Namespace prefix for topics/nodes per robot                   |
-| `config_file`  | string | Path to camera calibration file (ArUco positions, intrinsics) |
 
 ---
 
