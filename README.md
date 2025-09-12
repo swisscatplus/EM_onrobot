@@ -32,8 +32,6 @@ Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM
 
 ## Overview
 
-## Overview
-
 The `EM_onrobot` repository contains the software and hardware resources for the SwissCat+ in-house mobile robot.
 
 ### Software
@@ -45,7 +43,11 @@ The `EM_onrobot` repository contains the software and hardware resources for the
 - Publishes **ROS 2 topics** for robot localization and subscribes to `/cmd_vel` for motion commands.  
 
 ### Hardware
-- Includes the **3D-printable mechanical design** of the robot’s case (recommended material: PLA).  
+- Includes the **3D-printable mechanical design** of the robot’s case (recommended material: PLA) :
+  - EdyMobileAssembly contains the full CAD for SolidWorks
+  - EdyMobileURDFAssembly contains the CAD ready for URDF export
+  - EdyMobile_URDF_screencast_ROS contains the URDF
+  - Edymobile_STL_And_BambuPrintables contains the STL files and a read-to-print file for bamboo lab PS1
 - Provides the **electrical schematics** for wiring and integration.  
 
 ### Deployment

@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="URDF_screencast">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="-0.0017642733228333 -5.6329934469114E-05 0.0770235845273626"
+        rpy="0 0 0" />
+      <mass
+        value="3.07038463834014" />
+      <inertia
+        ixx="0.00863202135084604"
+        ixy="2.37027171135152E-06"
+        ixz="0.000233055148347243"
+        iyy="0.0124744870893606"
+        iyz="1.18000432700231E-06"
+        izz="0.0188059958141727" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="wheel_right_link">
+    <inertial>
+      <origin
+        xyz="2.33309652426239E-05 -9.22209531656337E-09 5.8456388965511E-09"
+        rpy="0 0 0" />
+      <mass
+        value="0.130245182159693" />
+      <inertia
+        ixx="8.05365251521701E-05"
+        ixy="-3.01808617019978E-14"
+        ixz="-4.76123297088506E-14"
+        iyy="4.36249140012397E-05"
+        iyz="-2.69218726630348E-11"
+        izz="4.36249972638982E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/wheel_right_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/wheel_right_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="wheel_right_joint"
+    type="continuous">
+    <origin
+      xyz="-0.090548 -0.067004 0.02275"
+      rpy="0.47338 0 -1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="wheel_right_link" />
+    <axis
+      xyz="1 0 0" />
+  </joint>
+  <link
+    name="wheel_left_link">
+    <inertial>
+      <origin
+        xyz="2.33309645137694E-05 -9.22218731935764E-09 5.84549375570731E-09"
+        rpy="0 0 0" />
+      <mass
+        value="0.130245182159693" />
+      <inertia
+        ixx="8.05365251521701E-05"
+        ixy="-3.01792043467775E-14"
+        ixz="-4.76133826005344E-14"
+        iyy="4.36249140013502E-05"
+        iyz="-2.69218205251923E-11"
+        izz="4.36249972637877E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/wheel_left_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/wheel_left_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="wheel_left_joint"
+    type="continuous">
+    <origin
+      xyz="-0.090548 0.066996 0.02275"
+      rpy="-0.084975 0 -1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="wheel_left_link" />
+    <axis
+      xyz="1 0 0" />
+  </joint>
+  <link
+    name="depth_camera_link">
+    <inertial>
+      <origin
+        xyz="1.12655780192643E-05 -0.000136108278217612 0.0115559791566729"
+        rpy="0 0 0" />
+      <mass
+        value="0.107910427126061" />
+      <inertia
+        ixx="7.71002120976479E-06"
+        ixy="2.48356679437092E-10"
+        ixz="-1.7847192021439E-08"
+        iyy="7.02567375008718E-05"
+        iyz="4.9297867590205E-08"
+        izz="7.12550266296851E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/depth_camera_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/depth_camera_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="depth_camera_joint"
+    type="fixed">
+    <origin
+      xyz="0.11245 0.00010922 0.070774"
+      rpy="1.5708 0 1.5708" />
+    <parent
+      link="base_link" />
+    <child
+      link="depth_camera_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="pi_camera_link">
+    <inertial>
+      <origin
+        xyz="0.000337912165863669 0.000150593967962229 -0.006726918044395"
+        rpy="0 0 0" />
+      <mass
+        value="0.000977728280154443" />
+      <inertia
+        ixx="3.01123207336753E-08"
+        ixy="-1.2838710838052E-10"
+        ixz="-2.9162936418022E-11"
+        iyy="2.22772609678264E-08"
+        iyz="1.2937440157145E-11"
+        izz="5.16376001127451E-08" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/pi_camera_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://URDF_screencast/meshes/pi_camera_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="pi_camera_joint"
+    type="fixed">
+    <origin
+      xyz="0.084298 0.00083092 0.12465"
+      rpy="0 0 -1.5648" />
+    <parent
+      link="base_link" />
+    <child
+      link="pi_camera_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
