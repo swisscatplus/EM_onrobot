@@ -13,7 +13,7 @@ echo "Removing old container..."
 docker rm $CONTAINER_NAME 2>/dev/null || true
 
 echo "Build image..."
-docker build -t $IMAGE_NAME .
+docker build -f Dockerfile -t $IMAGE_NAME .
 
 echo "Starting new container..."
 

@@ -7,7 +7,7 @@ ENV ROS_DISTRO=humble
 # ========= System & ROS deps =========
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # build toolchain
-    build-essential ninja-build meson pkg-config cmake git \
+    build-essential ninja-build pkg-config cmake git \
     # python
     python3 python3-pip python3-dev python3-setuptools python3-wheel \
     python3-colcon-common-extensions python3-jinja2 python3-yaml python3-ply \
