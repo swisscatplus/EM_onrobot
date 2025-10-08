@@ -26,10 +26,10 @@ docker run -d \
   --cap-add NET_ADMIN \
   --privileged \
   --device /dev/video0 \
-  --device /dev/video1 \               # if present
+  --device /dev/video1 \
   --device /dev/media0 \
-  --device /dev/media1 \               # add any /dev/media* you have
+  --device /dev/media1 \
   --device /dev/dri/card0 \
-  --group-add video \                  # match host 'video' group
+  --group-add video \
   "$IMAGE_NAME"
 
