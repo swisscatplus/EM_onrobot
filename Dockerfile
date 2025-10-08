@@ -1,44 +1,44 @@
+# ========= Base =========
 FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
 
-RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
-
-##############################
-# 1. Install system dependencies and build tools
-##############################
+# ========= System & ROS deps =========
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    ninja-build \
-    pkg-config \
-    cmake \
+    # build toolchain
+    build-essential ninja-build meson pkg-config cmake git \
+    # python
+    python3 python3-pip python3-dev python3-setuptools python3-wheel \
+    python3-colcon-common-extensions python3-jinja2 python3-yaml python3-ply \
+    # ROS pkgs you had
+    ros-${ROS_DISTRO}-tf-transformations \
     ros-${ROS_DISTRO}-robot-localization \
-    python3 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
-    python3-yaml python3-ply \
-    git python3-jinja2 \
-    libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
+    # libcamera deps
+    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libtiff5-dev \
+    libgnutls28-dev openssl libcap-dev libv4l-dev \
+    libavcodec-dev libavformat-dev libswscale-dev \
+    libglib2.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
+    # (optional, only if you want Qt preview tools available)
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
-    libglib2.0-dev libgstreamer-plugins-base1.0-dev \
-    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libcap-dev \
-    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
-    gstreamer1.0-plugins-base && \
-    rm -rf /var/lib/apt/lists/*
+    # kmsxx deps
+    libfmt-dev \
+    # Picamera2-on-Ubuntu nicety
+    python3-prctl \
+    # misc
+    ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-##############################
-# 2. Upgrade pip and install Python dependencies
-##############################
-RUN pip3 install --upgrade pip && \
-    pip3 install dynamixel_sdk meson
+# Python deps (global)
+RUN python3 -m pip install --upgrade pip && \
+    pip3 install --no-cache-dir meson dynamixel_sdk opencv-python
 
-##############################
-# 3. Clone and build libcamera with Python support
-##############################
-RUN mkdir /packages
+# ========= libcamera (from source) =========
 WORKDIR /packages
-
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
+# Configure: enable Pi pipelines, Python binding, GStreamer, V4L2. Disable apps/tests/docs to keep it light.
 RUN meson setup build --buildtype=release \
     -Dpipelines=rpi/vc4,rpi/pisp \
     -Dipas=rpi/vc4,rpi/pisp \
@@ -50,55 +50,46 @@ RUN meson setup build --buildtype=release \
     -Dqcam=disabled \
     -Ddocumentation=disabled \
     -Dpycamera=enabled
-RUN ninja -C build
-RUN ninja -C build install
+RUN ninja -C build && ninja -C build install && ldconfig
 
-##############################
-# 4. Install kmsxx dependencies and build with Python bindings
-##############################
+# ========= kmsxx (optional but useful if you ever use DRM preview) =========
 WORKDIR /packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libfmt-dev libdrm-dev libcap-dev && \
-    rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init
 RUN meson setup build -Dpykms=enabled
-RUN ninja -C build && ninja -C build install
+RUN ninja -C build && ninja -C build install && ldconfig
 
-##############################
-# 5. Install additional Python packages (picamera2 and opencv-python)
-##############################
-RUN pip3 install picamera2 opencv-python
+# ========= Picamera2 (from source; matches built libcamera) =========
+WORKDIR /packages
+RUN git clone https://github.com/raspberrypi/picamera2.git
+WORKDIR /packages/picamera2
+# Installing via pip from the repo ensures it links against the libcamera you just built
+RUN pip3 install --no-cache-dir .
 
-# (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
-ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+# ========= Your extra Python bits =========
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-smbus i2c-tools \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir smbus2 'numpy<1.24.0'
 
-#------------------------
+# (Optional) helpful logs while debugging
+ENV LIBCAMERA_LOG_LEVELS="*:INFO"
 
-SHELL ["/bin/bash", "-c"]
-ENV ROS_DISTRO=humble
-
-RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
-RUN pip install smbus2
-RUN pip install 'numpy<1.24.0'
-
-# === ADD FASTDDS CONFIG FILE ===
+# ========= Fast DDS config =========
 RUN mkdir -p /root/.ros
 COPY fastdds.xml /root/.ros/fastdds.xml
 ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
-# === BUILD ROS WORKSPACE ===
+# ========= Build your ROS workspace =========
 WORKDIR /ros2_ws
 COPY src/em_robot src/em_robot
 COPY src/em_robot_srv src/em_robot_srv
 COPY src/bno055 src/bno055
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot bno055 em_robot_srv
 
-# === ENTRYPOINT ===
+# ========= Entrypoint =========
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
