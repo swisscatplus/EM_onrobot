@@ -3,6 +3,9 @@
 CONTAINER_NAME="em_robot"
 IMAGE_NAME="ghcr.io/swisscatplus/em_onrobot/em_robot:latest"
 
+git fetch origin
+git reset --hard origin/main
+
 echo "Stopping old container..."
 docker stop $CONTAINER_NAME 2>/dev/null || true
 
@@ -19,8 +22,7 @@ docker run -d \
   --device /dev/input \
   --device /dev/uinput \
   --device /dev/hidraw0 \
-  --device /dev/dynamixel \
-  --device /dev/imu \
+  -v /run/udev:/run/udev:ro \
   --cap-add SYS_ADMIN \
   --cap-add NET_ADMIN \
   --privileged \
