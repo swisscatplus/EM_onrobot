@@ -16,22 +16,10 @@ echo "Build image..."
 docker build -t $IMAGE_NAME .
 
 echo "Starting new container..."
-# Resolve host symlinks to real devices
-DYN_DEV="$(readlink -f /dev/dynamixel)"
-IMU_DEV="$(readlink -f /dev/imu)"
-
-echo "Host devices:"
-echo "  /dev/dynamixel -> ${DYN_DEV}"
-echo "  /dev/imu       -> ${IMU_DEV}"
 
 docker run -d \
   --network host \
   --name "$CONTAINER_NAME" \
-  --device "${DYN_DEV}:/dev/dynamixel" \
-  --device "${IMU_DEV}:/dev/imu" \
-  --device /dev/input \
-  --device /dev/uinput \
-  --device /dev/hidraw0 \
   -v /run/udev:/run/udev:ro \
   -v /dev/:/dev/ \
   --cap-add SYS_ADMIN \
