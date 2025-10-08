@@ -1,37 +1,4 @@
-FROM ubuntu:22.04
-# Uncomment if you installed ros2 from source, unlikely if using docker
-# RUN rm /etc/apt/sources.list.d/ros2-latest.list \
-#   && rm /usr/share/keyrings/ros2-latest-archive-keyring.gpg
-RUN apt-get update \
-  && apt-get install -y ca-certificates curl
-RUN export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}') ;\
-    curl -L -s -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb" \
-    && apt-get update \
-    && apt-get install /tmp/ros2-apt-source.deb \
-    && rm -f /tmp/ros2-apt-source.deb
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    ROS_DISTRO=humble
-RUN apt update && apt install -y --no-install-recommends \
-    ros-humble-ros-base \
-    python3-flake8-docstrings \
-    python3-pip \
-    python3-pytest-cov \
-    ros-dev-tools \
-    python3-flake8-blind-except \
-    python3-flake8-builtins \
-    python3-flake8-class-newline \
-    python3-flake8-comprehensions \
-    python3-flake8-deprecated \
-    python3-flake8-import-order \
-    python3-flake8-quotes \
-    python3-pytest-repeat \
-    python3-pytest-rerunfailures
-RUN rosdep init
-
-#FROM ros:humble-ros-base-jammy
+FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
 
@@ -106,6 +73,9 @@ RUN pip3 install picamera2 opencv-python
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+
+#------------------------
 
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
