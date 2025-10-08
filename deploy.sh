@@ -19,6 +19,8 @@ docker run -d \
   --device /dev/input \
   --device /dev/uinput \
   --device /dev/hidraw0 \
+  --device /dev/dynamixel \
+  --device /dev/imu \
   --cap-add SYS_ADMIN \
   --cap-add NET_ADMIN \
   --privileged \
