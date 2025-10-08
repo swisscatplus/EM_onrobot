@@ -83,7 +83,7 @@ RUN meson setup build --buildtype=release \
     -Dqcam=disabled \
     -Ddocumentation=disabled \
     -Dpycamera=enabled
-#RUN ninja -C build
+RUN ninja -C build
 RUN ninja -C build install
 
 ##############################
@@ -106,7 +106,6 @@ RUN pip3 install picamera2 opencv-python
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
 SHELL ["/bin/bash", "-c"]
 ENV ROS_DISTRO=humble
@@ -115,13 +114,10 @@ RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
 RUN pip install smbus2
 RUN pip install 'numpy<1.24.0'
 
-ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
-
 # === ADD FASTDDS CONFIG FILE ===
 RUN mkdir -p /root/.ros
 COPY fastdds.xml /root/.ros/fastdds.xml
 ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
-
 
 # === BUILD ROS WORKSPACE ===
 WORKDIR /ros2_ws
