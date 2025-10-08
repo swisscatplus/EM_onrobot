@@ -33,6 +33,7 @@ docker run -d \
   --device /dev/uinput \
   --device /dev/hidraw0 \
   -v /run/udev:/run/udev:ro \
+  -v /dev/:/dev/ \
   --cap-add SYS_ADMIN \
   --cap-add NET_ADMIN \
   --privileged \
