@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
 ##############################
 # 1. Install system dependencies and build tools
 ##############################
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     build-essential \
     ninja-build \
     pkg-config \
@@ -57,7 +57,7 @@ RUN ninja -C build install
 # 4. Install kmsxx dependencies and build with Python bindings
 ##############################
 WORKDIR /packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     libfmt-dev libdrm-dev libcap-dev && \
     rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/tomba/kmsxx.git
@@ -69,7 +69,7 @@ RUN ninja -C build && ninja -C build install
 ##############################
 # 5. Install additional Python packages (picamera2 and opencv-python)
 ##############################
-RUN pip3 install picamera2 opencv-python rpi-libcamera
+RUN pip3 install picamera2 opencv-python
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
 ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
