@@ -52,6 +52,9 @@ RUN meson setup build --buildtype=release \
     -Dpycamera=enabled
 RUN ninja -C build && ninja -C build install && ldconfig
 
+ENV PYTHONPATH="/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
+
+
 # ========= kmsxx (optional but useful if you ever use DRM preview) =========
 WORKDIR /packages
 RUN git clone https://github.com/tomba/kmsxx.git

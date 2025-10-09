@@ -18,6 +18,7 @@ docker build -f Dockerfile -t $IMAGE_NAME .
 echo "Starting new container..."
 
 docker run -d \
+  --restart unless-stopped \
   --network host \
   --name "$CONTAINER_NAME" \
   -v /run/udev:/run/udev:ro \
