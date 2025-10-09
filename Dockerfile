@@ -72,7 +72,8 @@ RUN ninja -C build && ninja -C build install
 RUN pip3 install picamera2 opencv-python
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
-ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
+#ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
+ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
 RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
