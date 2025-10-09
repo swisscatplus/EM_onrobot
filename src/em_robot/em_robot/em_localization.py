@@ -68,7 +68,7 @@ class MarkerLocalizationNode(Node):
 
         self.camera_matrix = np.array(cammat_list, dtype=np.float32)
         self.dist_coeffs = np.array(dist_list, dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.337) #375
+        self.camera_height = config.get('camera_height', 0.337)  # 375
         self.marker_size = config.get('marker_size', 0.038)
 
         # Init camera
@@ -116,10 +116,14 @@ class MarkerLocalizationNode(Node):
         static_transform_cam.header.stamp = self.get_clock().now().to_msg()
         static_transform_cam.header.frame_id = "camera_frame"
         static_transform_cam.child_frame_id = "cam_base_link"
-        static_transform_cam.transform.translation.x = -0.192
+        static_transform_cam.transform.translation.x = -0.180
         static_transform_cam.transform.translation.y = 0.0
         static_transform_cam.transform.translation.z = 0.0
-        static_transform_cam.transform.rotation.w = 1.0
+        qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
+        static_transform_cam.transform.rotation.x = qz180[0]
+        static_transform_cam.transform.rotation.y = qz180[1]
+        static_transform_cam.transform.rotation.z = qz180[2]
+        static_transform_cam.transform.rotation.w = qz180[3]
 
         self.static_tf_broadcaster.sendTransform([static_transform_cam])
         self.get_logger().info("Published static transform: camera_frame → cam_base_link")
@@ -128,7 +132,7 @@ class MarkerLocalizationNode(Node):
         """Broadcast identity transform from map to odom at startup"""
         self.get_logger().warn("Publishing initial static map → odom transform at (0, 0, 0)")
 
-        quat = quaternion_from_euler(0.0, 0.0, 0.5*3.1415)
+        quat = quaternion_from_euler(0.0, 0.0, 0.5 * 3.1415)
 
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
@@ -140,7 +144,6 @@ class MarkerLocalizationNode(Node):
         t.transform.rotation.x = quat[0]
         t.transform.rotation.y = quat[1]
         t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
         t.transform.rotation.w = quat[3]
 
         self.last_map_to_odom = t
@@ -194,15 +197,14 @@ class MarkerLocalizationNode(Node):
         frame = self.picam2.capture_array()
         detections = detect_aruco_corners(frame)
 
-        #detections = None # uncomment when you want to remove camera
+        # detections = None  # uncomment when you want to remove camera
         if not detections:
-
-            #self.get_logger().info("No markers detected.")
+            # self.get_logger().info("No markers detected.")
             return
 
         for marker in detections:
             marker_id = marker['id']
-            #self.get_logger().info(f"Checking marker ID {marker_id}...")
+            # self.get_logger().info(f"Checking marker ID {marker_id}...")
             corners = marker['corners'].astype(np.float32)
 
             undistorted = cv.undistortPoints(
@@ -220,10 +222,11 @@ class MarkerLocalizationNode(Node):
             aruco_frame = f"aruco_{marker_id}"
             try:
                 tf_map_to_aruco = self.tf_buffer.lookup_transform(
-                    "map", aruco_frame, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.5)
+                    "map", aruco_frame, rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=0.5)
                 )
             except Exception as e:
-                #self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
+                # self.get_logger().warn(f"Skipping marker {marker_id}: map → {aruco_frame} TF unavailable: {e}")
                 continue
 
             marker_height = tf_map_to_aruco.transform.translation.z
@@ -273,6 +276,7 @@ class MarkerLocalizationNode(Node):
             pose_msg.pose.orientation.w = quat[3]
             self.pose_pub.publish(pose_msg)
 
+            # Build T_map_aruco from TF
             T_map_aruco = concatenate_matrices(
                 translation_matrix([
                     tf_map_to_aruco.transform.translation.x,
@@ -287,7 +291,38 @@ class MarkerLocalizationNode(Node):
                 ])
             )
 
-            T_camera_cam_base = translation_matrix([-0.192, 0.0, 0.0])
+            # --- FIX: include 180° yaw for camera_frame -> cam_base_link ---
+            qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
+            T_camera_cam_base = concatenate_matrices(
+                translation_matrix([-0.180, 0.0, 0.0]),
+                quaternion_matrix(qz180)
+            )
+            # Alternatively, pull it from TF (uncomment to use dynamic lookup):
+            # try:
+            #     t_cam_to_base = self.tf_buffer.lookup_transform(
+            #         "camera_frame", "cam_base_link", rclpy.time.Time(),
+            #         timeout=rclpy.duration.Duration(seconds=0.5)
+            #     )
+            #     T_camera_cam_base = concatenate_matrices(
+            #         translation_matrix([
+            #             t_cam_to_base.transform.translation.x,
+            #             t_cam_to_base.transform.translation.y,
+            #             t_cam_to_base.transform.translation.z
+            #         ]),
+            #         quaternion_matrix([
+            #             t_cam_to_base.transform.rotation.x,
+            #             t_cam_to_base.transform.rotation.y,
+            #             t_cam_to_base.transform.rotation.z,
+            #             t_cam_to_base.transform.rotation.w
+            #         ])
+            #     )
+            # except Exception:
+            #     qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
+            #     T_camera_cam_base = concatenate_matrices(
+            #         translation_matrix([-0.180, 0.0, 0.0]),
+            #         quaternion_matrix(qz180)
+            #     )
+
             T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
 
             if self.latest_odom_pose is None:
@@ -314,7 +349,7 @@ class MarkerLocalizationNode(Node):
 
             self.last_map_to_odom = t_map_odom
             self.last_marker_time = self.get_clock().now()
-            #self.get_logger().info(f"Updated map->odom using marker {marker_id}")
+            # self.get_logger().info(f"Updated map->odom using marker {marker_id}")
             break
 
 def main(args=None):
