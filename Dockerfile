@@ -78,7 +78,7 @@ ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.1
 ENV PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/python3.10/site-packages:${PYTHONPATH}"
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
-RUN apt-get update && apt-get install -y python3-smbus i2c-tools python3-dev
+RUN apt-get update && apt-get install -y python3-smbus i2c-tools
 RUN pip install smbus2
 RUN pip install 'numpy<1.24.0'
 
