@@ -7,7 +7,7 @@ ENV ROS_DISTRO=humble
 # ========= System & ROS deps =========
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # build toolchain
-    build-essential ninja-build pkg-config cmake git \
+    build-essential ninja-build pkg-config cmake git pybind11-dev \
     # python
     python3 python3-pip python3-dev python3-setuptools python3-wheel \
     python3-colcon-common-extensions python3-jinja2 python3-yaml python3-ply \
@@ -52,7 +52,7 @@ RUN meson setup build --buildtype=release \
     -Dpycamera=enabled
 RUN ninja -C build && ninja -C build install && ldconfig
 
-ENV PYTHONPATH="/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
+ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
 
 
 # ========= kmsxx (optional but useful if you ever use DRM preview) =========
