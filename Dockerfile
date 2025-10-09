@@ -49,34 +49,35 @@ RUN meson setup build --buildtype=release \
     -Dcam=disabled \
     -Dqcam=disabled \
     -Ddocumentation=disabled \
-    -Dpycamera=enabled
+    -Dpycamera=enabled \
+    -Dprefix=/usr
 RUN ninja -C build
-RUN ninja -C build install
+RUN ninja -C build install  && ldconfig
 
 ##############################
 # 4. Install kmsxx dependencies and build with Python bindings
 ##############################
 WORKDIR /packages
-RUN apt-get install -y --no-install-recommends \
-    libfmt-dev libdrm-dev libcap-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libfmt-dev libdrm-dev libcap-dev \
+ && rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init
-RUN meson setup build -Dpykms=enabled
-RUN ninja -C build && ninja -C build install
+RUN meson setup build -Dpykms=enabled -Dprefix=/usr
+RUN ninja -C build && ninja -C build install && ldconfig
 
 ##############################
 # 5. Install additional Python packages (picamera2 and opencv-python)
 ##############################
-RUN pip3 install picamera2 opencv-python rpi-kms
+RUN pip3 install picamera2 opencv-python
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
 #ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
 ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+#ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
-RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
+RUN apt install -y python3-smbus i2c-tools python3-dev
 RUN pip install smbus2
 RUN pip install 'numpy<1.24.0'
 
