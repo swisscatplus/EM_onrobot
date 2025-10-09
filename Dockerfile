@@ -69,7 +69,7 @@ RUN ninja -C build && ninja -C build install
 ##############################
 # 5. Install additional Python packages (picamera2 and opencv-python)
 ##############################
-RUN pip3 install picamera2 opencv-python python3-kms++
+RUN pip3 install picamera2 opencv-python rpi-kms
 
 # (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
 #ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
