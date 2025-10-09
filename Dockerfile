@@ -23,47 +23,55 @@ RUN --mount=type=cache,target=/var/cache/apt \
       python3-smbus i2c-tools \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Python deps (Meson from pip >=1.0) ---
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install --upgrade pip && \
-    pip3 install --no-cache-dir "meson>=1.4" dynamixel_sdk opencv-python smbus2 "numpy<1.24.0"
+##############################
+# 2. Upgrade pip and install Python dependencies
+##############################
+RUN pip3 install --upgrade pip && \
+    pip3 install dynamixel_sdk meson
 
-# --- libcamera (from source) ---
+##############################
+# 3. Clone and build libcamera with Python support
+##############################
+RUN mkdir /packages
 WORKDIR /packages
-# Optionally pin: ARG LIBCAMERA_REF=v0.3.2 and add --branch ${LIBCAMERA_REF}
-RUN git clone --depth 1 https://github.com/raspberrypi/libcamera.git
+
+RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
-RUN python3 -m mesonbuild.mesonmain setup build --buildtype=release \
-      -Dpipelines=rpi/vc4,rpi/pisp \
-      -Dipas=rpi/vc4,rpi/pisp \
-      -Dv4l2=true \
-      -Dgstreamer=enabled \
-      -Dtest=false \
-      -Dlc-compliance=disabled \
-      -Dcam=disabled \
-      -Dqcam=disabled \
-      -Ddocumentation=disabled \
-      -Dpycamera=enabled && \
-    ninja -C build && ninja -C build install && ldconfig
+RUN meson setup build --buildtype=release \
+    -Dpipelines=rpi/vc4,rpi/pisp \
+    -Dipas=rpi/vc4,rpi/pisp \
+    -Dv4l2=true \
+    -Dgstreamer=enabled \
+    -Dtest=false \
+    -Dlc-compliance=disabled \
+    -Dcam=disabled \
+    -Dqcam=disabled \
+    -Ddocumentation=disabled \
+    -Dpycamera=enabled
+RUN ninja -C build
+RUN ninja -C build install
 
-# --- kmsxx (optional) ---
+##############################
+# 4. Install kmsxx dependencies and build with Python bindings
+##############################
 WORKDIR /packages
-RUN git clone --depth 1 https://github.com/tomba/kmsxx.git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libfmt-dev libdrm-dev libcap-dev && \
+    rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
-RUN git submodule update --init && \
-    python3 -m mesonbuild.mesonmain setup build -Dpykms=enabled && \
-    ninja -C build && ninja -C build install && ldconfig
+RUN git submodule update --init
+RUN meson setup build -Dpykms=enabled
+RUN ninja -C build && ninja -C build install
 
-# --- Picamera2 (from source; matches libcamera) ---
-WORKDIR /packages
-# Optionally pin: ARG PICAMERA2_REF=<tag>; add --branch ${PICAMERA2_REF}
-RUN git clone --depth 1 https://github.com/raspberrypi/picamera2.git
-WORKDIR /packages/picamera2
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip3 install --no-cache-dir .
+##############################
+# 5. Install additional Python packages (picamera2 and opencv-python)
+##############################
+RUN pip3 install picamera2 opencv-python
 
-# Debug logging if needed
-ENV LIBCAMERA_LOG_LEVELS="*:INFO"
+RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
+RUN pip install smbus2
+RUN pip install 'numpy<1.24.0'
 
 # --- Fast DDS config ---
 RUN mkdir -p /root/.ros
