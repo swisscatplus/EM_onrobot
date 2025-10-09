@@ -4,7 +4,7 @@ SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
 
-# (optional) clean locale warning in logs
+# (optional) silence locale warning
 RUN apt-get update && apt-get install -y locales && \
     sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && \
     locale-gen
@@ -26,17 +26,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgnutls28-dev openssl libcap-dev libv4l-dev \
     libavcodec-dev libavformat-dev libswscale-dev \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
-    # (optional, only if you want Qt preview tools available)
+    # (optional preview libs)
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
     # kmsxx deps
     libfmt-dev \
-    # Picamera2-on-Ubuntu nicety
-    python3-prctl \
-    # misc
-    ca-certificates \
+    # niceties
+    python3-prctl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Python deps (global) — use pip Meson (new enough)
+# ========= Python deps =========
 RUN python3 -m pip install --upgrade pip && \
     pip3 install --no-cache-dir meson dynamixel_sdk opencv-python
 
@@ -44,7 +42,6 @@ RUN python3 -m pip install --upgrade pip && \
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/libcamera.git
 WORKDIR /packages/libcamera
-# Use pip Meson explicitly to avoid old system meson confusion
 RUN python3 -m mesonbuild.mesonmain setup build --buildtype=release \
     -Dpipelines=rpi/vc4,rpi/pisp \
     -Dipas=rpi/vc4,rpi/pisp \
@@ -66,8 +63,9 @@ WORKDIR /packages
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init
-# IMPORTANT: use boolean 'true' here; 'enabled' may not create the target
-RUN python3 -m mesonbuild.mesonmain setup build -Dpykms=true
+
+# Feature option must be one of: enabled/disabled/auto
+RUN python3 -m mesonbuild.mesonmain setup build -Dpykms=enabled
 RUN ninja -C build && ninja -C build install && ldconfig
 
 # Fail fast if kms/pykms isn't importable; also print candidates path
@@ -81,26 +79,24 @@ print("candidates:", glob.glob("/usr/local/lib/python*/site-packages/*kms*.so"))
 assert iu.find_spec("kms") or iu.find_spec("pykms"), "Missing kms/pykms (kmsxx Python binding)"
 PY
 
-# ========= Picamera2 (from source; matches built libcamera) =========
+# ========= Picamera2 (from source) =========
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/picamera2.git
 WORKDIR /packages/picamera2
 RUN pip3 install --no-cache-dir .
-
-# Optional sanity check for picamera2
+# Optional sanity check
 RUN python3 - <<'PY'
 import importlib.util as iu
 print("picamera2:", iu.find_spec("picamera2"))
 assert iu.find_spec("picamera2"), "Picamera2 not importable"
 PY
 
-# ========= Your extra Python bits =========
+# ========= Extra Python bits =========
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-smbus i2c-tools \
  && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir smbus2 'numpy<1.24.0'
 
-# Helpful logs while debugging libcamera
 ENV LIBCAMERA_LOG_LEVELS="*:INFO"
 
 # ========= Fast DDS config =========
