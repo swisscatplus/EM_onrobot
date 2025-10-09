@@ -76,6 +76,7 @@ RUN pip3 install picamera2 opencv-python
 
 ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
 ENV PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/python3.10/site-packages:${PYTHONPATH}"
+ENV PYTHONPATH="/usr/lib/aarch64-linux-gnu/python3.10/site-packages:${PYTHONPATH}"
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
 RUN apt-get update && apt-get install -y python3-smbus i2c-tools
