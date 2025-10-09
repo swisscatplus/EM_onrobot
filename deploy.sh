@@ -6,6 +6,8 @@ IMAGE_NAME="ghcr.io/swisscatplus/em_onrobot/em_robot:latest"
 git fetch origin
 git reset --hard origin/main
 
+docker pull ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest
+
 echo "Stopping old container..."
 docker stop $CONTAINER_NAME 2>/dev/null || true
 
