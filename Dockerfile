@@ -1,27 +1,29 @@
-# syntax=docker/dockerfile:1.7
-
 FROM ros:humble-ros-base-jammy
 SHELL ["/bin/bash", "-c"]
-ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
 
-# --- System & ROS deps (NO 'meson' here) ---
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ninja-build pkg-config cmake git \
-      python3 python3-pip python3-dev python3-setuptools python3-wheel \
-      python3-colcon-common-extensions python3-jinja2 python3-yaml python3-ply \
-      ros-${ROS_DISTRO}-tf-transformations \
-      ros-${ROS_DISTRO}-robot-localization \
-      ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
-      libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libtiff5-dev \
-      libgnutls28-dev openssl libcap-dev libv4l-dev \
-      libavcodec-dev libavformat-dev libswscale-dev \
-      libglib2.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
-      qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
-      libfmt-dev python3-prctl \
-      python3-smbus i2c-tools \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ros-${ROS_DISTRO}-tf-transformations
+
+##############################
+# 1. Install system dependencies and build tools
+##############################
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ninja-build \
+    pkg-config \
+    cmake \
+    ros-${ROS_DISTRO}-robot-localization \
+    python3 python3-pip python3-colcon-common-extensions \
+    ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
+    python3-yaml python3-ply \
+    git python3-jinja2 \
+    libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
+    qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
+    libglib2.0-dev libgstreamer-plugins-base1.0-dev \
+    libdrm-dev libexpat1-dev libjpeg-dev libpng-dev libcap-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    gstreamer1.0-plugins-base && \
+    rm -rf /var/lib/apt/lists/*
 
 ##############################
 # 2. Upgrade pip and install Python dependencies
@@ -67,7 +69,11 @@ RUN ninja -C build && ninja -C build install
 ##############################
 # 5. Install additional Python packages (picamera2 and opencv-python)
 ##############################
-RUN pip3 install picamera2 opencv-python
+RUN pip3 install picamera2 opencv-python rpi-libcamera
+
+# (Optionally, if needed, you can set PYTHONPATH or LD_LIBRARY_PATH here)
+ENV PYTHONPATH=$PYTHONPATH:/usr/local/lib/aarch64-linux-gnu/python3.10/site-packages/
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 
 RUN apt update && apt install -y python3-smbus i2c-tools python3-dev
 RUN pip install smbus2
