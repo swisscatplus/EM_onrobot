@@ -55,13 +55,33 @@ RUN ninja -C build && ninja -C build install && ldconfig
 ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
 
 
-# ========= kmsxx (optional but useful if you ever use DRM preview) =========
+# ========= kmsxx (with Python bindings) =========
 WORKDIR /packages
 RUN git clone https://github.com/tomba/kmsxx.git
 WORKDIR /packages/kmsxx
 RUN git submodule update --init
-RUN meson setup build -Dpykms=enabled
+
+# Use the pip Meson to avoid old system meson, and force-enable Python bindings
+RUN python3 -m mesonbuild.mesonmain setup build -Dpykms=enabled
+
+# Build & install
 RUN ninja -C build && ninja -C build install && ldconfig
+
+# Ensure Python can find the installed binding (covers where it commonly lands)
+ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
+
+# Fail fast if the bindings aren't importable
+RUN python3 - <<'PY'
+import importlib.util as iu, sys
+print("sys.path:"); [print("  ", p) for p in sys.path]
+print("libcamera:", iu.find_spec("libcamera"))
+print("picamera2:", iu.find_spec("picamera2"))
+print("kms      :", iu.find_spec("kms"))
+print("pykms    :", iu.find_spec("pykms"))
+assert iu.find_spec("libcamera"), "Missing libcamera Python module"
+assert iu.find_spec("kms") or iu.find_spec("pykms"), "Missing kms/pykms (kmsxx Python binding)"
+PY
+
 
 # ========= Picamera2 (from source; matches built libcamera) =========
 WORKDIR /packages
