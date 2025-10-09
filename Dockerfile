@@ -4,7 +4,7 @@ SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
 
-# (optional) silence locale warning
+# (optional) silence the locale warning you were seeing
 RUN apt-get update && apt-get install -y locales && \
     sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && \
     locale-gen
@@ -28,13 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base \
     # (optional preview libs)
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \
-    # kmsxx deps
-    libfmt-dev \
-    # niceties
+    # misc / useful
     python3-prctl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# ========= Python deps =========
+# ========= Python tooling =========
 RUN python3 -m pip install --upgrade pip && \
     pip3 install --no-cache-dir meson dynamixel_sdk opencv-python
 
@@ -55,35 +53,27 @@ RUN python3 -m mesonbuild.mesonmain setup build --buildtype=release \
     -Dpycamera=enabled
 RUN ninja -C build && ninja -C build install && ldconfig
 
-# Make sure Python can find libcamera (& later kmsxx)
-ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
+# ========= kmsxx Python binding via PyPI (rpi-kms) =========
+# This builds and installs the 'pykms' (aka 'kms') module for Python on Ubuntu 22.04.
+# Official package & instructions: https://pypi.org/project/rpi-kms/
+RUN pip3 install --no-cache-dir --upgrade "rpi-kms>=0.1a1"
 
-# ========= kmsxx (with Python bindings) =========
-WORKDIR /packages
-RUN git clone https://github.com/tomba/kmsxx.git
-WORKDIR /packages/kmsxx
-RUN git submodule update --init
-
-# Feature option must be one of: enabled/disabled/auto
-RUN python3 -m mesonbuild.mesonmain setup build -Dpykms=enabled
-RUN ninja -C build && ninja -C build install && ldconfig
-
-# Fail fast if kms/pykms isn't importable; also print candidates path
+# Sanity check: ensure pykms/kms is importable now
 RUN python3 - <<'PY'
-import importlib.util as iu, sys, glob
-print("sys.path:"); [print("  ", p) for p in sys.path]
+import importlib.util as iu
 print("libcamera:", iu.find_spec("libcamera"))
-print("kms      :", iu.find_spec("kms"))
-print("pykms    :", iu.find_spec("pykms"))
-print("candidates:", glob.glob("/usr/local/lib/python*/site-packages/*kms*.so"))
+print("picamera2 (expected None until installed):", iu.find_spec("picamera2"))
+print("kms:", iu.find_spec("kms"))
+print("pykms:", iu.find_spec("pykms"))
 assert iu.find_spec("kms") or iu.find_spec("pykms"), "Missing kms/pykms (kmsxx Python binding)"
 PY
 
-# ========= Picamera2 (from source) =========
+# ========= Picamera2 (from source; matches built libcamera) =========
 WORKDIR /packages
 RUN git clone https://github.com/raspberrypi/picamera2.git
 WORKDIR /packages/picamera2
 RUN pip3 install --no-cache-dir .
+
 # Optional sanity check
 RUN python3 - <<'PY'
 import importlib.util as iu
@@ -91,12 +81,13 @@ print("picamera2:", iu.find_spec("picamera2"))
 assert iu.find_spec("picamera2"), "Picamera2 not importable"
 PY
 
-# ========= Extra Python bits =========
+# ========= Your extra Python bits =========
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-smbus i2c-tools \
  && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir smbus2 'numpy<1.24.0'
 
+# (Optional) helpful logs while debugging libcamera
 ENV LIBCAMERA_LOG_LEVELS="*:INFO"
 
 # ========= Fast DDS config =========
