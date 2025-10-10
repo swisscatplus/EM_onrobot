@@ -143,7 +143,7 @@ class MarkerLocalizationNode(Node):
         static_t.header.stamp = self.get_clock().now().to_msg()
         static_t.header.frame_id = "camera_frame"
         static_t.child_frame_id = "cam_base_link"
-        static_t.transform.translation.x = 0.180
+        static_t.transform.translation.x = -0.180
         static_t.transform.translation.y = 0.0
         static_t.transform.translation.z = 0.0
         qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
