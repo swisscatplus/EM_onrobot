@@ -146,7 +146,7 @@ class MarkerLocalizationNode(Node):
         static_t.transform.translation.x = -0.180
         static_t.transform.translation.y = 0.0
         static_t.transform.translation.z = 0.0
-        qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
+        qz180 = quaternion_from_euler(0.0, 0.0, 0.0)#np.pi)
         static_t.transform.rotation.x, static_t.transform.rotation.y, static_t.transform.rotation.z, static_t.transform.rotation.w = qz180
         self.static_tf_broadcaster.sendTransform([static_t])
         self.get_logger().info("Published static transform: camera_frame → cam_base_link")
