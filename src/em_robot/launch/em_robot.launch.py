@@ -13,7 +13,7 @@ config_ekf = os.path.join(
 config_imu = os.path.join(
     get_package_share_directory('bno055'),
     'config',
-    'bno055_params.yaml'
+    'bno055_params_i2c.yaml'
 )
 
 def generate_launch_description():
