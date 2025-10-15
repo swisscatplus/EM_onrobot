@@ -29,6 +29,7 @@ docker run -d \
   --cap-add NET_ADMIN \
   --privileged \
   --device /dev/video0 \
+  --device /dev/i2c-1:/dev/i2c-1 \
   --device /dev/video1 \
   --device /dev/media0 \
   --device /dev/media1 \
