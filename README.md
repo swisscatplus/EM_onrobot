@@ -4,14 +4,10 @@
     <img src="pictures/logo.png" alt="Logo" height="80">
   </a>
 
-  <h1 align="center">EM_onrobot</h1>
+  <h1 align="center">2D-Drone: Open-Source Mobile Robot from the SwissCAT+ Lab</h1>
 </div>
 
-- Onboard localization and control stack for the SWISSCAT mobile robot, 
-developed in <b>Python</b> and <b>ROS 2 Humble</b>, running inside <b>Docker</b>.
-- Designed for a <b>Raspberry Pi 5</b> equipped with <b>DYNAMIXEL XC430-W150</b> motors, 
-a <b>BNO055 IMU</b>, and a <b>Raspberry Pi Camera Module 3 Wide</b>.
-Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> for multi-robot coordination.
+Open-source mobile robot for laboratory automation and SBS plate handling.
 
 ---
 
@@ -32,11 +28,27 @@ Integrates with the <a href="https://github.com/swisscatplus/EM_fleetmanager">EM
 
 ## Overview
 
-The `EM_onrobot` repository contains the software and hardware resources for the SwissCat+ in-house mobile robot.
+The Swiss CAT+ 2D-drone is an open-source mobile robot platform developed at the SwissCAT+ laboratory for laboratory 
+automation.
+
+Built to transport SBS-format plates along a dedicated track on top of the lab, the 2D-drone provides a robust 
+foundation for developing and deploying modular, automated workflows in research and production environments.
+
+The robot localizes itself using a top-mounted camera that detects a network of ArUco markers placed above the track,
+enabling precise and repeatable navigation without external localization systems.
+
+The <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> coordinates multiple 2D-Drones, 
+manages map and marker deployment, and ensures synchronized operation across the SwissCAT+ laboratory.
+
+A markerless visual SLAM module is currently in development and will extend the 2D-Drone’s capabilities beyond 
+track-based navigation to more general indoor environments in upcoming releases.
+
+The `EM_onrobot` repository contains the complete software and hardware resources required to build, configure, and 
+deploy the 2D-Drone
 
 ### Software
 - Controls the two **DYNAMIXEL XC430-W150** differential-drive motors.  
-- Reads **encoder odometry** directly through the Dynamixel SDK.  
+- Reads and compute **encoder odometry** directly through the Dynamixel SDK.  
 - Collects **IMU data** from the Bosch **BNO055** sensor.  
 - Runs an **Extended Kalman Filter (EKF)** to fuse IMU and wheel odometry.  
 - Uses the **camera with ArUco markers** for drift correction in odometry (map correction).  
