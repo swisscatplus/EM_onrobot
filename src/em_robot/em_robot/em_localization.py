@@ -31,7 +31,7 @@ from em_robot_srv.srv import SetInitialPose
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()
 
-# Robustness tweaks
+# Robustness tweaks (no multi-frame voting)
 detector_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
 detector_params.cornerRefinementWinSize = 5
 detector_params.cornerRefinementMaxIterations = 50
@@ -48,7 +48,7 @@ detector_params.adaptiveThreshConstant = 7
 
 detector = cv.aruco.ArucoDetector(dictionary, detector_params)
 
-# Simple quality gates (no voting)
+# Simple quality gates
 MIN_AREA_PX = 400.0       # discard very small detections
 MAX_REPROJ_ERR_PX = 2.5   # discard if mean reprojection error is high
 
@@ -56,8 +56,9 @@ MAX_REPROJ_ERR_PX = 2.5   # discard if mean reprojection error is high
 def _marker_area_px(corners4x2: np.ndarray) -> float:
     return float(cv.contourArea(corners4x2.astype(np.float32)))
 
+
 def _mean_reprojection_error(corners4x2, rvec, tvec, marker_size, K, D) -> float:
-    # define marker corners in its own frame: TL, TR, BR, BL (matches OpenCV order)
+    # Marker corners in marker frame: TL, TR, BR, BL to match OpenCV order
     s = marker_size * 0.5
     obj = np.array([[-s,  s, 0.0],
                     [ s,  s, 0.0],
@@ -108,7 +109,7 @@ class MarkerLocalizationNode(Node):
 
         # --- ROS Setup ---
         self.tf_broadcaster = TransformBroadcaster(self)
-               self.static_tf_broadcaster = StaticTransformBroadcaster(self)
+        self.static_tf_broadcaster = StaticTransformBroadcaster(self)  # <-- fixed indent
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -205,6 +206,7 @@ class MarkerLocalizationNode(Node):
     # Vision Processing
     # -------------------------------------------------------------------------
     def process_frame(self):
+        """Capture camera frame, detect ArUco markers, and update localization."""
         frame = self.picam2.capture_array()
         detections = detect_aruco_corners(frame)
         if not detections:
@@ -218,9 +220,10 @@ class MarkerLocalizationNode(Node):
         # Prefer the largest (closest) marker in view
         det = max(detections, key=lambda d: _marker_area_px(d['corners']))
         marker_id = det['id']
-        corners = det['corners'].astype(np.float32).reshape(1, 4, 2)  # shape for OpenCV APIs
+        corners4x2 = det['corners'].astype(np.float32)
+        corners = corners4x2.reshape(1, 4, 2)  # shape for OpenCV APIs
 
-        # Make sure this marker exists in the TF map (your original guard)
+        # Ensure this marker exists in the TF map (your original guard)
         try:
             tf_map_to_aruco = self.tf_buffer.lookup_transform(
                 "map", f"aruco_{marker_id}", rclpy.time.Time(),
@@ -230,8 +233,7 @@ class MarkerLocalizationNode(Node):
             # Unknown marker in map → ignore
             return
 
-        # --- Robust pose: estimate marker pose via PnP
-        # rvec/tvec: pose of the marker w.r.t the camera (marker->camera transform)
+        # Robust pose: estimate marker pose via PnP (marker -> camera)
         rvecs, tvecs, _ = cv.aruco.estimatePoseSingleMarkers(
             corners,
             self.marker_size,
@@ -245,7 +247,7 @@ class MarkerLocalizationNode(Node):
         tvec = tvecs[0]
 
         # Reprojection error filter (reject shaky ID without voting)
-        reproj_err = _mean_reprojection_error(det['corners'], rvec, tvec,
+        reproj_err = _mean_reprojection_error(corners4x2, rvec, tvec,
                                               self.marker_size, self.camera_matrix, self.dist_coeffs)
         if reproj_err > MAX_REPROJ_ERR_PX:
             self.get_logger().debug(f"Rejected marker {marker_id} due to reproj error {reproj_err:.2f}px")
@@ -317,4 +319,21 @@ class MarkerLocalizationNode(Node):
         self.tf_broadcaster.sendTransform(t_map_odom)
         self.last_marker_time = self.get_clock().now()
         self.get_logger().info(f"Updated map→odom using marker {marker_id} (reproj err {reproj_err:.2f}px)")
-        # only use first visible marker
+
+# -------------------------------------------------------------------------
+# Entry Point
+# -------------------------------------------------------------------------
+def main(args=None):
+    rclpy.init(args=args)
+    node = MarkerLocalizationNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Shutting down MarkerLocalizationNode...")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
