@@ -13,7 +13,7 @@ from tf2_ros import (
     TransformListener,
 )
 from geometry_msgs.msg import TransformStamped, PoseStamped
-    from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry
 from tf_transformations import (
     quaternion_from_euler,
     quaternion_from_matrix,
