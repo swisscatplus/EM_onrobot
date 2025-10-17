@@ -58,7 +58,7 @@ def _marker_area_px(corners4x2: np.ndarray) -> float:
 
 
 def _mean_reprojection_error(corners4x2, rvec, tvec, marker_size, K, D) -> float:
-    # Marker corners in marker frame: TL, TR, BR, BL to match OpenCV order
+    # Marker corners in marker frame: TL, TR, BR, BL (OpenCV order)
     s = marker_size * 0.5
     obj = np.array([[-s,  s, 0.0],
                     [ s,  s, 0.0],
@@ -109,7 +109,7 @@ class MarkerLocalizationNode(Node):
 
         # --- ROS Setup ---
         self.tf_broadcaster = TransformBroadcaster(self)
-        self.static_tf_broadcaster = StaticTransformBroadcaster(self)  # <-- fixed indent
+        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -221,7 +221,7 @@ class MarkerLocalizationNode(Node):
         det = max(detections, key=lambda d: _marker_area_px(d['corners']))
         marker_id = det['id']
         corners4x2 = det['corners'].astype(np.float32)
-        corners = corners4x2.reshape(1, 4, 2)  # shape for OpenCV APIs
+        corners = corners4x2.reshape(1, 4, 2)  # shape expected by OpenCV APIs
 
         # Ensure this marker exists in the TF map (your original guard)
         try:
@@ -243,8 +243,9 @@ class MarkerLocalizationNode(Node):
         if rvecs is None or len(rvecs) == 0:
             return
 
-        rvec = rvecs[0]
-        tvec = tvecs[0]
+        # IMPORTANT: pick rvec/tvec as (3,) not (1,3)
+        rvec = rvecs[0, 0, :].reshape(3)
+        tvec = tvecs[0, 0, :].reshape(3)
 
         # Reprojection error filter (reject shaky ID without voting)
         reproj_err = _mean_reprojection_error(corners4x2, rvec, tvec,
@@ -255,10 +256,9 @@ class MarkerLocalizationNode(Node):
 
         # Build T_aruco_camera directly from rvec/tvec (marker->camera)
         R_cm, _ = cv.Rodrigues(rvec)  # rotation from marker to camera
-        t_cm = tvec.reshape(3)        # translation of marker in camera frame
         T_aruco_camera = np.eye(4, dtype=np.float32)
-        T_aruco_camera[:3, :3] = R_cm
-        T_aruco_camera[:3, 3] = t_cm
+        T_aruco_camera[:3, :3] = R_cm.astype(np.float32)
+        T_aruco_camera[:3, 3] = tvec.astype(np.float32)
 
         # camera_frame -> cam_base_link via TF (single source of truth)
         try:
