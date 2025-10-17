@@ -58,16 +58,53 @@ def _marker_area_px(corners4x2: np.ndarray) -> float:
 
 
 def _mean_reprojection_error(corners4x2, rvec, tvec, marker_size, K, D) -> float:
-    # Marker corners in marker frame: TL, TR, BR, BL (OpenCV order)
+    # Marker corners in marker frame: TL, TR, BR, BL
     s = marker_size * 0.5
     obj = np.array([[-s,  s, 0.0],
                     [ s,  s, 0.0],
                     [ s, -s, 0.0],
                     [-s, -s, 0.0]], dtype=np.float32).reshape(-1, 1, 3)
-    img_proj, _ = cv.projectPoints(obj, rvec, tvec, K, D)  # (4,1,2)
+    img_proj, _ = cv.projectPoints(obj, rvec, tvec, K, D)
     img_proj = img_proj.reshape(-1, 2)
     err = np.linalg.norm(img_proj - corners4x2.astype(np.float32), axis=1)
     return float(err.mean())
+
+
+def _estimate_pose_single_marker(corners4x2: np.ndarray,
+                                 marker_size: float,
+                                 K: np.ndarray,
+                                 D: np.ndarray):
+    """
+    Version-safe replacement for cv.aruco.estimatePoseSingleMarkers.
+    Uses solvePnP (prefers IPPE_SQUARE if available).
+    Returns rvec (3,), tvec (3,)
+    """
+    s = marker_size * 0.5
+    # Object corners in marker frame: TL, TR, BR, BL (match image order from ArUco)
+    obj_pts = np.array([[-s,  s, 0.0],
+                        [ s,  s, 0.0],
+                        [ s, -s, 0.0],
+                        [-s, -s, 0.0]], dtype=np.float32)  # (4,3)
+    img_pts = corners4x2.astype(np.float32)                  # (4,2)
+
+    # reshape to shapes acceptable by solvePnP
+    obj_pts = obj_pts.reshape(-1, 1, 3)
+    img_pts = img_pts.reshape(-1, 1, 2)
+
+    # Choose the best available flag
+    flag = getattr(cv, "SOLVEPNP_IPPE_SQUARE", None)
+    if flag is None:
+        flag = cv.SOLVEPNP_ITERATIVE
+
+    ok, rvec, tvec = cv.solvePnP(obj_pts, img_pts, K, D, flags=flag)
+    if not ok:
+        # Fallback to ITERATIVE if IPPE path failed to converge
+        if flag != cv.SOLVEPNP_ITERATIVE:
+            ok, rvec, tvec = cv.solvePnP(obj_pts, img_pts, K, D, flags=cv.SOLVEPNP_ITERATIVE)
+        if not ok:
+            return None, None
+
+    return rvec.reshape(3), tvec.reshape(3)
 
 
 def detect_aruco_corners(frame):
@@ -221,7 +258,6 @@ class MarkerLocalizationNode(Node):
         det = max(detections, key=lambda d: _marker_area_px(d['corners']))
         marker_id = det['id']
         corners4x2 = det['corners'].astype(np.float32)
-        corners = corners4x2.reshape(1, 4, 2)  # shape expected by OpenCV APIs
 
         # Ensure this marker exists in the TF map (your original guard)
         try:
@@ -233,23 +269,17 @@ class MarkerLocalizationNode(Node):
             # Unknown marker in map → ignore
             return
 
-        # Robust pose: estimate marker pose via PnP (marker -> camera)
-        rvecs, tvecs, _ = cv.aruco.estimatePoseSingleMarkers(
-            corners,
-            self.marker_size,
-            self.camera_matrix,
-            self.dist_coeffs
+        # Robust pose via version-safe PnP
+        rvec, tvec = _estimate_pose_single_marker(
+            corners4x2, self.marker_size, self.camera_matrix, self.dist_coeffs
         )
-        if rvecs is None or len(rvecs) == 0:
+        if rvec is None:
             return
 
-        # IMPORTANT: pick rvec/tvec as (3,) not (1,3)
-        rvec = rvecs[0, 0, :].reshape(3)
-        tvec = tvecs[0, 0, :].reshape(3)
-
         # Reprojection error filter (reject shaky ID without voting)
-        reproj_err = _mean_reprojection_error(corners4x2, rvec, tvec,
-                                              self.marker_size, self.camera_matrix, self.dist_coeffs)
+        reproj_err = _mean_reprojection_error(
+            corners4x2, rvec, tvec, self.marker_size, self.camera_matrix, self.dist_coeffs
+        )
         if reproj_err > MAX_REPROJ_ERR_PX:
             self.get_logger().debug(f"Rejected marker {marker_id} due to reproj error {reproj_err:.2f}px")
             return
