@@ -29,34 +29,13 @@ from em_robot_srv.srv import SetInitialPose
 
 # --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
-
-# Stronger DetectorParameters (robustness; no API changes to your flow)
 detector_params = cv.aruco.DetectorParameters()
-detector_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
-detector_params.cornerRefinementWinSize = 5
-detector_params.cornerRefinementMaxIterations = 50
-detector_params.cornerRefinementMinAccuracy = 0.01
-
-detector_params.minCornerDistanceRate = 0.05
-detector_params.minDistanceToBorder = 3
-detector_params.perspectiveRemovePixelPerCell = 10
-
-detector_params.adaptiveThreshWinSizeMin = 3
-detector_params.adaptiveThreshWinSizeMax = 23
-detector_params.adaptiveThreshWinSizeStep = 10
-detector_params.adaptiveThreshConstant = 7
-
 detector = cv.aruco.ArucoDetector(dictionary, detector_params)
-
-# Simple size gate to ignore tiny/far blobs (tune if needed)
-MIN_AREA_PX = 400.0
 
 
 def detect_aruco_corners(frame):
     """Detect ArUco markers and return their corners and IDs."""
-    # light denoise for robustness
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-    gray = cv.GaussianBlur(gray, (3, 3), 0)
     corners_list, ids, _ = detector.detectMarkers(gray)
     if ids is None or len(ids) == 0:
         return []
@@ -200,111 +179,105 @@ class MarkerLocalizationNode(Node):
         if not detections:
             return
 
-        # Drop tiny detections and prefer the largest (closest = most reliable)
-        def _area_px(c4x2): return float(cv.contourArea(c4x2.astype(np.float32)))
-        detections = [d for d in detections if _area_px(d['corners']) >= MIN_AREA_PX]
-        if not detections:
-            return
-        detections.sort(key=lambda d: _area_px(d['corners']), reverse=True)
-        marker = detections[0]  # largest only
+        for marker in detections:
+            marker_id = marker['id']
+            corners = marker['corners'].astype(np.float32)
 
-        # ===== Your original pipeline (unchanged) =====
-        marker_id = marker['id']
-        corners = marker['corners'].astype(np.float32)
+            undistorted = cv.undistortPoints(
+                np.expand_dims(corners, axis=1),
+                self.camera_matrix, self.dist_coeffs,
+                P=self.camera_matrix
+            ).reshape(-1, 2)
 
-        undistorted = cv.undistortPoints(
-            np.expand_dims(corners, axis=1),
-            self.camera_matrix, self.dist_coeffs,
-            P=self.camera_matrix
-        ).reshape(-1, 2)
+            cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
+            fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
+            marker_center = np.mean(undistorted, axis=0)
+            offset = np.array([cx, cy]) - marker_center
 
-        cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
-        fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
-        marker_center = np.mean(undistorted, axis=0)
-        offset = np.array([cx, cy]) - marker_center
+            # Get map→aruco TF
+            try:
+                tf_map_to_aruco = self.tf_buffer.lookup_transform(
+                    "map", f"aruco_{marker_id}", rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=0.5)
+                )
+            except Exception:
+                continue
 
-        # Get map→aruco TF
-        try:
-            tf_map_to_aruco = self.tf_buffer.lookup_transform(
-                "map", f"aruco_{marker_id}", rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.5)
-            )
-        except Exception:
-            return
+            marker_height = tf_map_to_aruco.transform.translation.z
+            x_cam = marker_height * offset[0] / fx
+            y_cam = marker_height * offset[1] / fy
 
-        marker_height = tf_map_to_aruco.transform.translation.z
-        x_cam = marker_height * offset[0] / fx
-        y_cam = marker_height * offset[1] / fy
+            # Orientation from marker shape
+            top_center = np.mean(undistorted[0:2], axis=0)
+            bottom_center = np.mean(undistorted[2:4], axis=0)
+            dx, dy = top_center[0] - bottom_center[0], top_center[1] - bottom_center[1]
+            yaw = np.arctan2(dx, -dy)
 
-        # Orientation from marker shape
-        top_center = np.mean(undistorted[0:2], axis=0)
-        bottom_center = np.mean(undistorted[2:4], axis=0)
-        dx, dy = top_center[0] - bottom_center[0], top_center[1] - bottom_center[1]
-        yaw = np.arctan2(dx, -dy)
+            quat = quaternion_from_euler(0.0, 0.0, yaw)
+            T_marker_cam = concatenate_matrices(translation_matrix([x_cam, y_cam, 0.0]), quaternion_matrix(quat))
+            T_aruco_camera = np.linalg.inv(T_marker_cam)
 
-        quat = quaternion_from_euler(0.0, 0.0, yaw)
-        T_marker_cam = concatenate_matrices(translation_matrix([x_cam, y_cam, 0.0]), quaternion_matrix(quat))
-        T_aruco_camera = np.linalg.inv(T_marker_cam)
+            # --- Use TF lookup for camera→base transform (single source of truth) ---
+            try:
+                t_cam_to_base = self.tf_buffer.lookup_transform(
+                    "camera_frame", "cam_base_link", rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=0.5)
+                )
+                T_camera_cam_base = concatenate_matrices(
+                    translation_matrix([
+                        t_cam_to_base.transform.translation.x,
+                        t_cam_to_base.transform.translation.y,
+                        t_cam_to_base.transform.translation.z
+                    ]),
+                    quaternion_matrix([
+                        t_cam_to_base.transform.rotation.x,
+                        t_cam_to_base.transform.rotation.y,
+                        t_cam_to_base.transform.rotation.z,
+                        t_cam_to_base.transform.rotation.w
+                    ])
+                )
+            except Exception as e:
+                self.get_logger().warn(f"TF lookup failed for camera→base: {e}")
+                return
 
-        # --- Use TF lookup for camera→base transform (single source of truth) ---
-        try:
-            t_cam_to_base = self.tf_buffer.lookup_transform(
-                "camera_frame", "cam_base_link", rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.5)
-            )
-            T_camera_cam_base = concatenate_matrices(
+            # Compute map→cam_base
+            T_map_aruco = concatenate_matrices(
                 translation_matrix([
-                    t_cam_to_base.transform.translation.x,
-                    t_cam_to_base.transform.translation.y,
-                    t_cam_to_base.transform.translation.z
+                    tf_map_to_aruco.transform.translation.x,
+                    tf_map_to_aruco.transform.translation.y,
+                    tf_map_to_aruco.transform.translation.z
                 ]),
                 quaternion_matrix([
-                    t_cam_to_base.transform.rotation.x,
-                    t_cam_to_base.transform.rotation.y,
-                    t_cam_to_base.transform.rotation.z,
-                    t_cam_to_base.transform.rotation.w
+                    tf_map_to_aruco.transform.rotation.x,
+                    tf_map_to_aruco.transform.rotation.y,
+                    tf_map_to_aruco.transform.rotation.z,
+                    tf_map_to_aruco.transform.rotation.w
                 ])
             )
-        except Exception as e:
-            self.get_logger().warn(f"TF lookup failed for camera→base: {e}")
-            return
+            T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
 
-        # Compute map→cam_base
-        T_map_aruco = concatenate_matrices(
-            translation_matrix([
-                tf_map_to_aruco.transform.translation.x,
-                tf_map_to_aruco.transform.translation.y,
-                tf_map_to_aruco.transform.translation.z
-            ]),
-            quaternion_matrix([
-                tf_map_to_aruco.transform.rotation.x,
-                tf_map_to_aruco.transform.rotation.y,
-                tf_map_to_aruco.transform.rotation.z,
-                tf_map_to_aruco.transform.rotation.w
-            ])
-        )
-        T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
+            if self.latest_odom_pose is None:
+                self.get_logger().warn("No EKF pose available, skipping map→odom update.")
+                return
 
-        if self.latest_odom_pose is None:
-            self.get_logger().warn("No EKF pose available, skipping map→odom update.")
-            return
+            # Compute map→odom
+            T_map_odom = T_map_cam_base @ np.linalg.inv(self.latest_odom_pose)
+            trans_map_odom = translation_from_matrix(T_map_odom)
+            quat_map_odom = quaternion_from_matrix(T_map_odom)
 
-        # Compute map→odom
-        T_map_odom = T_map_cam_base @ np.linalg.inv(self.latest_odom_pose)
-        trans_map_odom = translation_from_matrix(T_map_odom)
-        quat_map_odom = quaternion_from_matrix(T_map_odom)
+            t_map_odom = TransformStamped()
+            t_map_odom.header.stamp = self.get_clock().now().to_msg()
+            t_map_odom.header.frame_id = "map"
+            t_map_odom.child_frame_id = "odom"
+            t_map_odom.transform.translation.x, t_map_odom.transform.translation.y = trans_map_odom[:2]
+            t_map_odom.transform.rotation.x, t_map_odom.transform.rotation.y, t_map_odom.transform.rotation.z, t_map_odom.transform.rotation.w = quat_map_odom
 
-        t_map_odom = TransformStamped()
-        t_map_odom.header.stamp = self.get_clock().now().to_msg()
-        t_map_odom.header.frame_id = "map"
-        t_map_odom.child_frame_id = "odom"
-        t_map_odom.transform.translation.x, t_map_odom.transform.translation.y = trans_map_odom[:2]
-        t_map_odom.transform.rotation.x, t_map_odom.transform.rotation.y, t_map_odom.transform.rotation.z, t_map_odom.transform.rotation.w = quat_map_odom
+            self.last_map_to_odom = t_map_odom
+            self.tf_broadcaster.sendTransform(t_map_odom)
+            self.last_marker_time = self.get_clock().now()
+            self.get_logger().info(f"Updated map→odom using marker {marker_id}")
+            break  # only use first visible marker
 
-        self.last_map_to_odom = t_map_odom
-        self.tf_broadcaster.sendTransform(t_map_odom)
-        self.last_marker_time = self.get_clock().now()
-        self.get_logger().info(f"Updated map→odom using marker {marker_id} (largest-by-area, min_area={MIN_AREA_PX})")
 
 # -------------------------------------------------------------------------
 # Entry Point
