@@ -3,7 +3,7 @@ import os
 import yaml
 import rclpy
 from rclpy.node import Node
-import numpy np
+import numpy as np
 import cv2 as cv
 
 from tf2_ros import (
