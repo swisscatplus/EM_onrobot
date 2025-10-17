@@ -30,16 +30,26 @@ from em_robot_srv.srv import SetInitialPose
 # --- ArUco Detection Setup ---
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()
+
+detector_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
+detector_params.minMarkerPerimeterRate = 0.05  # ignore tiny, likely-blurry markers
+
 detector = cv.aruco.ArucoDetector(dictionary, detector_params)
 
 
 def detect_aruco_corners(frame):
-    """Detect ArUco markers and return their corners and IDs."""
+    """Detect ArUco markers and return their corners and IDs (largest first)."""
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
     corners_list, ids, _ = detector.detectMarkers(gray)
     if ids is None or len(ids) == 0:
         return []
-    return [{'id': int(i), 'corners': c[0]} for c, i in zip(corners_list, ids.flatten())]
+
+    dets = [{'id': int(i), 'corners': c[0]} for c, i in zip(corners_list, ids.flatten())]
+
+    # 👇 sort by area (descending) to prefer the biggest/closest marker
+    dets.sort(key=lambda d: cv.contourArea(d['corners'].astype(np.float32)), reverse=True)
+    return dets
+
 
 
 # --- Main Node ---
