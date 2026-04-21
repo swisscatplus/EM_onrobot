@@ -166,6 +166,7 @@ class MarkerLocalizationNode(Node):
         self.last_map_to_odom = np.identity(4, dtype=np.float64)
         self.last_marker_time = self.get_clock().now()
         self.last_debug_log_time = self.get_clock().now()
+        self.last_tf_fallback_log_time = self.get_clock().now()
 
         self.publish_static_transform()
         self.publish_initial_map_to_odom()
@@ -197,14 +198,45 @@ class MarkerLocalizationNode(Node):
             build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
         )
 
-    def lookup_matrix(self, target_frame, source_frame, stamp, timeout_sec=0.2):
-        transform = self.tf_buffer.lookup_transform(
-            target_frame,
-            source_frame,
-            stamp,
-            timeout=Duration(seconds=timeout_sec),
-        )
-        return transform_to_matrix(transform)
+    def lookup_matrix(
+        self,
+        target_frame,
+        source_frame,
+        stamp,
+        timeout_sec=0.2,
+        allow_latest_fallback=False,
+    ):
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                target_frame,
+                source_frame,
+                stamp,
+                timeout=Duration(seconds=timeout_sec),
+            )
+            return transform_to_matrix(transform)
+        except Exception as exc:
+            if not allow_latest_fallback:
+                raise exc
+
+            if "extrapolation into the future" not in str(exc).lower():
+                raise exc
+
+            latest_transform = self.tf_buffer.lookup_transform(
+                target_frame,
+                source_frame,
+                Time(),
+                timeout=Duration(seconds=timeout_sec),
+            )
+
+            now = self.get_clock().now()
+            if (now - self.last_tf_fallback_log_time).nanoseconds > int(2e9):
+                self.get_logger().warn(
+                    f"TF for {target_frame} -> {source_frame} lagged behind the camera stamp; "
+                    "falling back to the latest available transform."
+                )
+                self.last_tf_fallback_log_time = now
+
+            return transform_to_matrix(latest_transform)
 
     def handle_set_initial_pose(self, request, response):
         try:
@@ -268,7 +300,12 @@ class MarkerLocalizationNode(Node):
             return
 
         try:
-            odom_to_base = self.lookup_matrix("odom", "base_link", capture_stamp)
+            odom_to_base = self.lookup_matrix(
+                "odom",
+                "base_link",
+                capture_stamp,
+                allow_latest_fallback=True,
+            )
         except Exception as exc:
             self.get_logger().warn(f"Skipping vision update, no odom -> base_link transform: {exc}")
             return
