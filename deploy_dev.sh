@@ -4,6 +4,9 @@ set -e
 CONTAINER_NAME="${CONTAINER_NAME:-em_robot_dev}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest}"
 LOCAL_BASE_IMAGE="${LOCAL_BASE_IMAGE:-em_robot_base:local}"
+ROS_DOMAIN_ID_VALUE="${ROS_DOMAIN_ID_VALUE:-10}"
+RMW_IMPLEMENTATION_VALUE="${RMW_IMPLEMENTATION_VALUE:-rmw_fastrtps_cpp}"
+FASTRTPS_PROFILE_PATH="${FASTRTPS_PROFILE_PATH:-/root/.ros/fastdds.xml}"
 WORKSPACE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Pulling base image..."
@@ -28,7 +31,11 @@ docker run -d \
   --network host \
   --name "$CONTAINER_NAME" \
   --entrypoint /bin/bash \
+  -e ROS_DOMAIN_ID="$ROS_DOMAIN_ID_VALUE" \
+  -e RMW_IMPLEMENTATION="$RMW_IMPLEMENTATION_VALUE" \
+  -e FASTRTPS_DEFAULT_PROFILES_FILE="$FASTRTPS_PROFILE_PATH" \
   -v "$WORKSPACE_DIR:/ros2_ws" \
+  -v "$WORKSPACE_DIR/fastdds.xml:$FASTRTPS_PROFILE_PATH:ro" \
   -v /run/udev:/run/udev:ro \
   -v /dev/:/dev/ \
   --cap-add SYS_ADMIN \
