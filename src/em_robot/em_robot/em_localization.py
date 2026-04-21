@@ -167,6 +167,7 @@ class MarkerLocalizationNode(Node):
         self.last_marker_time = self.get_clock().now()
         self.last_debug_log_time = self.get_clock().now()
         self.last_tf_fallback_log_time = self.get_clock().now()
+        self.has_map_lock = False
 
         self.publish_static_transform()
         self.publish_initial_map_to_odom()
@@ -252,6 +253,7 @@ class MarkerLocalizationNode(Node):
         )
 
         self.last_map_to_odom = map_to_base @ inverse_matrix(odom_to_base)
+        self.has_map_lock = True
         self.tf_broadcaster.sendTransform(
             build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
         )
@@ -312,10 +314,14 @@ class MarkerLocalizationNode(Node):
 
         predicted_map_to_base = self.last_map_to_odom @ odom_to_base
         candidates = []
+        rejected_for_gating = 0
+        rejected_for_reprojection = 0
+        missing_marker_tf = 0
 
         for detection in detections:
             camera_to_marker, reprojection_error = self.estimate_marker_pose(detection["corners"])
             if camera_to_marker is None:
+                rejected_for_reprojection += 1
                 continue
 
             try:
@@ -323,6 +329,7 @@ class MarkerLocalizationNode(Node):
                     "map", f"aruco_{detection['id']}", Time(), timeout_sec=0.5
                 )
             except Exception:
+                missing_marker_tf += 1
                 continue
 
             map_to_camera = map_to_marker @ inverse_matrix(camera_to_marker)
@@ -333,7 +340,10 @@ class MarkerLocalizationNode(Node):
             yaw_error = wrap_angle(yaw_from_matrix(map_to_base) - yaw_from_matrix(predicted_map_to_base))
             position_error = math.hypot(dx, dy)
 
-            if position_error > self.max_position_jump or abs(yaw_error) > self.max_yaw_jump:
+            if self.has_map_lock and (
+                position_error > self.max_position_jump or abs(yaw_error) > self.max_yaw_jump
+            ):
+                rejected_for_gating += 1
                 continue
 
             candidates.append(
@@ -347,7 +357,19 @@ class MarkerLocalizationNode(Node):
         if not candidates:
             now = self.get_clock().now()
             if (now - self.last_debug_log_time).nanoseconds > int(2e9):
-                self.get_logger().info("Markers detected but no camera pose passed gating.")
+                if not self.has_map_lock:
+                    self.get_logger().info(
+                        "Markers detected but no initial map lock was accepted. "
+                        f"Rejected: reprojection={rejected_for_reprojection}, "
+                        f"missing_marker_tf={missing_marker_tf}."
+                    )
+                else:
+                    self.get_logger().info(
+                        "Markers detected but no camera pose passed gating. "
+                        f"Rejected: gating={rejected_for_gating}, "
+                        f"reprojection={rejected_for_reprojection}, "
+                        f"missing_marker_tf={missing_marker_tf}."
+                    )
                 self.last_debug_log_time = now
             return
 
@@ -374,6 +396,7 @@ class MarkerLocalizationNode(Node):
             quaternion_matrix(quaternion_from_euler(0.0, 0.0, mean_yaw)),
         )
         self.last_map_to_odom = fused_map_to_base @ inverse_matrix(odom_to_base)
+        self.has_map_lock = True
         self.last_marker_time = self.get_clock().now()
 
         self.tf_broadcaster.sendTransform(
