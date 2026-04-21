@@ -12,7 +12,7 @@ from tf2_ros import (
     Buffer,
     TransformListener,
 )
-from geometry_msgs.msg import TransformStamped, PoseStamped
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from tf_transformations import (
     quaternion_from_euler,
@@ -75,7 +75,6 @@ class MarkerLocalizationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.pose_pub = self.create_publisher(PoseStamped, 'aruco_markers_pose', 10)
         self.odom_sub = self.create_subscription(Odometry, '/odometry/filtered', self.odom_callback, 10)
 
         self.set_pose_srv = self.create_service(SetInitialPose, 'set_initial_pose', self.handle_set_initial_pose)

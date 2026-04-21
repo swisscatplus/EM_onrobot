@@ -12,7 +12,7 @@ config_ekf = os.path.join(
 
 config_imu = os.path.join(
     get_package_share_directory('bno055'),
-    'config',
+    'bno055/params',
     'bno055_params_i2c.yaml'
 )
 
@@ -29,12 +29,6 @@ def generate_launch_description():
         name='static_bno055_tf',
         arguments=['0', '0', '0', '0', '0', '0.0', 'base_link', 'bno055'],
         output='screen'
-    )
-
-    odom_node = Node(
-        package=pkg_name,
-        executable='em_odom',
-        output='screen',
     )
 
     ekf = Node(
@@ -62,6 +56,5 @@ def generate_launch_description():
         imu_broadcast,
         movement_node,
         localization_node,
-        #odom_node,
         ekf,
     ])
