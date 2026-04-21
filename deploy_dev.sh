@@ -3,10 +3,18 @@ set -e
 
 CONTAINER_NAME="${CONTAINER_NAME:-em_robot_dev}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest}"
+LOCAL_BASE_IMAGE="${LOCAL_BASE_IMAGE:-em_robot_base:local}"
 WORKSPACE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Pulling base image..."
-docker pull "$BASE_IMAGE"
+if docker pull "$BASE_IMAGE"; then
+  RUN_IMAGE="$BASE_IMAGE"
+else
+  echo "Registry pull failed for $BASE_IMAGE."
+  echo "Falling back to a local base image build: $LOCAL_BASE_IMAGE"
+  docker build -f Dockerfile.base -t "$LOCAL_BASE_IMAGE" .
+  RUN_IMAGE="$LOCAL_BASE_IMAGE"
+fi
 
 echo "Stopping old dev container..."
 docker stop "$CONTAINER_NAME" 2>/dev/null || true
@@ -33,7 +41,7 @@ docker run -d \
   --device /dev/media1 \
   --device /dev/dri/card0 \
   --group-add video \
-  "$BASE_IMAGE" \
+  "$RUN_IMAGE" \
   -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && cd /ros2_ws && colcon build --symlink-install --packages-select em_robot bno055 em_robot_srv && source /ros2_ws/install/setup.bash && ros2 launch em_robot em_robot.launch.py"
 
 echo "Dev container started."
