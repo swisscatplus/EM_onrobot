@@ -92,6 +92,13 @@ def yaw_from_matrix(transform_matrix):
     return yaw
 
 
+def blend_angles(previous_yaw, new_yaw, alpha):
+    return math.atan2(
+        (1.0 - alpha) * math.sin(previous_yaw) + alpha * math.sin(new_yaw),
+        (1.0 - alpha) * math.cos(previous_yaw) + alpha * math.cos(new_yaw),
+    )
+
+
 class MarkerLocalizationNode(Node):
     def __init__(self):
         super().__init__("marker_localization_node")
@@ -112,6 +119,10 @@ class MarkerLocalizationNode(Node):
         self.max_position_jump = float(config.get("max_position_jump", 0.25))
         self.max_yaw_jump = math.radians(float(config.get("max_yaw_jump_deg", 20.0)))
         self.max_reprojection_error = float(config.get("max_reprojection_error_px", 8.0))
+        self.position_smoothing_alpha = float(config.get("position_smoothing_alpha", 0.2))
+        self.yaw_smoothing_alpha = float(config.get("yaw_smoothing_alpha", 0.2))
+        self.min_update_translation = float(config.get("min_update_translation", 0.01))
+        self.min_update_yaw = math.radians(float(config.get("min_update_yaw_deg", 1.0)))
 
         camera_offset = config.get("camera_to_base", {})
         self.t_base_camera = concatenate_matrices(
@@ -167,6 +178,7 @@ class MarkerLocalizationNode(Node):
         self.last_marker_time = self.get_clock().now()
         self.last_debug_log_time = self.get_clock().now()
         self.last_tf_fallback_log_time = self.get_clock().now()
+        self.last_update_log_time = self.get_clock().now()
         self.has_map_lock = False
 
         self.publish_static_transform()
@@ -391,10 +403,50 @@ class MarkerLocalizationNode(Node):
             float(np.sum([weight * math.cos(yaw) for weight, yaw in zip(weights, yaw_values)])),
         )
 
-        fused_map_to_base = concatenate_matrices(
+        measured_map_to_base = concatenate_matrices(
             translation_matrix([x, y, 0.0]),
             quaternion_matrix(quaternion_from_euler(0.0, 0.0, mean_yaw)),
         )
+
+        if self.has_map_lock:
+            previous_map_to_base = self.last_map_to_odom @ odom_to_base
+            smoothed_x = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[0, 3]
+                + self.position_smoothing_alpha * x
+            )
+            smoothed_y = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[1, 3]
+                + self.position_smoothing_alpha * y
+            )
+            smoothed_yaw = blend_angles(
+                yaw_from_matrix(previous_map_to_base),
+                mean_yaw,
+                self.yaw_smoothing_alpha,
+            )
+        else:
+            smoothed_x = x
+            smoothed_y = y
+            smoothed_yaw = mean_yaw
+
+        fused_map_to_base = concatenate_matrices(
+            translation_matrix([smoothed_x, smoothed_y, 0.0]),
+            quaternion_matrix(quaternion_from_euler(0.0, 0.0, smoothed_yaw)),
+        )
+
+        if self.has_map_lock:
+            smoothed_translation_delta = math.hypot(
+                fused_map_to_base[0, 3] - previous_map_to_base[0, 3],
+                fused_map_to_base[1, 3] - previous_map_to_base[1, 3],
+            )
+            smoothed_yaw_delta = abs(
+                wrap_angle(yaw_from_matrix(fused_map_to_base) - yaw_from_matrix(previous_map_to_base))
+            )
+            if (
+                smoothed_translation_delta < self.min_update_translation
+                and smoothed_yaw_delta < self.min_update_yaw
+            ):
+                return
+
         self.last_map_to_odom = fused_map_to_base @ inverse_matrix(odom_to_base)
         self.has_map_lock = True
         self.last_marker_time = self.get_clock().now()
@@ -403,11 +455,15 @@ class MarkerLocalizationNode(Node):
             build_transform("map", "odom", self.last_map_to_odom, self.last_marker_time.to_msg())
         )
 
-        marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
-        self.get_logger().info(
-            f"Updated map -> odom using markers [{marker_ids}] at "
-            f"x={x:.3f}, y={y:.3f}, yaw={mean_yaw:.3f}"
-        )
+        if (self.last_marker_time - self.last_update_log_time).nanoseconds > int(2e9):
+            marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
+            measured_yaw = yaw_from_matrix(measured_map_to_base)
+            self.get_logger().info(
+                f"Updated map -> odom using markers [{marker_ids}] at "
+                f"x={smoothed_x:.3f}, y={smoothed_y:.3f}, yaw={smoothed_yaw:.3f} "
+                f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
+            )
+            self.last_update_log_time = self.last_marker_time
 
 
 def main(args=None):
