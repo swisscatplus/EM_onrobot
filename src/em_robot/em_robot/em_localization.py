@@ -1,286 +1,355 @@
 #!/usr/bin/env python3
+import math
 import os
-import yaml
-import rclpy
-from rclpy.node import Node
-import numpy as np
-import cv2 as cv
 
-from tf2_ros import (
-    TransformBroadcaster,
-    StaticTransformBroadcaster,
-    Buffer,
-    TransformListener,
-)
+import cv2 as cv
+import numpy as np
+import rclpy
+import yaml
+from ament_index_python.packages import get_package_share_directory
+from em_robot_srv.srv import SetInitialPose
 from geometry_msgs.msg import TransformStamped
-from nav_msgs.msg import Odometry
+from libcamera import controls
+from picamera2 import Picamera2
+from rclpy.duration import Duration
+from rclpy.node import Node
+from rclpy.time import Time
+from tf2_ros import Buffer, StaticTransformBroadcaster, TransformBroadcaster, TransformListener
 from tf_transformations import (
+    concatenate_matrices,
+    euler_from_quaternion,
+    inverse_matrix,
     quaternion_from_euler,
     quaternion_from_matrix,
     quaternion_matrix,
-    translation_matrix,
     translation_from_matrix,
-    concatenate_matrices,
+    translation_matrix,
 )
-from picamera2 import Picamera2
-from libcamera import controls
-from ament_index_python.packages import get_package_share_directory
-from em_robot_srv.srv import SetInitialPose
 
-# --- ArUco Detection Setup ---
+
 dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
 detector_params = cv.aruco.DetectorParameters()
 detector = cv.aruco.ArucoDetector(dictionary, detector_params)
 
 
-def detect_aruco_corners(frame):
-    """Detect ArUco markers and return their corners and IDs."""
+def detect_aruco_markers(frame):
     gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
     corners_list, ids, _ = detector.detectMarkers(gray)
     if ids is None or len(ids) == 0:
         return []
-    return [{'id': int(i), 'corners': c[0]} for c, i in zip(corners_list, ids.flatten())]
+
+    return [
+        {"id": int(marker_id), "corners": corners[0].astype(np.float32)}
+        for corners, marker_id in zip(corners_list, ids.flatten())
+    ]
 
 
-# --- Main Node ---
+def transform_to_matrix(transform):
+    return concatenate_matrices(
+        translation_matrix(
+            [
+                transform.transform.translation.x,
+                transform.transform.translation.y,
+                transform.transform.translation.z,
+            ]
+        ),
+        quaternion_matrix(
+            [
+                transform.transform.rotation.x,
+                transform.transform.rotation.y,
+                transform.transform.rotation.z,
+                transform.transform.rotation.w,
+            ]
+        ),
+    )
+
+
+def build_transform(parent_frame, child_frame, transform_matrix, stamp):
+    translation = translation_from_matrix(transform_matrix)
+    quaternion = quaternion_from_matrix(transform_matrix)
+
+    transform = TransformStamped()
+    transform.header.stamp = stamp
+    transform.header.frame_id = parent_frame
+    transform.child_frame_id = child_frame
+    transform.transform.translation.x = float(translation[0])
+    transform.transform.translation.y = float(translation[1])
+    transform.transform.translation.z = float(translation[2])
+    transform.transform.rotation.x = float(quaternion[0])
+    transform.transform.rotation.y = float(quaternion[1])
+    transform.transform.rotation.z = float(quaternion[2])
+    transform.transform.rotation.w = float(quaternion[3])
+    return transform
+
+
+def wrap_angle(angle):
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def yaw_from_matrix(transform_matrix):
+    quaternion = quaternion_from_matrix(transform_matrix)
+    _, _, yaw = euler_from_quaternion(quaternion)
+    return yaw
+
+
 class MarkerLocalizationNode(Node):
     def __init__(self):
-        super().__init__('marker_localization_node')
+        super().__init__("marker_localization_node")
         self.get_logger().info("Starting MarkerLocalizationNode...")
 
-        # --- Load Camera Configuration ---
-        pkg_share = get_package_share_directory('em_robot')
-        config_path = os.path.join(pkg_share, 'config/calibration.yaml')
+        pkg_share = get_package_share_directory("em_robot")
+        config_path = os.path.join(pkg_share, "config", "calibration.yaml")
         self.get_logger().info(f"Loading configuration: {config_path}")
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+        with open(config_path, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file)
 
-        self.camera_matrix = np.array(config.get('camera_matrix', []), dtype=np.float32)
-        self.dist_coeffs = np.array(config.get('dist_coeff', []), dtype=np.float32)
-        self.camera_height = config.get('camera_height', 0.337)
-        self.marker_size = config.get('marker_size', 0.038)
+        self.camera_matrix = np.array(config.get("camera_matrix", []), dtype=np.float32)
+        self.dist_coeffs = np.array(config.get("dist_coeff", []), dtype=np.float32)
+        self.marker_size = float(config.get("marker_size", 0.038))
+        self.image_size = tuple(config.get("image_size", [1536, 864]))
+        self.process_rate_hz = float(config.get("process_rate_hz", 5.0))
+        self.lens_position = float(config.get("lens_position", 8.0))
+        self.max_position_jump = float(config.get("max_position_jump", 0.25))
+        self.max_yaw_jump = math.radians(float(config.get("max_yaw_jump_deg", 20.0)))
+        self.max_reprojection_error = float(config.get("max_reprojection_error_px", 8.0))
 
-        # --- Initialize Camera ---
-        self.size = (1536, 864)
+        camera_offset = config.get("camera_to_base", {})
+        self.t_base_camera = concatenate_matrices(
+            translation_matrix(
+                [
+                    float(camera_offset.get("x", 0.176)),
+                    float(camera_offset.get("y", 0.0)),
+                    float(camera_offset.get("z", 0.0)),
+                ]
+            ),
+            quaternion_matrix(
+                quaternion_from_euler(
+                    float(camera_offset.get("roll", 0.0)),
+                    float(camera_offset.get("pitch", 0.0)),
+                    float(camera_offset.get("yaw", math.pi)),
+                )
+            ),
+        )
+        self.t_camera_base = inverse_matrix(self.t_base_camera)
+
+        half_marker = self.marker_size / 2.0
+        self.marker_object_points = np.array(
+            [
+                [-half_marker, half_marker, 0.0],
+                [half_marker, half_marker, 0.0],
+                [half_marker, -half_marker, 0.0],
+                [-half_marker, -half_marker, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
         self.picam2 = Picamera2()
-        preview_cfg = self.picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": self.size})
-        self.picam2.configure(preview_cfg)
+        preview_config = self.picam2.create_preview_configuration(
+            main={"format": "XRGB8888", "size": self.image_size}
+        )
+        self.picam2.configure(preview_config)
         self.picam2.start()
-        self.picam2.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": 8.0})
-        self.get_logger().info("Camera initialized.")
+        self.picam2.set_controls(
+            {"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.lens_position}
+        )
+        self.get_logger().info(f"Camera initialized at {self.image_size[0]}x{self.image_size[1]}")
 
-        # --- ROS Setup ---
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.odom_sub = self.create_subscription(Odometry, '/odometry/filtered', self.odom_callback, 10)
+        self.set_pose_srv = self.create_service(
+            SetInitialPose, "set_initial_pose", self.handle_set_initial_pose
+        )
 
-        self.set_pose_srv = self.create_service(SetInitialPose, 'set_initial_pose', self.handle_set_initial_pose)
-
-        self.latest_odom_pose = None
-        self.last_map_to_odom = None
+        self.last_map_to_odom = np.identity(4, dtype=np.float64)
         self.last_marker_time = self.get_clock().now()
+        self.last_debug_log_time = self.get_clock().now()
 
-        # --- Initialize TF ---
         self.publish_static_transform()
         self.publish_initial_map_to_odom()
 
-        # --- Timers ---
-        self.timer = self.create_timer(0.2, self.process_frame)  # 5 Hz
+        timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
+        self.timer = self.create_timer(timer_period, self.process_frame)
         self.map_odom_timer = self.create_timer(0.2, self.broadcast_last_map_to_odom)
 
-    # -------------------------------------------------------------------------
-    # Callbacks and Core Functions
-    # -------------------------------------------------------------------------
-    def odom_callback(self, msg: Odometry):
-        """Store latest odometry pose as transformation matrix."""
-        pos = msg.pose.pose.position
-        ori = msg.pose.pose.orientation
-        self.latest_odom_pose = concatenate_matrices(
-            translation_matrix([pos.x, pos.y, pos.z]),
-            quaternion_matrix([ori.x, ori.y, ori.z, ori.w])
+    def publish_static_transform(self):
+        transform = build_transform(
+            "base_link",
+            "camera_frame",
+            self.t_base_camera,
+            self.get_clock().now().to_msg(),
         )
+        self.static_tf_broadcaster.sendTransform([transform])
+        self.get_logger().info("Published static transform: base_link -> camera_frame")
+
+    def publish_initial_map_to_odom(self):
+        initial_transform = np.identity(4, dtype=np.float64)
+        self.last_map_to_odom = initial_transform
+        self.tf_broadcaster.sendTransform(
+            build_transform("map", "odom", initial_transform, self.get_clock().now().to_msg())
+        )
+        self.get_logger().info("Initialized map -> odom to identity.")
+
+    def broadcast_last_map_to_odom(self):
+        self.tf_broadcaster.sendTransform(
+            build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
+        )
+
+    def lookup_matrix(self, target_frame, source_frame, stamp, timeout_sec=0.2):
+        transform = self.tf_buffer.lookup_transform(
+            target_frame,
+            source_frame,
+            stamp,
+            timeout=Duration(seconds=timeout_sec),
+        )
+        return transform_to_matrix(transform)
 
     def handle_set_initial_pose(self, request, response):
-        """Handle manual initial pose setting service."""
-        quat_map_base = quaternion_from_euler(0.0, 0.0, request.yaw)
-        T_map_base = concatenate_matrices(
-            translation_matrix([request.x, request.y, 0.0]),
-            quaternion_matrix(quat_map_base)
-        )
-
-        if self.latest_odom_pose is None:
-            self.get_logger().warn("No odometry available — cannot set initial pose.")
+        try:
+            odom_to_base = self.lookup_matrix("odom", "base_link", Time())
+        except Exception as exc:
+            self.get_logger().warn(f"No odom -> base_link available for initial pose: {exc}")
             response.success = False
             return response
 
-        T_map_odom = T_map_base @ np.linalg.inv(self.latest_odom_pose)
-        trans = translation_from_matrix(T_map_odom)
-        quat = quaternion_from_matrix(T_map_odom)
+        map_to_base = concatenate_matrices(
+            translation_matrix([request.x, request.y, 0.0]),
+            quaternion_matrix(quaternion_from_euler(0.0, 0.0, request.yaw)),
+        )
 
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "map"
-        t.child_frame_id = "odom"
-        t.transform.translation.x, t.transform.translation.y = trans[:2]
-        t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w = quat
-        self.last_map_to_odom = t
-        self.tf_broadcaster.sendTransform(t)
+        self.last_map_to_odom = map_to_base @ inverse_matrix(odom_to_base)
+        self.tf_broadcaster.sendTransform(
+            build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
+        )
 
-        self.get_logger().info(f"Updated map→odom from service: x={request.x}, y={request.y}, yaw={request.yaw}")
+        self.get_logger().info(
+            f"Updated map -> odom from service: x={request.x:.3f}, y={request.y:.3f}, yaw={request.yaw:.3f}"
+        )
         response.success = True
         return response
 
-    # -------------------------------------------------------------------------
-    # Transform Initialization
-    # -------------------------------------------------------------------------
-    def publish_static_transform(self):
-        """Define static transform between camera and robot base."""
-        static_t = TransformStamped()
-        static_t.header.stamp = self.get_clock().now().to_msg()
-        static_t.header.frame_id = "camera_frame"
-        static_t.child_frame_id = "cam_base_link"
-        static_t.transform.translation.x = 0.176
-        static_t.transform.translation.y = 0.0
-        static_t.transform.translation.z = 0.0
-        qz180 = quaternion_from_euler(0.0, 0.0, np.pi)
-        static_t.transform.rotation.x, static_t.transform.rotation.y, static_t.transform.rotation.z, static_t.transform.rotation.w = qz180
-        self.static_tf_broadcaster.sendTransform([static_t])
-        self.get_logger().info("Published static transform: camera_frame → cam_base_link")
+    def estimate_marker_pose(self, corners):
+        success, rvec, tvec = cv.solvePnP(
+            self.marker_object_points,
+            corners,
+            self.camera_matrix,
+            self.dist_coeffs,
+            flags=cv.SOLVEPNP_IPPE_SQUARE,
+        )
+        if not success:
+            return None, None
 
-    def publish_initial_map_to_odom(self):
-        """Broadcast initial identity map→odom transform."""
-        quat = quaternion_from_euler(0.0, 0.0, np.pi / 2)
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "map"
-        t.child_frame_id = "odom"
-        t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w = quat
-        self.last_map_to_odom = t
-        self.tf_broadcaster.sendTransform(t)
-        self.get_logger().warn("Initialized map→odom at identity (0,0,0).")
+        projected_points, _ = cv.projectPoints(
+            self.marker_object_points,
+            rvec,
+            tvec,
+            self.camera_matrix,
+            self.dist_coeffs,
+        )
+        reprojection_error = float(
+            np.mean(np.linalg.norm(projected_points.reshape(-1, 2) - corners, axis=1))
+        )
+        if reprojection_error > self.max_reprojection_error:
+            return None, reprojection_error
 
-    def broadcast_last_map_to_odom(self):
-        """Rebroadcast the last known map→odom transform."""
-        if self.last_map_to_odom:
-            self.last_map_to_odom.header.stamp = self.get_clock().now().to_msg()
-            self.tf_broadcaster.sendTransform(self.last_map_to_odom)
+        rotation_matrix, _ = cv.Rodrigues(rvec)
+        camera_to_marker = np.eye(4, dtype=np.float64)
+        camera_to_marker[:3, :3] = rotation_matrix
+        camera_to_marker[:3, 3] = tvec.reshape(3)
+        return camera_to_marker, reprojection_error
 
-    # -------------------------------------------------------------------------
-    # Vision Processing
-    # -------------------------------------------------------------------------
     def process_frame(self):
-        """Capture camera frame, detect ArUco markers, and update localization."""
+        capture_stamp = self.get_clock().now()
         frame = self.picam2.capture_array()
-        detections = detect_aruco_corners(frame)
+        detections = detect_aruco_markers(frame)
         if not detections:
             return
 
-        for marker in detections:
-            marker_id = marker['id']
-            corners = marker['corners'].astype(np.float32)
+        try:
+            odom_to_base = self.lookup_matrix("odom", "base_link", capture_stamp)
+        except Exception as exc:
+            self.get_logger().warn(f"Skipping vision update, no odom -> base_link transform: {exc}")
+            return
 
-            undistorted = cv.undistortPoints(
-                np.expand_dims(corners, axis=1),
-                self.camera_matrix, self.dist_coeffs,
-                P=self.camera_matrix
-            ).reshape(-1, 2)
+        predicted_map_to_base = self.last_map_to_odom @ odom_to_base
+        candidates = []
 
-            cx, cy = self.camera_matrix[0, 2], self.camera_matrix[1, 2]
-            fx, fy = self.camera_matrix[0, 0], self.camera_matrix[1, 1]
-            marker_center = np.mean(undistorted, axis=0)
-            offset = np.array([cx, cy]) - marker_center
+        for detection in detections:
+            camera_to_marker, reprojection_error = self.estimate_marker_pose(detection["corners"])
+            if camera_to_marker is None:
+                continue
 
-            # Get map→aruco TF
             try:
-                tf_map_to_aruco = self.tf_buffer.lookup_transform(
-                    "map", f"aruco_{marker_id}", rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=0.5)
+                map_to_marker = self.lookup_matrix(
+                    "map", f"aruco_{detection['id']}", Time(), timeout_sec=0.5
                 )
             except Exception:
                 continue
 
-            marker_height = tf_map_to_aruco.transform.translation.z
-            x_cam = marker_height * offset[0] / fx
-            y_cam = marker_height * offset[1] / fy
+            map_to_camera = map_to_marker @ inverse_matrix(camera_to_marker)
+            map_to_base = map_to_camera @ self.t_camera_base
 
-            # Orientation from marker shape
-            top_center = np.mean(undistorted[0:2], axis=0)
-            bottom_center = np.mean(undistorted[2:4], axis=0)
-            dx, dy = top_center[0] - bottom_center[0], top_center[1] - bottom_center[1]
-            yaw = np.arctan2(dx, -dy)
+            dx = map_to_base[0, 3] - predicted_map_to_base[0, 3]
+            dy = map_to_base[1, 3] - predicted_map_to_base[1, 3]
+            yaw_error = wrap_angle(yaw_from_matrix(map_to_base) - yaw_from_matrix(predicted_map_to_base))
+            position_error = math.hypot(dx, dy)
 
-            quat = quaternion_from_euler(0.0, 0.0, yaw)
-            T_marker_cam = concatenate_matrices(translation_matrix([x_cam, y_cam, 0.0]), quaternion_matrix(quat))
-            T_aruco_camera = np.linalg.inv(T_marker_cam)
+            if position_error > self.max_position_jump or abs(yaw_error) > self.max_yaw_jump:
+                continue
 
-            # --- Use TF lookup for camera→base transform (single source of truth) ---
-            try:
-                t_cam_to_base = self.tf_buffer.lookup_transform(
-                    "camera_frame", "cam_base_link", rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=0.5)
-                )
-                T_camera_cam_base = concatenate_matrices(
-                    translation_matrix([
-                        t_cam_to_base.transform.translation.x,
-                        t_cam_to_base.transform.translation.y,
-                        t_cam_to_base.transform.translation.z
-                    ]),
-                    quaternion_matrix([
-                        t_cam_to_base.transform.rotation.x,
-                        t_cam_to_base.transform.rotation.y,
-                        t_cam_to_base.transform.rotation.z,
-                        t_cam_to_base.transform.rotation.w
-                    ])
-                )
-            except Exception as e:
-                self.get_logger().warn(f"TF lookup failed for camera→base: {e}")
-                return
-
-            # Compute map→cam_base
-            T_map_aruco = concatenate_matrices(
-                translation_matrix([
-                    tf_map_to_aruco.transform.translation.x,
-                    tf_map_to_aruco.transform.translation.y,
-                    tf_map_to_aruco.transform.translation.z
-                ]),
-                quaternion_matrix([
-                    tf_map_to_aruco.transform.rotation.x,
-                    tf_map_to_aruco.transform.rotation.y,
-                    tf_map_to_aruco.transform.rotation.z,
-                    tf_map_to_aruco.transform.rotation.w
-                ])
+            candidates.append(
+                {
+                    "marker_id": detection["id"],
+                    "map_to_base": map_to_base,
+                    "reprojection_error": reprojection_error,
+                }
             )
-            T_map_cam_base = T_map_aruco @ T_aruco_camera @ T_camera_cam_base
 
-            if self.latest_odom_pose is None:
-                self.get_logger().warn("No EKF pose available, skipping map→odom update.")
-                return
+        if not candidates:
+            now = self.get_clock().now()
+            if (now - self.last_debug_log_time).nanoseconds > int(2e9):
+                self.get_logger().info("Markers detected but no camera pose passed gating.")
+                self.last_debug_log_time = now
+            return
 
-            # Compute map→odom
-            T_map_odom = T_map_cam_base @ np.linalg.inv(self.latest_odom_pose)
-            trans_map_odom = translation_from_matrix(T_map_odom)
-            quat_map_odom = quaternion_from_matrix(T_map_odom)
+        weights = np.array(
+            [1.0 / max(candidate["reprojection_error"], 1e-3) for candidate in candidates],
+            dtype=np.float64,
+        )
+        weights /= np.sum(weights)
 
-            t_map_odom = TransformStamped()
-            t_map_odom.header.stamp = self.get_clock().now().to_msg()
-            t_map_odom.header.frame_id = "map"
-            t_map_odom.child_frame_id = "odom"
-            t_map_odom.transform.translation.x, t_map_odom.transform.translation.y = trans_map_odom[:2]
-            t_map_odom.transform.rotation.x, t_map_odom.transform.rotation.y, t_map_odom.transform.rotation.z, t_map_odom.transform.rotation.w = quat_map_odom
+        x = float(
+            np.sum([weight * candidate["map_to_base"][0, 3] for weight, candidate in zip(weights, candidates)])
+        )
+        y = float(
+            np.sum([weight * candidate["map_to_base"][1, 3] for weight, candidate in zip(weights, candidates)])
+        )
+        yaw_values = [yaw_from_matrix(candidate["map_to_base"]) for candidate in candidates]
+        mean_yaw = math.atan2(
+            float(np.sum([weight * math.sin(yaw) for weight, yaw in zip(weights, yaw_values)])),
+            float(np.sum([weight * math.cos(yaw) for weight, yaw in zip(weights, yaw_values)])),
+        )
 
-            self.last_map_to_odom = t_map_odom
-            self.tf_broadcaster.sendTransform(t_map_odom)
-            self.last_marker_time = self.get_clock().now()
-            self.get_logger().info(f"Updated map→odom using marker {marker_id}")
-            break  # only use first visible marker
+        fused_map_to_base = concatenate_matrices(
+            translation_matrix([x, y, 0.0]),
+            quaternion_matrix(quaternion_from_euler(0.0, 0.0, mean_yaw)),
+        )
+        self.last_map_to_odom = fused_map_to_base @ inverse_matrix(odom_to_base)
+        self.last_marker_time = self.get_clock().now()
+
+        self.tf_broadcaster.sendTransform(
+            build_transform("map", "odom", self.last_map_to_odom, self.last_marker_time.to_msg())
+        )
+
+        marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
+        self.get_logger().info(
+            f"Updated map -> odom using markers [{marker_ids}] at "
+            f"x={x:.3f}, y={y:.3f}, yaw={mean_yaw:.3f}"
+        )
 
 
-# -------------------------------------------------------------------------
-# Entry Point
-# -------------------------------------------------------------------------
 def main(args=None):
     rclpy.init(args=args)
     node = MarkerLocalizationNode()

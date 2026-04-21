@@ -82,3 +82,10 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
 RUN apt-get update && apt-get install -y python3-smbus i2c-tools
 RUN pip install smbus2
 RUN pip install 'numpy<1.24.0'
+
+##############################
+# 6. Copy entrypoint and set it
+##############################
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

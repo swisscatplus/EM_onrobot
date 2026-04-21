@@ -1,0 +1,17 @@
+.idea
+.git
+__pycache__
+*.pyc
+.pytest_cache
+test/
+docs/
+.github/
+CameraCalibration/
+*.md
+build/
+.venv/
+*.egg-info/
+.DS_Store
+*.swp
+*.swo
+*~

@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
 	    (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*.launch.py'))),
         (os.path.join('share', package_name, 'config'), glob('config/*')),
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*')),
     ],
     install_requires=[
         'setuptools',
@@ -34,7 +35,6 @@ setup(
         'console_scripts': [
             'em_movement = em_robot.em_movement:main',
             'em_localization = em_robot.em_localization:main',
-            'em_odom = em_robot.em_odom:main',
         ],
     },
 )

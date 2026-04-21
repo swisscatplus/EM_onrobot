@@ -161,6 +161,16 @@ deploy the 2D-Drone
    ./deploy.sh
    ```
 
+### Faster Development on the Raspberry Pi
+
+For day-to-day development, use the bind-mounted dev container instead of rebuilding the runtime image every time:
+
+```bash
+./deploy_dev.sh
+```
+
+This starts the base image, mounts the repository directly into `/ros2_ws`, builds with `colcon build --symlink-install`, and launches the robot stack. That lets you edit code on the Pi and restart much faster.
+
 ---
 
 ## Local Installation (advanced)
@@ -297,4 +307,3 @@ This project is licensed under the [MIT License](./LICENSE).
 
 It also includes code from [flynneva/bno055](https://github.com/flynneva/bno055),
 which is licensed under the [BSD 3-Clause License](https://github.com/flynneva/bno055/blob/main/LICENSE).
-

@@ -7,8 +7,10 @@ export FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 # Source ROS 2
 source /opt/ros/$ROS_DISTRO/setup.bash
-# Source local workspace
-source /ros2_ws/install/setup.bash
+# Source local workspace when it already exists
+if [ -f /ros2_ws/install/setup.bash ]; then
+  source /ros2_ws/install/setup.bash
+fi
 
 # Set ROS Domain ID
 export ROS_DOMAIN_ID=10

@@ -4,9 +4,22 @@ camera_matrix:
   - [0.0, 0.0, 1.0]
 dist_coeff: [-0.01955339, -0.00970571, -0.00145232,  0.00186774,  0.08397236]
 
-# Camera parameters
-camera_height: 0.337  # Height of camera from ground in meters
-marker_size: 0.038    # Size of ArUco markers in meters
+# Camera and localization parameters
+image_size: [1536, 864]
+process_rate_hz: 5.0
+lens_position: 8.0
+marker_size: 0.038
+max_position_jump: 0.25
+max_yaw_jump_deg: 20.0
+max_reprojection_error_px: 8.0
+
+camera_to_base:
+  x: 0.176
+  y: 0.0
+  z: 0.0
+  roll: 0.0
+  pitch: 0.0
+  yaw: 3.141592653589793
 
 
 #Camera matrix:
@@ -24,5 +37,4 @@ marker_size: 0.038    # Size of ArUco markers in meters
 #  - [0.0, 1963.62, 1296]
 #  - [0.0, 0.0, 1.0]
 #dist_coeff: [-0.06776666,  0.15092009, -0.00069885,  0.00102074, -0.09718589]
-
 
