@@ -12,7 +12,7 @@ config_ekf = os.path.join(
 
 config_imu = os.path.join(
     get_package_share_directory('bno055'),
-    'bno055/params',
+    'config',
     'bno055_params_i2c.yaml'
 )
 
