@@ -11,7 +11,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution(
-                        [FindPackageShare("em_robot"), "launch", "em_robot.launch.py"]
+                        [FindPackageShare("em_robot"), "launch", "bringup.launch.py"]
                     )
                 ),
                 launch_arguments={"profile": "home_windows"}.items(),

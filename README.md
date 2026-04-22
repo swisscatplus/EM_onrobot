@@ -3,390 +3,309 @@
   <a href="https://github.com/swisscatplus/EM_onrobot">
     <img src="pictures/logo.png" alt="Logo" height="80">
   </a>
-
-  <h1 align="center">2D-Drone: Open-Source Mobile Robot from the SwissCAT+ Lab</h1>
+  <h1 align="center">EM_onrobot</h1>
 </div>
 
-Open-source mobile robot for laboratory automation and SBS plate handling.
+ROS 2 robot-side stack for EM Robot.
 
----
+This repository is responsible for:
+- base control from `/cmd_vel`
+- wheel odometry
+- IMU integration
+- camera-based localization with ArUco markers
+- EKF fusion
+- Dockerized development and deployment workflows
 
-## Table of Contents
+This repository is not the place for:
+- path planning
+- path tracking
+- fleet management
 
-1. [Overview](#overview)  
-2. [System Architecture](#system-architecture)  
-3. [Deployment of a New Robot](#deployment-of-a-new-robot)  
-4. [Docker Installation (recommended)](#docker-installation-recommended)  
-5. [Local Installation (advanced)](#local-installation-advanced)  
-6. [How to Run](#how-to-run)  
-7. [ROS 2 Interfaces](#ros-2-interfaces)  
-8. [Project Structure](#project-structure)  
-9. [Improvements & Roadmap](#improvements--roadmap)  
-10. [License](#license)  
+Those live in other repositories.
 
----
+## Project Scope
 
-## Overview
+The goal of `EM_onrobot` is to run on the robot and make the robot know where it is.
 
-The Swiss CAT+ 2D-drone is an open-source mobile robot platform developed at the SwissCAT+ laboratory for laboratory 
-automation.
+The current stack combines:
+- wheel odometry from the differential drive base
+- IMU orientation from the BNO055
+- camera-based map correction from detected ArUco markers
+- `robot_localization` EKF fusion
 
-Built to transport SBS-format plates along a dedicated track on top of the lab, the 2D-drone provides a robust 
-foundation for developing and deploying modular, automated workflows in research and production environments.
+The repo also includes desktop development workflows so the same codebase can be exercised on:
+- Windows with fake base + fake IMU + Foxglove
+- Ubuntu with fake base + fake IMU + OpenCV camera + RViz + Foxglove
+- Raspberry Pi on the real robot with real motors, real IMU, and Pi camera
 
-The robot localizes itself using a top-mounted camera that detects a network of ArUco markers placed above the track,
-enabling precise and repeatable navigation without external localization systems.
+## Runtime Profiles
 
-The <a href="https://github.com/swisscatplus/EM_fleetmanager">EM_fleetmanager</a> coordinates multiple 2D-Drones, 
-manages map and marker deployment, and ensures synchronized operation across the SwissCAT+ laboratory.
-
-A markerless visual SLAM module is currently in development and will extend the 2D-Drone’s capabilities beyond 
-track-based navigation to more general indoor environments in upcoming releases.
-
-The `EM_onrobot` repository contains the complete software and hardware resources required to build, configure, and 
-deploy the 2D-Drone
-
-### Software
-- Controls the two **DYNAMIXEL XC430-W150** differential-drive motors.  
-- Reads and compute **encoder odometry** directly through the Dynamixel SDK.  
-- Collects **IMU data** from the Bosch **BNO055** sensor.  
-- Runs an **Extended Kalman Filter (EKF)** to fuse IMU and wheel odometry.  
-- Uses the **camera with ArUco markers** for drift correction in odometry (map correction).  
-- Publishes **ROS 2 topics** for robot localization and subscribes to `/cmd_vel` for motion commands.  
-
-### Hardware
-- Includes the **3D-printable mechanical design** of the robot’s case (recommended material: PLA) :
-  - EdyMobileAssembly contains the full CAD for SolidWorks
-  - EdyMobileURDFAssembly contains the CAD ready for URDF export
-  - EdyMobile_URDF_screencast_ROS contains the URDF
-  - Edymobile_STL_And_BambuPrintables contains the STL files and a read-to-print file for bamboo lab PS1
-- Provides the **electrical schematics** for wiring and integration.  
-
-### Deployment
-- Supports **containerized deployment with Docker** for easy setup and reproducibility.  
-
-
----
-
-## Versions & Software
-
-- **OS**: Ubuntu 22.04 (on Raspberry Pi OS 64-bit for Raspberry Pi 5)  
-- **ROS 2**: Humble 
-- **Docker image (recommended)**:  
-  ```
-  ghcr.io/swisscatplus/em_onrobot/em_robot:latest
-  ```
-- **Dependencies (local runs)**: see [Local Installation](#local-installation-advanced)
-
----
-
-## System Architecture
-
-- **Hardware**
-  - Raspberry Pi 5  
-  - 2x DYNAMIXEL Motors (XC430-W150)
-  - DYNAMIXEL U2D2 Power Hub
-  - DYNAMIXEL U2D2
-  - 2x Pololu Scooter/Skate Wheel 70×25mm - Black (3272)
-  - Bosch BNO055 IMU Adafruit Board (2472)
-  - Raspberry Pi Camera Module 3 Wide  
-  - Bosch Professional GBA 18V (5AH recommended)
-  - Converter DC/DC to 5V (DTJ1524S05)
-  - Converter DC/DC to 12V (DTJ1524S12)
-  - 3D printed Mobile Robot Case
-
-
-- **Software** 
-  - OS installed on the RPi5 (recommended : Raspberry pi OS using Imager software) 
-  - ROS 2 packages (all inside Docker):
-    - `em_robot` → motor control and odometry  
-    - `bno055` → IMU driver (The `src/bno055` package in this repository is a modified version of the original `flynneva/bno055` code, adapted to work with this application.)
-    - `em_robot_srv` → service definitions
-
----
-
-## Deployment of a New Robot
-
-### Hardware Setup
-- Mount and wire the robot according to the CAD and Electrical Schematics
-- Insert the fully charged battery into the back holder
-- Wait some time for the Raspberry Pi to initialize
-- Place the RPi within Wi-Fi range.
-
-### Networking
-- Ensure **PC and RPi are on the same network**.  
-- For that, configure a **static IP** on the RPi which should be the same as the one found in **fastdds.xml** (for example : 192.168.0.101)
-- Match the **ROS_DOMAIN_ID** on both PC and RPi (default = `10`):  
-  ```bash
-  echo "export ROS_DOMAIN_ID=10" >> ~/.bashrc
-  ```
-  Or in the Dockerfile:  
-  ```dockerfile
-  ENV ROS_DOMAIN_ID=10
-  ```
----
-
-## Docker Installation (recommended)
-
-1. **SSH into the RPi**:  
-   ```bash
-   ssh <rpi-name>@<robot-ip>
-   ```
-
-2. **Install Docker** on the RPi:  
-   ```bash
-   sudo apt-get update
-   sudo apt-get install ca-certificates curl gnupg
-   sudo install -m 0755 -d /etc/apt/keyrings
-   curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-   sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-   echo      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" |      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-   sudo apt-get update
-   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   sudo groupadd docker
-   sudo gpasswd -a $USER docker
-   newgrp docker
-   docker run hello-world
-   ```
-
-3. **Pull the container image**:  
-   ```bash
-   docker pull ghcr.io/swisscatplus/em_onrobot/em_robot:latest
-   ```
-
-4. **Run the container**:  
-   ```bash
-   ./deploy.sh
-   ```
-
-### Faster Development on the Raspberry Pi
-
-For day-to-day development, use the bind-mounted dev container instead of rebuilding the runtime image every time:
+The main bringup entrypoint is:
 
 ```bash
-./deploy_dev.sh
+ros2 launch em_robot bringup.launch.py profile:=<profile_name>
 ```
 
-This starts the base image, mounts the repository directly into `/ros2_ws`, builds with `colcon build --symlink-install`, and launches the robot stack. That lets you edit code on the Pi and restart much faster.
+Available profiles:
 
-You can also choose the runtime profile explicitly:
+| Profile | Intended system | Movement | IMU | Camera | Visual tools |
+|---|---|---|---|---|---|
+| `home_windows` | Windows desktop | fake | fake | disabled | Foxglove |
+| `work_ubuntu` | Ubuntu desktop | fake | fake | OpenCV device | RViz + Foxglove |
+| `real_robot` | Raspberry Pi on robot | real | BNO055 | Picamera2 | none by default |
 
-```bash
-EM_ROBOT_PROFILE_VALUE=real_robot ./deploy_dev.sh
-```
+Profile files live in [`src/em_robot/config/profiles`](./src/em_robot/config/profiles).
 
-## Docker Desktop Development Profiles
-
-For desktop development, the repository now includes a separate Docker image and Compose setup focused on development instead of Raspberry Pi hardware access.
-
-For day-to-day commands and troubleshooting, see [DEVELOPMENT_WORKFLOWS.md](./DEVELOPMENT_WORKFLOWS.md).
-
-### Profiles
-
-- `home_windows`: fake movement, fake IMU, no camera, Foxglove bridge enabled
-- `work_ubuntu`: fake movement, fake IMU, OpenCV camera backend, RViz enabled, Foxglove bridge enabled
-- `real_robot`: current on-robot runtime profile
+## Supported Workflows
 
 ### Windows
 
-Use Docker Desktop with Linux containers. Then start the desktop development container with:
+Use this for logic development and visualization from Docker Desktop.
+
+Behavior:
+- fake base controller
+- fake IMU
+- no localization camera
+- Foxglove bridge on port `8765`
+
+Start:
 
 ```powershell
-./start_dev.ps1
+.\scripts\start_dev.ps1
 ```
 
-This starts the `home_windows` profile through Docker Compose.
-
-Useful variants:
+Stop:
 
 ```powershell
-./start_dev.ps1 -Profile home_windows
-./start_dev.ps1 -Profile home_windows -Action down
+.\scripts\start_dev.ps1 -Profile home_windows -Action down
 ```
 
-On Windows, this setup is intended for fake-sensor and logic development. It does not assume direct camera passthrough into the container.
-You can visualize the running ROS graph by connecting Foxglove to `ws://localhost:8765`.
+Logs:
+
+```powershell
+docker compose -f docker/compose.yaml logs -f em_robot_home_windows
+```
+
+Shell:
+
+```powershell
+docker compose -f docker/compose.yaml exec em_robot_home_windows bash
+```
+
+Foxglove:
+- connect to `ws://localhost:8765`
+- useful topics: `/odomWheel`, `/odometry/filtered`, `/bno055/imu`, `/tf`, `/cmd_vel`
 
 ### Ubuntu
 
-Use:
+Use this for desktop testing with fake motion and IMU, but with a non-robot camera routed through OpenCV.
+
+Behavior:
+- fake base controller
+- fake IMU
+- localization enabled through an OpenCV camera source
+- RViz enabled
+- Foxglove bridge on port `8765`
+
+Start:
 
 ```bash
-./start_dev.sh work_ubuntu
+./scripts/start_dev.sh work_ubuntu
 ```
 
-This starts the `work_ubuntu` profile through Docker Compose, with X11 forwarding and `/dev/video0` mapped into the container.
+Stop:
 
-If RViz cannot open, allow local Docker X11 access first:
+```bash
+./scripts/start_dev.sh work_ubuntu down
+```
+
+Logs:
+
+```bash
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml logs -f em_robot_work_ubuntu
+```
+
+Shell:
+
+```bash
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml exec em_robot_work_ubuntu bash
+```
+
+If RViz cannot open:
 
 ```bash
 xhost +local:docker
 ```
 
-Useful variants:
+If you want another camera:
 
 ```bash
-./start_dev.sh work_ubuntu down
-docker compose -f compose.yaml -f compose.ubuntu.yaml logs -f em_robot_work_ubuntu
-docker compose -f compose.yaml -f compose.ubuntu.yaml exec em_robot_work_ubuntu bash
+export EM_ROBOT_CAMERA_DEVICE=/dev/video1
+./scripts/start_dev.sh work_ubuntu
 ```
 
-### Compose Files
+Foxglove:
+- connect to `ws://localhost:8765`
 
-- `compose.yaml`: base desktop development services
-- `compose.ubuntu.yaml`: Ubuntu-only additions such as host networking, X11, and webcam device mapping
-- `Dockerfile.desktop`: desktop development image with ROS 2, RViz, and Python dependencies
+Note:
+- this is not using the Raspberry Pi camera stack
+- it expects a Linux video device such as `/dev/video0`
 
-### Environment Variables
+### Robot
 
-Compose reads environment variables from the shell and optionally from a local `.env` file. The repository includes `.env.example` with the main values:
+Use this on the Raspberry Pi mounted on the robot.
 
+Behavior:
+- real Dynamixel base controller
+- real BNO055 IMU
+- localization enabled through `picamera2`
+- EKF enabled
+
+Start the on-robot development container:
+
+```bash
+EM_ROBOT_PROFILE_VALUE=real_robot ./scripts/deploy_dev.sh
+```
+
+The script:
+- pulls `ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest`
+- falls back to building `docker/Dockerfile.base` locally if the pull fails
+- bind-mounts the repository into `/ros2_ws`
+- builds the ROS workspace in the container
+- launches `bringup.launch.py` with the `real_robot` profile
+
+Logs:
+
+```bash
+docker logs -f em_robot_dev
+```
+
+Shell:
+
+```bash
+docker exec -it em_robot_dev bash
+```
+
+## Networking
+
+For ROS 2 discovery to work correctly:
+- the PC and robot must be on the same network
+- `ROS_DOMAIN_ID` must match on both sides
+- [`config/fastdds.xml`](./config/fastdds.xml) must be adapted to the correct network interface or robot IP setup
+
+Example:
+
+```bash
+export ROS_DOMAIN_ID=10
+```
+
+Desktop workflows read environment variables from the shell and optionally from a local `.env` file.
+The template is [`.env.example`](./.env.example).
+
+Main variables:
 - `ROS_DOMAIN_ID`
 - `RMW_IMPLEMENTATION`
-- `EM_ROBOT_CAMERA_DEVICE`
 - `FOXGLOVE_PORT`
+- `EM_ROBOT_CAMERA_DEVICE`
 
-### Notes
+## Useful Commands Inside a Container
 
-- Docker Compose profiles are an official Docker feature for enabling environment-specific services.
-- Docker host networking is supported on Linux and on Docker Desktop `4.34+` when enabled in Docker Desktop settings.
-- The Windows desktop flow is intentionally kept simpler than the Ubuntu one so it stays reliable.
+Source ROS first:
 
----
-
-## Local Installation (advanced)
-
-Running outside Docker is not the primary workflow, but it is possible.  
-From the [Dockerfile](./Dockerfile), the required local dependencies are:
-
-### System packages
 ```bash
-sudo apt update
-sudo apt install python3-smbus i2c-tools python3-dev
+source /opt/ros/humble/setup.bash
+source /ros2_ws/install/setup.bash
 ```
 
-### Python packages
+Useful checks:
+
 ```bash
-pip install smbus2
+ros2 node list
+ros2 topic list
+ros2 topic echo /odomWheel
+ros2 topic echo /bno055/imu
+ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}"
 ```
 
-### ROS 2 packages
-Make sure you have ROS 2 Humble installed with `colcon` and build tools.  
-Then build the workspace:
-```bash
-cd ros2_ws
-colcon build --packages-select em_robot em_robot_srv bno055
-```
-
----
-
-## How to Run
-
-1. Connect to the RPi:
-   ```bash
-   ssh <rpi-name>>@<robot-ip>
-   ```
-
-2. Start the container:
-   ```bash
-   ./deploy.sh
-   ```
-
-3.  **Test movement:**
-
-    **Important:** This is a **two-wheeled differential drive
-    robot**. That means it can only move using:
-
-    -   **Linear X** → forward/backward motion (both wheels turning in
-        the same direction).
-    -   **Angular Z (yaw)** → rotation on the spot or turning (wheels
-        turning at different speeds).
-
-    All other fields (`linear.y`, `linear.z`, `angular.x`, `angular.y`)
-    are ignored.
-
-    You have two options for testing:
-
-    -   **Direct velocity commands (use with caution):**
-
-        You can publish a velocity command directly, but be aware that
-        the robot will **keep moving until you explicitly send another
-        command with zero velocity**. For example:
-
-        ``` bash
-        ros2 topic pub /cmd_vel geometry_msgs/Twist "linear:
-          x: 0.3
-          y: 0.0
-          z: 0.0
-        angular:
-          x: 0.0
-          y: 0.0
-          z: 0.5"
-        ```
-
-        To stop the robot, send the same command again but with all
-        values set to `0.0`.
-
-    -   **Safer option: use teleop:**
-
-        The recommended way to test is to use the
-        [teleop_twist_keyboard](https://index.ros.org/p/teleop_twist_keyboard/)
-        package. This allows you to control the robot interactively from
-        your PC with the keyboard:
-
-        ``` bash
-        ros2 run teleop_twist_keyboard teleop_twist_keyboard
-        ```
-
-        You can also connect a **gaming controller** and map the
-        joystick to publish commands on `/cmd_vel` for smoother and
-        safer manual control.
-
----
-
-## ROS 2 Interfaces
+## ROS Interfaces
 
 ### Topics
-| Topic                | Type                                    | Description                                    |
-|----------------------|-----------------------------------------|------------------------------------------------|
-| `/left_ticks_counts` | `std_msgs/Int16`                        | Encoder ticks from left wheel                  |
-| `/right_ticks_counts`| `std_msgs/Int16`                        | Encoder ticks from right wheel                 |
-| `/bno055/imu`        | `sensor_msgs/Imu`                       | Orientation and acceleration from BNO055       |
-| `/edi/cam`           | `geometry_msgs/PoseWithCovarianceStamped` | Pose correction from camera + ArUco markers   |
-| `/cmd_vel`           | `geometry_msgs/Twist`                   | Input velocity command for differential drive  |
 
----
+| Topic | Type | Description |
+|---|---|---|
+| `/cmd_vel` | `geometry_msgs/Twist` | Velocity command input for the base |
+| `/odomWheel` | `nav_msgs/Odometry` | Wheel odometry from the real or fake base controller |
+| `/bno055/imu` | `sensor_msgs/Imu` | IMU orientation and angular velocity |
 
-## Project Structure
+### Services
 
-```
+| Service | Type | Description |
+|---|---|---|
+| `/set_initial_pose` | `em_robot_srv/srv/SetInitialPose` | Set the initial `map -> odom` alignment |
+
+## Main Folders
+
+The repository is now organized around a few top-level folders:
+
+- [`docker/`](./docker): Compose files, Dockerfiles, the shared container entrypoint, and legacy Docker experiments
+- [`scripts/`](./scripts): Windows, Ubuntu, robot, and release helper scripts
+- [`config/`](./config): non-ROS top-level runtime config such as Fast DDS
+- [`src/`](./src): ROS 2 packages
+- [`CAD/`](./CAD): mechanical assets
+- [`Electrical Schematics/`](./Electrical%20Schematics): wiring and electronics assets
+
+Important operational files:
+
+- [`docker/compose.yaml`](./docker/compose.yaml): shared desktop Compose definition
+- [`docker/compose.ubuntu.yaml`](./docker/compose.ubuntu.yaml): Ubuntu-only Compose overrides
+- [`docker/Dockerfile.desktop`](./docker/Dockerfile.desktop): desktop development image
+- [`docker/Dockerfile.base`](./docker/Dockerfile.base): Raspberry Pi base image
+- [`docker/Dockerfile`](./docker/Dockerfile): runtime image
+- [`scripts/start_dev.sh`](./scripts/start_dev.sh): Ubuntu launcher
+- [`scripts/start_dev.ps1`](./scripts/start_dev.ps1): Windows launcher
+- [`scripts/deploy_dev.sh`](./scripts/deploy_dev.sh): robot launcher
+- [`scripts/deployImage.sh`](./scripts/deployImage.sh): runtime image build/push helper
+- [`scripts/buildBase.sh`](./scripts/buildBase.sh): base image build/push helper
+- [`scripts/buildBaseLocal.sh`](./scripts/buildBaseLocal.sh): local base image build helper
+- [`config/fastdds.xml`](./config/fastdds.xml): Fast DDS transport config
+- [`DEVELOPMENT_WORKFLOWS.md`](./DEVELOPMENT_WORKFLOWS.md): shorter day-to-day command reference
+
+## Repository Layout
+
+```text
 EM_onrobot/
-├── Dockerfile            # Build instructions for em_robot image
-├── Dockerfile.base       # Base image with ROS 2 and dependencies
-├── entrypoint.sh         # Container entrypoint script
-├── fastdds.xml           # Fast DDS configuration
+├── docker/
+│   ├── compose.yaml
+│   ├── compose.ubuntu.yaml
+│   ├── Dockerfile
+│   ├── Dockerfile.base
+│   ├── Dockerfile.desktop
+│   └── entrypoint.sh
+├── scripts/
+│   ├── deploy_dev.sh
+│   ├── start_dev.sh
+│   ├── start_dev.ps1
+│   ├── deployImage.sh
+│   ├── buildBase.sh
+│   └── buildBaseLocal.sh
+├── config/
+│   └── fastdds.xml
 ├── src/
-│   ├── em_robot/         # Main robot package (motors, camera, odometry)
-│   ├── em_robot_srv/     # ROS 2 service definitions
-│   ├── bno055/           # External Bosch BNO055 driver
-│   └── test.py           # Example script
-├── images/logo.png
-└── README.md
+│   ├── em_robot/       # bringup, localization, base control, config, RViz
+│   ├── em_robot_srv/   # ROS 2 service definitions
+│   └── bno055/         # BNO055 driver package
+├── CAD/
+├── Electrical Schematics/
+└── pictures/
 ```
 
----
+## Notes
 
-## Improvements & Roadmap
-
-- Expand documentation with troubleshooting and advanced usage examples.
-
----
+- [`DEVELOPMENT_WORKFLOWS.md`](./DEVELOPMENT_WORKFLOWS.md) is the short operational guide
+- this README is the higher-level explanation of what the repo is and how each system is meant to use it
 
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
 
-It also includes code from [flynneva/bno055](https://github.com/flynneva/bno055),
-which is licensed under the [BSD 3-Clause License](https://github.com/flynneva/bno055/blob/main/LICENSE).
+It also includes code adapted from the original [`flynneva/bno055`](https://github.com/flynneva/bno055) package.

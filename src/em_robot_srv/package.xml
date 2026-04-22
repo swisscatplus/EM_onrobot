@@ -2,10 +2,10 @@
 <package format="3">
   <name>em_robot_srv</name>
   <version>0.0.1</version>
-  <description>Custom messages for EM Vehicle Control</description>
+  <description>ROS 2 service definitions for EM Robot</description>
 
-  <maintainer email="you@example.com">Your Name</maintainer>
-  <license>Apache License 2.0</license>
+  <maintainer email="edy.mariano@epfl.com">mariano</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

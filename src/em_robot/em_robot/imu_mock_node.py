@@ -11,9 +11,9 @@ def quaternion_from_yaw(yaw):
     return Quaternion(x=0.0, y=0.0, z=math.sin(yaw / 2.0), w=math.cos(yaw / 2.0))
 
 
-class FakeImuNode(Node):
+class ImuMockNode(Node):
     def __init__(self):
-        super().__init__("fake_imu_node")
+        super().__init__("imu_mock")
 
         self.declare_parameter("rate_hz", 30.0)
         self.declare_parameter("yaw_rate", 0.0)
@@ -29,7 +29,7 @@ class FakeImuNode(Node):
 
         timer_period = 1.0 / self.rate_hz if self.rate_hz > 0.0 else 1.0 / 30.0
         self.timer = self.create_timer(timer_period, self.publish_sample)
-        self.get_logger().info("Fake IMU node started")
+        self.get_logger().info("IMU mock node started")
 
     def publish_sample(self):
         now = self.get_clock().now()
@@ -64,11 +64,11 @@ class FakeImuNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FakeImuNode()
+    node = ImuMockNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down fake IMU node...")
+        node.get_logger().info("Shutting down IMU mock node...")
     finally:
         node.destroy_node()
         rclpy.shutdown()

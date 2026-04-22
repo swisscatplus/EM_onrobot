@@ -7,7 +7,7 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-from em_robot.profile import load_profile
+from em_robot.profile_loader import load_profile
 
 
 def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
@@ -32,7 +32,7 @@ def _build_nodes(context):
     )
 
     pkg_share = get_package_share_directory("em_robot")
-    rviz_config = os.path.join(pkg_share, "rviz", "desk_localization_test.rviz")
+    rviz_config = os.path.join(pkg_share, "rviz", "localization_debug.rviz")
     config_dir = os.path.join(pkg_share, "config")
     nodes = []
 
@@ -41,7 +41,7 @@ def _build_nodes(context):
         nodes.append(
             Node(
                 package="em_robot",
-                executable="em_movement",
+                executable="base_controller",
                 parameters=[movement_cfg],
                 output="screen",
             )
@@ -77,7 +77,7 @@ def _build_nodes(context):
             nodes.append(
                 Node(
                     package="em_robot",
-                    executable="fake_imu",
+                    executable="imu_mock",
                     parameters=[imu_cfg],
                     output="screen",
                 )
@@ -88,7 +88,7 @@ def _build_nodes(context):
         nodes.append(
             Node(
                 package="em_robot",
-                executable="em_localization",
+                executable="localization",
                 parameters=[
                     {
                         "camera_backend": localization_cfg.get("camera_backend", "picamera2"),

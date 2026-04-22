@@ -3,9 +3,9 @@
 <package format="3">
   <name>em_robot</name>
   <version>0.0.0</version>
-  <description>Manage Localization and Movement of EM Robot</description>
+  <description>On-robot localization and base control for EM Robot</description>
   <maintainer email="edy.mariano@epfl.com">mariano</maintainer>
-  <license>Apache-2.0</license>
+  <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
@@ -13,10 +13,6 @@
   <test_depend>python3-pytest</test_depend>
 
   <buildtool_depend>ament_python</buildtool_depend>
-  <buildtool_depend>rosidl_default_generators</buildtool_depend>
-
-  <build_depend>rosidl_default_generators</build_depend>
-  <exec_depend>rosidl_default_runtime</exec_depend>
 
   <build_depend>rclpy</build_depend>
   <build_depend>geometry_msgs</build_depend>
@@ -34,7 +30,6 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>robot_localization</exec_depend>
-
 
   <export>
     <build_type>ament_python</build_type>

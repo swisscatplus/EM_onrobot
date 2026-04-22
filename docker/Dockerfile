@@ -3,7 +3,7 @@ SHELL ["/bin/bash", "-c"]
 
 # --- Per-robot Fast DDS configuration (customize IP per robot) ---
 RUN mkdir -p /root/.ros
-COPY fastdds.xml /root/.ros/fastdds.xml
+COPY config/fastdds.xml /root/.ros/fastdds.xml
 ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/.ros/fastdds.xml
 
 # --- Build your ROS workspace (changes often during development) ---
@@ -14,4 +14,4 @@ COPY src/bno055 src/bno055
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select em_robot bno055 em_robot_srv
 
 # --- Default command ---
-CMD ["ros2", "launch", "em_robot", "em_robot.launch.py"]
+CMD ["ros2", "launch", "em_robot", "bringup.launch.py"]

@@ -12,7 +12,7 @@ def generate_launch_description():
     rviz_config = os.path.join(
         get_package_share_directory("em_robot"),
         "rviz",
-        "desk_localization_test.rviz",
+        "localization_debug.rviz",
     )
 
     marker_id = LaunchConfiguration("marker_id")
@@ -28,7 +28,7 @@ def generate_launch_description():
     odom_to_base = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
-        name="desk_test_odom_to_base",
+        name="localization_debug_odom_to_base",
         arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
         output="screen",
     )
@@ -36,7 +36,7 @@ def generate_launch_description():
     marker_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
-        name="desk_test_marker_tf",
+        name="localization_debug_marker_tf",
         arguments=[
             marker_x,
             marker_y,
@@ -52,7 +52,7 @@ def generate_launch_description():
 
     localization_node = Node(
         package="em_robot",
-        executable="em_localization",
+        executable="localization",
         parameters=[
             {
                 "camera_backend": camera_backend,
@@ -65,7 +65,7 @@ def generate_launch_description():
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
-        name="desk_test_rviz",
+        name="localization_debug_rviz",
         arguments=["-d", rviz_config],
         condition=IfCondition(start_rviz),
         output="screen",
@@ -101,7 +101,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "start_rviz",
                 default_value="true",
-                description="Start RViz with the desk-localization test configuration.",
+                description="Start RViz with the localization debug configuration.",
             ),
             DeclareLaunchArgument(
                 "camera_backend",

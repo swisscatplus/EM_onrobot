@@ -32,31 +32,31 @@ Current behavior of `home_windows`:
 ### Start
 
 ```powershell
-.\start_dev.ps1
+.\scripts\start_dev.ps1
 ```
 
 This is equivalent to:
 
 ```powershell
-.\start_dev.ps1 -Profile home_windows
+.\scripts\start_dev.ps1 -Profile home_windows
 ```
 
 ### Stop
 
 ```powershell
-.\start_dev.ps1 -Profile home_windows -Action down
+.\scripts\start_dev.ps1 -Profile home_windows -Action down
 ```
 
 ### See Logs
 
 ```powershell
-docker compose -f compose.yaml logs -f em_robot_home_windows
+docker compose -f docker/compose.yaml logs -f em_robot_home_windows
 ```
 
 ### Open a Shell in the Container
 
 ```powershell
-docker compose -f compose.yaml exec em_robot_home_windows bash
+docker compose -f docker/compose.yaml exec em_robot_home_windows bash
 ```
 
 ### Open the Visualizer
@@ -64,7 +64,7 @@ docker compose -f compose.yaml exec em_robot_home_windows bash
 1. Start the container:
 
 ```powershell
-.\start_dev.ps1
+.\scripts\start_dev.ps1
 ```
 
 2. Open Foxglove in your browser or desktop app.
@@ -85,13 +85,13 @@ Recommended first panels:
 ### Rebuild the Container
 
 ```powershell
-docker compose -f compose.yaml build em_robot_home_windows
+docker compose -f docker/compose.yaml build em_robot_home_windows
 ```
 
 ### Rebuild Without Cache
 
 ```powershell
-docker compose -f compose.yaml build --no-cache em_robot_home_windows
+docker compose -f docker/compose.yaml build --no-cache em_robot_home_windows
 ```
 
 ## 3. Ubuntu Desktop Development
@@ -109,25 +109,25 @@ Current behavior of `work_ubuntu`:
 ### Start
 
 ```bash
-./start_dev.sh work_ubuntu
+./scripts/start_dev.sh work_ubuntu
 ```
 
 ### Stop
 
 ```bash
-./start_dev.sh work_ubuntu down
+./scripts/start_dev.sh work_ubuntu down
 ```
 
 ### See Logs
 
 ```bash
-docker compose -f compose.yaml -f compose.ubuntu.yaml logs -f em_robot_work_ubuntu
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml logs -f em_robot_work_ubuntu
 ```
 
 ### Open a Shell in the Container
 
 ```bash
-docker compose -f compose.yaml -f compose.ubuntu.yaml exec em_robot_work_ubuntu bash
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml exec em_robot_work_ubuntu bash
 ```
 
 ### If RViz Cannot Open
@@ -144,7 +144,7 @@ Set the camera device before starting:
 
 ```bash
 export EM_ROBOT_CAMERA_DEVICE=/dev/video1
-./start_dev.sh work_ubuntu
+./scripts/start_dev.sh work_ubuntu
 ```
 
 ### Open Foxglove
@@ -162,7 +162,7 @@ Use this on the robot itself.
 ### Start the Dev Container
 
 ```bash
-EM_ROBOT_PROFILE_VALUE=real_robot ./deploy_dev.sh
+EM_ROBOT_PROFILE_VALUE=real_robot ./scripts/deploy_dev.sh
 ```
 
 ### Default Start
@@ -170,7 +170,7 @@ EM_ROBOT_PROFILE_VALUE=real_robot ./deploy_dev.sh
 If you do not set the profile explicitly, the current script also starts `real_robot` by default.
 
 ```bash
-./deploy_dev.sh
+./scripts/deploy_dev.sh
 ```
 
 ### See Logs
@@ -267,13 +267,13 @@ If you want to change behavior, start by editing the relevant profile.
 Windows:
 
 ```powershell
-docker compose -f compose.yaml down
+docker compose -f docker/compose.yaml down
 ```
 
 Ubuntu:
 
 ```bash
-docker compose -f compose.yaml -f compose.ubuntu.yaml down
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml down
 ```
 
 ### Rebuild and Restart
@@ -281,15 +281,15 @@ docker compose -f compose.yaml -f compose.ubuntu.yaml down
 Windows:
 
 ```powershell
-docker compose -f compose.yaml build em_robot_home_windows
-.\start_dev.ps1
+docker compose -f docker/compose.yaml build em_robot_home_windows
+.\scripts\start_dev.ps1
 ```
 
 Ubuntu:
 
 ```bash
-docker compose -f compose.yaml -f compose.ubuntu.yaml build em_robot_work_ubuntu
-./start_dev.sh work_ubuntu
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml build em_robot_work_ubuntu
+./scripts/start_dev.sh work_ubuntu
 ```
 
 ### Clean Rebuild
@@ -297,22 +297,22 @@ docker compose -f compose.yaml -f compose.ubuntu.yaml build em_robot_work_ubuntu
 Windows:
 
 ```powershell
-docker compose -f compose.yaml build --no-cache em_robot_home_windows
+docker compose -f docker/compose.yaml build --no-cache em_robot_home_windows
 ```
 
 Ubuntu:
 
 ```bash
-docker compose -f compose.yaml -f compose.ubuntu.yaml build --no-cache em_robot_work_ubuntu
+docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml build --no-cache em_robot_work_ubuntu
 ```
 
 ## 9. Mental Model
 
 When in doubt:
 
-- `start_dev.ps1` is for Windows desktop development
-- `start_dev.sh work_ubuntu` is for Ubuntu desktop development
-- `deploy_dev.sh` is for the real robot on the Raspberry Pi
+- `scripts/start_dev.ps1` is for Windows desktop development
+- `scripts/start_dev.sh work_ubuntu` is for Ubuntu desktop development
+- `scripts/deploy_dev.sh` is for the real robot on the Raspberry Pi
 
 If something behaves strangely, check:
 

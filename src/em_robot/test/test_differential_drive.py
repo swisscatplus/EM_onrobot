@@ -1,6 +1,6 @@
 import math
 
-from em_robot.movement_core import PoseState, cmd_vel_to_motor_speeds, integrate_fake_motion
+from em_robot.differential_drive import PoseState, cmd_vel_to_motor_speeds, integrate_fake_motion
 
 
 def test_cmd_vel_to_motor_speeds_clamps_output():

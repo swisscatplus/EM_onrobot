@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import glob
+from pathlib import Path
 import yaml
 
 # --- Calibration Pattern Settings ---
@@ -70,7 +71,8 @@ calibration_data = {
     'dist_coeff': dist.tolist()
 }
 
-with open("calibration.yaml", "w") as f:
+output_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
+with output_path.open("w", encoding="utf-8") as f:
     yaml.dump(calibration_data, f)
 
-print("Calibration parameters saved to calibration.yaml.")
+print(f"Calibration parameters saved to {output_path}.")

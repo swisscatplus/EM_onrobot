@@ -6,7 +6,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
-from em_robot.movement_core import (
+from em_robot.differential_drive import (
     PoseState,
     cmd_vel_to_motor_speeds,
     convert_to_signed,
@@ -28,10 +28,10 @@ ADDR_PRESENT_POSITION = 132
 TORQUE_ENABLE = 1
 
 
-class MovementNode(Node):
+class BaseControllerNode(Node):
     def __init__(self):
-        super().__init__("movement_node")
-        self.get_logger().info("MovementNode started")
+        super().__init__("base_controller")
+        self.get_logger().info("Base controller node started")
 
         self.declare_parameter("backend", "real")
         self.declare_parameter("max_speed", 1000.0)
@@ -206,11 +206,11 @@ class MovementNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MovementNode()
+    node = BaseControllerNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down movement node...")
+        node.get_logger().info("Shutting down base controller node...")
     finally:
         node.stop_motors()
         node.destroy_node()

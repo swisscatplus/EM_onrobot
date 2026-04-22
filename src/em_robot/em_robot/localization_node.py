@@ -8,19 +8,23 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from em_robot_srv.srv import SetInitialPose
-from geometry_msgs.msg import TransformStamped
+from em_robot.camera_sources import create_camera_source
+from em_robot.transform_utils import (
+    blend_angles,
+    build_transform,
+    transform_to_matrix,
+    wrap_angle,
+    yaw_from_matrix,
+)
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
 from tf2_ros import Buffer, StaticTransformBroadcaster, TransformBroadcaster, TransformListener
 from tf_transformations import (
     concatenate_matrices,
-    euler_from_quaternion,
     inverse_matrix,
     quaternion_from_euler,
-    quaternion_from_matrix,
     quaternion_matrix,
-    translation_from_matrix,
     translation_matrix,
 )
 
@@ -42,116 +46,10 @@ def detect_aruco_markers(frame):
     ]
 
 
-def transform_to_matrix(transform):
-    return concatenate_matrices(
-        translation_matrix(
-            [
-                transform.transform.translation.x,
-                transform.transform.translation.y,
-                transform.transform.translation.z,
-            ]
-        ),
-        quaternion_matrix(
-            [
-                transform.transform.rotation.x,
-                transform.transform.rotation.y,
-                transform.transform.rotation.z,
-                transform.transform.rotation.w,
-            ]
-        ),
-    )
-
-
-def build_transform(parent_frame, child_frame, transform_matrix, stamp):
-    translation = translation_from_matrix(transform_matrix)
-    quaternion = quaternion_from_matrix(transform_matrix)
-
-    transform = TransformStamped()
-    transform.header.stamp = stamp
-    transform.header.frame_id = parent_frame
-    transform.child_frame_id = child_frame
-    transform.transform.translation.x = float(translation[0])
-    transform.transform.translation.y = float(translation[1])
-    transform.transform.translation.z = float(translation[2])
-    transform.transform.rotation.x = float(quaternion[0])
-    transform.transform.rotation.y = float(quaternion[1])
-    transform.transform.rotation.z = float(quaternion[2])
-    transform.transform.rotation.w = float(quaternion[3])
-    return transform
-
-
-def wrap_angle(angle):
-    return math.atan2(math.sin(angle), math.cos(angle))
-
-
-def yaw_from_matrix(transform_matrix):
-    quaternion = quaternion_from_matrix(transform_matrix)
-    _, _, yaw = euler_from_quaternion(quaternion)
-    return yaw
-
-
-def blend_angles(previous_yaw, new_yaw, alpha):
-    return math.atan2(
-        (1.0 - alpha) * math.sin(previous_yaw) + alpha * math.sin(new_yaw),
-        (1.0 - alpha) * math.cos(previous_yaw) + alpha * math.cos(new_yaw),
-    )
-
-
-class PicameraSource:
-    def __init__(self, image_size, lens_position):
-        from libcamera import controls
-        from picamera2 import Picamera2
-
-        self._camera = Picamera2()
-        preview_config = self._camera.create_preview_configuration(
-            main={"format": "XRGB8888", "size": image_size}
-        )
-        self._camera.configure(preview_config)
-        self._camera.start()
-        self._camera.set_controls(
-            {"AfMode": controls.AfModeEnum.Manual, "LensPosition": lens_position}
-        )
-
-    def capture(self):
-        return self._camera.capture_array()
-
-    def close(self):
-        self._camera.stop()
-
-
-class OpenCVCameraSource:
-    def __init__(self, source, image_size):
-        source_value = int(source) if str(source).isdigit() else source
-        self._capture = cv.VideoCapture(source_value)
-        if image_size:
-            self._capture.set(cv.CAP_PROP_FRAME_WIDTH, image_size[0])
-            self._capture.set(cv.CAP_PROP_FRAME_HEIGHT, image_size[1])
-
-        if not self._capture.isOpened():
-            raise RuntimeError(f"Failed to open OpenCV camera source: {source}")
-
-    def capture(self):
-        ok, frame = self._capture.read()
-        if not ok:
-            raise RuntimeError("Failed to read frame from OpenCV camera source")
-        return frame
-
-    def close(self):
-        self._capture.release()
-
-
-def create_camera_source(camera_backend, source, image_size, lens_position):
-    if camera_backend == "picamera2":
-        return PicameraSource(image_size=image_size, lens_position=lens_position)
-    if camera_backend == "opencv":
-        return OpenCVCameraSource(source=source, image_size=image_size)
-    raise ValueError(f"Unsupported camera backend: {camera_backend}")
-
-
-class MarkerLocalizationNode(Node):
+class LocalizationNode(Node):
     def __init__(self):
-        super().__init__("marker_localization_node")
-        self.get_logger().info("Starting MarkerLocalizationNode...")
+        super().__init__("localization")
+        self.get_logger().info("Starting localization node...")
 
         self.declare_parameter("config_file", "")
         self.declare_parameter("camera_backend", "picamera2")
@@ -531,11 +429,11 @@ class MarkerLocalizationNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MarkerLocalizationNode()
+    node = LocalizationNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down MarkerLocalizationNode...")
+        node.get_logger().info("Shutting down localization node...")
     finally:
         node.destroy_node()
         rclpy.shutdown()

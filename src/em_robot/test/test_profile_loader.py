@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from em_robot.profile import load_profile, resolve_profile_path
+from em_robot.profile_loader import load_profile, resolve_profile_path
 
 
 def test_resolve_profile_path_prefers_explicit_path(tmp_path):
