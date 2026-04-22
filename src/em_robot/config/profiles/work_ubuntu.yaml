@@ -1,0 +1,26 @@
+profile_name: work_ubuntu
+start_rviz: true
+
+movement:
+  enabled: true
+  backend: fake
+  max_speed: 0.8
+  odom_rate: 30.0
+
+imu:
+  enabled: true
+  backend: fake
+  rate_hz: 30.0
+  yaw_rate: 0.0
+  static_tf_parent: base_link
+  static_tf_child: bno055
+  static_tf_xyzrpy: [0, 0, 0, 0, 0, 0]
+
+localization:
+  enabled: true
+  camera_backend: opencv
+  source: 0
+
+ekf:
+  enabled: true
+  config: ekf.yaml

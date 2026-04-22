@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+import math
+
+import rclpy
+from geometry_msgs.msg import Quaternion
+from rclpy.node import Node
+from sensor_msgs.msg import Imu
+
+
+def quaternion_from_yaw(yaw):
+    return Quaternion(x=0.0, y=0.0, z=math.sin(yaw / 2.0), w=math.cos(yaw / 2.0))
+
+
+class FakeImuNode(Node):
+    def __init__(self):
+        super().__init__("fake_imu_node")
+
+        self.declare_parameter("rate_hz", 30.0)
+        self.declare_parameter("yaw_rate", 0.0)
+        self.declare_parameter("frame_id", "bno055")
+
+        self.rate_hz = float(self.get_parameter("rate_hz").value)
+        self.yaw_rate = float(self.get_parameter("yaw_rate").value)
+        self.frame_id = self.get_parameter("frame_id").value
+
+        self.publisher = self.create_publisher(Imu, "/bno055/imu", 10)
+        self.last_time = self.get_clock().now()
+        self.current_yaw = 0.0
+
+        timer_period = 1.0 / self.rate_hz if self.rate_hz > 0.0 else 1.0 / 30.0
+        self.timer = self.create_timer(timer_period, self.publish_sample)
+        self.get_logger().info("Fake IMU node started")
+
+    def publish_sample(self):
+        now = self.get_clock().now()
+        dt = max((now - self.last_time).nanoseconds / 1e9, 1e-6)
+        self.current_yaw += self.yaw_rate * dt
+
+        msg = Imu()
+        msg.header.stamp = now.to_msg()
+        msg.header.frame_id = self.frame_id
+        msg.orientation = quaternion_from_yaw(self.current_yaw)
+        msg.angular_velocity.z = self.yaw_rate
+
+        msg.orientation_covariance = [
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.01,
+        ]
+        msg.angular_velocity_covariance = [
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.01,
+        ]
+        msg.linear_acceleration_covariance = [
+            -1.0, 0.0, 0.0,
+            0.0, -1.0, 0.0,
+            0.0, 0.0, -1.0,
+        ]
+
+        self.publisher.publish(msg)
+        self.last_time = now
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = FakeImuNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("Shutting down fake IMU node...")
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

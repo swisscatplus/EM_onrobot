@@ -171,6 +171,85 @@ For day-to-day development, use the bind-mounted dev container instead of rebuil
 
 This starts the base image, mounts the repository directly into `/ros2_ws`, builds with `colcon build --symlink-install`, and launches the robot stack. That lets you edit code on the Pi and restart much faster.
 
+You can also choose the runtime profile explicitly:
+
+```bash
+EM_ROBOT_PROFILE_VALUE=real_robot ./deploy_dev.sh
+```
+
+## Docker Desktop Development Profiles
+
+For desktop development, the repository now includes a separate Docker image and Compose setup focused on development instead of Raspberry Pi hardware access.
+
+### Profiles
+
+- `home_windows`: fake movement, fake IMU, no camera, no RViz by default
+- `work_ubuntu`: fake movement, fake IMU, OpenCV camera backend, RViz enabled
+- `real_robot`: current on-robot runtime profile
+
+### Windows
+
+Use Docker Desktop with Linux containers. Then start the desktop development container with:
+
+```powershell
+./start_dev.ps1
+```
+
+This starts the `home_windows` profile through Docker Compose.
+
+Useful variants:
+
+```powershell
+./start_dev.ps1 -Profile home_windows
+./start_dev.ps1 -Profile home_windows -Action down
+```
+
+On Windows, this setup is intended for fake-sensor and logic development. It does not assume direct camera passthrough into the container.
+
+### Ubuntu
+
+Use:
+
+```bash
+./start_dev.sh work_ubuntu
+```
+
+This starts the `work_ubuntu` profile through Docker Compose, with X11 forwarding and `/dev/video0` mapped into the container.
+
+If RViz cannot open, allow local Docker X11 access first:
+
+```bash
+xhost +local:docker
+```
+
+Useful variants:
+
+```bash
+./start_dev.sh work_ubuntu down
+docker compose -f compose.yaml -f compose.ubuntu.yaml logs -f em_robot_work_ubuntu
+docker compose -f compose.yaml -f compose.ubuntu.yaml exec em_robot_work_ubuntu bash
+```
+
+### Compose Files
+
+- `compose.yaml`: base desktop development services
+- `compose.ubuntu.yaml`: Ubuntu-only additions such as host networking, X11, and webcam device mapping
+- `Dockerfile.desktop`: desktop development image with ROS 2, RViz, and Python dependencies
+
+### Environment Variables
+
+Compose reads environment variables from the shell and optionally from a local `.env` file. The repository includes `.env.example` with the main values:
+
+- `ROS_DOMAIN_ID`
+- `RMW_IMPLEMENTATION`
+- `EM_ROBOT_CAMERA_DEVICE`
+
+### Notes
+
+- Docker Compose profiles are an official Docker feature for enabling environment-specific services.
+- Docker host networking is supported on Linux and on Docker Desktop `4.34+` when enabled in Docker Desktop settings.
+- The Windows desktop flow is intentionally kept simpler than the Ubuntu one so it stays reliable.
+
 ---
 
 ## Local Installation (advanced)

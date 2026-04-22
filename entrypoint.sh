@@ -13,7 +13,7 @@ if [ -f /ros2_ws/install/setup.bash ]; then
 fi
 
 # Set ROS Domain ID
-export ROS_DOMAIN_ID=10
+export ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-10}
 
 # Execute passed command
 exec "$@"

@@ -1,0 +1,35 @@
+name: em_onrobot
+
+x-em-robot-desktop: &em_robot_desktop
+  build:
+    context: .
+    dockerfile: Dockerfile.desktop
+  working_dir: /ros2_ws
+  stdin_open: true
+  tty: true
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-10}
+    RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+  volumes:
+    - .:/ros2_ws
+
+services:
+  em_robot_home_windows:
+    <<: *em_robot_desktop
+    profiles: ["home_windows"]
+    command: >
+      bash -lc "source /opt/ros/$$ROS_DISTRO/setup.bash &&
+      cd /ros2_ws &&
+      colcon build --symlink-install --packages-select em_robot em_robot_srv bno055 &&
+      source install/setup.bash &&
+      ros2 launch em_robot em_robot.launch.py profile:=home_windows"
+
+  em_robot_work_ubuntu:
+    <<: *em_robot_desktop
+    profiles: ["work_ubuntu"]
+    command: >
+      bash -lc "source /opt/ros/$$ROS_DISTRO/setup.bash &&
+      cd /ros2_ws &&
+      colcon build --symlink-install --packages-select em_robot em_robot_srv bno055 &&
+      source install/setup.bash &&
+      ros2 launch em_robot em_robot.launch.py profile:=work_ubuntu"

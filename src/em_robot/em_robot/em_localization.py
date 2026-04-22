@@ -9,8 +9,6 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from em_robot_srv.srv import SetInitialPose
 from geometry_msgs.msg import TransformStamped
-from libcamera import controls
-from picamera2 import Picamera2
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
@@ -99,13 +97,74 @@ def blend_angles(previous_yaw, new_yaw, alpha):
     )
 
 
+class PicameraSource:
+    def __init__(self, image_size, lens_position):
+        from libcamera import controls
+        from picamera2 import Picamera2
+
+        self._camera = Picamera2()
+        preview_config = self._camera.create_preview_configuration(
+            main={"format": "XRGB8888", "size": image_size}
+        )
+        self._camera.configure(preview_config)
+        self._camera.start()
+        self._camera.set_controls(
+            {"AfMode": controls.AfModeEnum.Manual, "LensPosition": lens_position}
+        )
+
+    def capture(self):
+        return self._camera.capture_array()
+
+    def close(self):
+        self._camera.stop()
+
+
+class OpenCVCameraSource:
+    def __init__(self, source, image_size):
+        source_value = int(source) if str(source).isdigit() else source
+        self._capture = cv.VideoCapture(source_value)
+        if image_size:
+            self._capture.set(cv.CAP_PROP_FRAME_WIDTH, image_size[0])
+            self._capture.set(cv.CAP_PROP_FRAME_HEIGHT, image_size[1])
+
+        if not self._capture.isOpened():
+            raise RuntimeError(f"Failed to open OpenCV camera source: {source}")
+
+    def capture(self):
+        ok, frame = self._capture.read()
+        if not ok:
+            raise RuntimeError("Failed to read frame from OpenCV camera source")
+        return frame
+
+    def close(self):
+        self._capture.release()
+
+
+def create_camera_source(camera_backend, source, image_size, lens_position):
+    if camera_backend == "picamera2":
+        return PicameraSource(image_size=image_size, lens_position=lens_position)
+    if camera_backend == "opencv":
+        return OpenCVCameraSource(source=source, image_size=image_size)
+    raise ValueError(f"Unsupported camera backend: {camera_backend}")
+
+
 class MarkerLocalizationNode(Node):
     def __init__(self):
         super().__init__("marker_localization_node")
         self.get_logger().info("Starting MarkerLocalizationNode...")
 
-        pkg_share = get_package_share_directory("em_robot")
-        config_path = os.path.join(pkg_share, "config", "calibration.yaml")
+        self.declare_parameter("config_file", "")
+        self.declare_parameter("camera_backend", "picamera2")
+        self.declare_parameter("camera_source", "0")
+
+        config_path = self.get_parameter("config_file").value or os.path.join(
+            get_package_share_directory("em_robot"),
+            "config",
+            "calibration.yaml",
+        )
+        self.camera_backend = self.get_parameter("camera_backend").value
+        self.camera_source = self.get_parameter("camera_source").value
+
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
             config = yaml.safe_load(config_file)
@@ -154,16 +213,15 @@ class MarkerLocalizationNode(Node):
             dtype=np.float32,
         )
 
-        self.picam2 = Picamera2()
-        preview_config = self.picam2.create_preview_configuration(
-            main={"format": "XRGB8888", "size": self.image_size}
+        self.camera = create_camera_source(
+            camera_backend=self.camera_backend,
+            source=self.camera_source,
+            image_size=self.image_size,
+            lens_position=self.lens_position,
         )
-        self.picam2.configure(preview_config)
-        self.picam2.start()
-        self.picam2.set_controls(
-            {"AfMode": controls.AfModeEnum.Manual, "LensPosition": self.lens_position}
+        self.get_logger().info(
+            f"Camera backend '{self.camera_backend}' initialized with source '{self.camera_source}'"
         )
-        self.get_logger().info(f"Camera initialized at {self.image_size[0]}x{self.image_size[1]}")
 
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
@@ -308,7 +366,7 @@ class MarkerLocalizationNode(Node):
 
     def process_frame(self):
         capture_stamp = self.get_clock().now()
-        frame = self.picam2.capture_array()
+        frame = self.camera.capture()
         detections = detect_aruco_markers(frame)
         if not detections:
             return
@@ -464,6 +522,11 @@ class MarkerLocalizationNode(Node):
                 f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
             )
             self.last_update_log_time = self.last_marker_time
+
+    def destroy_node(self):
+        if hasattr(self, "camera") and self.camera is not None:
+            self.camera.close()
+        super().destroy_node()
 
 
 def main(args=None):

@@ -1,0 +1,28 @@
+profile_name: real_robot
+start_rviz: false
+
+movement:
+  enabled: true
+  backend: real
+  max_speed: 1000.0
+  odom_rate: 30.0
+  device_name: /dev/dynamixel
+  baudrate: 57600
+  right_motor_id: 2
+  left_motor_id: 1
+
+imu:
+  enabled: true
+  backend: bno055
+  static_tf_parent: base_link
+  static_tf_child: bno055
+  static_tf_xyzrpy: [0, 0, 0, 0, 0, 0]
+
+localization:
+  enabled: true
+  camera_backend: picamera2
+  source: 0
+
+ekf:
+  enabled: true
+  config: ekf.yaml

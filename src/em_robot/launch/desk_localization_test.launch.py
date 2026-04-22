@@ -21,6 +21,8 @@ def generate_launch_description():
     marker_z = LaunchConfiguration("marker_z")
     marker_yaw = LaunchConfiguration("marker_yaw")
     start_rviz = LaunchConfiguration("start_rviz")
+    camera_backend = LaunchConfiguration("camera_backend")
+    camera_source = LaunchConfiguration("camera_source")
     marker_frame = PythonExpression(["'aruco_' + str(", marker_id, ")"])
 
     odom_to_base = Node(
@@ -51,6 +53,12 @@ def generate_launch_description():
     localization_node = Node(
         package="em_robot",
         executable="em_localization",
+        parameters=[
+            {
+                "camera_backend": camera_backend,
+                "camera_source": camera_source,
+            }
+        ],
         output="screen",
     )
 
@@ -94,6 +102,16 @@ def generate_launch_description():
                 "start_rviz",
                 default_value="true",
                 description="Start RViz with the desk-localization test configuration.",
+            ),
+            DeclareLaunchArgument(
+                "camera_backend",
+                default_value="opencv",
+                description="Camera backend to use for localization tests.",
+            ),
+            DeclareLaunchArgument(
+                "camera_source",
+                default_value="0",
+                description="OpenCV camera index or video file path.",
             ),
             odom_to_base,
             marker_tf,
