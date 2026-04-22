@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -108,6 +109,23 @@ def _build_nodes(context):
                 name="ekf_filter_node",
                 parameters=[os.path.join(config_dir, ekf_cfg.get("config", "ekf.yaml"))],
                 output="screen",
+            )
+        )
+
+    visualization_cfg = profile.get("visualization", {})
+    if visualization_cfg.get("enabled", False) and visualization_cfg.get("backend") == "foxglove":
+        foxglove_launch = os.path.join(
+            get_package_share_directory("foxglove_bridge"),
+            "launch",
+            "foxglove_bridge_launch.xml",
+        )
+        nodes.append(
+            IncludeLaunchDescription(
+                AnyLaunchDescriptionSource(foxglove_launch),
+                launch_arguments={
+                    "port": str(visualization_cfg.get("port", 8765)),
+                    "address": str(visualization_cfg.get("address", "0.0.0.0")),
+                }.items(),
             )
         )
 

@@ -26,3 +26,9 @@ localization:
 ekf:
   enabled: true
   config: ekf.yaml
+
+visualization:
+  enabled: false
+  backend: foxglove
+  port: 8765
+  address: 127.0.0.1

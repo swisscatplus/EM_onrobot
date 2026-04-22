@@ -26,6 +26,7 @@ Current behavior of `home_windows`:
 - fake movement
 - fake IMU
 - no camera
+- Foxglove bridge enabled on port `8765`
 - no RViz by default
 
 ### Start
@@ -58,6 +59,29 @@ docker compose -f compose.yaml logs -f em_robot_home_windows
 docker compose -f compose.yaml exec em_robot_home_windows bash
 ```
 
+### Open the Visualizer
+
+1. Start the container:
+
+```powershell
+.\start_dev.ps1
+```
+
+2. Open Foxglove in your browser or desktop app.
+3. Create a new connection using:
+
+```text
+ws://localhost:8765
+```
+
+Recommended first panels:
+
+- `3D`
+- `Raw Messages`
+- `Plot`
+- `Topic Graph`
+- `Publish`
+
 ### Rebuild the Container
 
 ```powershell
@@ -80,6 +104,7 @@ Current behavior of `work_ubuntu`:
 - fake IMU
 - OpenCV camera backend
 - RViz enabled
+- Foxglove bridge enabled on port `8765`
 
 ### Start
 
@@ -120,6 +145,14 @@ Set the camera device before starting:
 ```bash
 export EM_ROBOT_CAMERA_DEVICE=/dev/video1
 ./start_dev.sh work_ubuntu
+```
+
+### Open Foxglove
+
+Connect to:
+
+```text
+ws://localhost:8765
 ```
 
 ## 4. Real Robot Development on the Raspberry Pi
@@ -191,7 +224,25 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0
 ros2 topic echo /bno055/imu
 ```
 
-## 6. Profiles
+## 6. What Windows Can Visualize Now
+
+With the Foxglove bridge enabled in `home_windows`, Windows is now useful for visual debugging of:
+
+- `/odomWheel`
+- `/odometry/filtered`
+- `/bno055/imu`
+- `/tf`
+- `/cmd_vel`
+
+That means you can:
+
+- publish `cmd_vel`
+- watch odometry evolve
+- inspect the TF tree
+- plot values over time
+- understand whether the fake stack is behaving correctly
+
+## 7. Profiles
 
 Profile files live here:
 
@@ -209,7 +260,7 @@ These files decide which backends are used:
 
 If you want to change behavior, start by editing the relevant profile.
 
-## 7. Most Common Recovery Commands
+## 8. Most Common Recovery Commands
 
 ### Stop Everything
 
@@ -255,7 +306,7 @@ Ubuntu:
 docker compose -f compose.yaml -f compose.ubuntu.yaml build --no-cache em_robot_work_ubuntu
 ```
 
-## 8. Mental Model
+## 9. Mental Model
 
 When in doubt:
 

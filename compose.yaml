@@ -12,6 +12,8 @@ x-em-robot-desktop: &em_robot_desktop
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
   volumes:
     - .:/ros2_ws
+  ports:
+    - "${FOXGLOVE_PORT:-8765}:8765"
 
 services:
   em_robot_home_windows:

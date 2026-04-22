@@ -181,10 +181,12 @@ EM_ROBOT_PROFILE_VALUE=real_robot ./deploy_dev.sh
 
 For desktop development, the repository now includes a separate Docker image and Compose setup focused on development instead of Raspberry Pi hardware access.
 
+For day-to-day commands and troubleshooting, see [DEVELOPMENT_WORKFLOWS.md](./DEVELOPMENT_WORKFLOWS.md).
+
 ### Profiles
 
-- `home_windows`: fake movement, fake IMU, no camera, no RViz by default
-- `work_ubuntu`: fake movement, fake IMU, OpenCV camera backend, RViz enabled
+- `home_windows`: fake movement, fake IMU, no camera, Foxglove bridge enabled
+- `work_ubuntu`: fake movement, fake IMU, OpenCV camera backend, RViz enabled, Foxglove bridge enabled
 - `real_robot`: current on-robot runtime profile
 
 ### Windows
@@ -205,6 +207,7 @@ Useful variants:
 ```
 
 On Windows, this setup is intended for fake-sensor and logic development. It does not assume direct camera passthrough into the container.
+You can visualize the running ROS graph by connecting Foxglove to `ws://localhost:8765`.
 
 ### Ubuntu
 
@@ -243,6 +246,7 @@ Compose reads environment variables from the shell and optionally from a local `
 - `ROS_DOMAIN_ID`
 - `RMW_IMPLEMENTATION`
 - `EM_ROBOT_CAMERA_DEVICE`
+- `FOXGLOVE_PORT`
 
 ### Notes
 
