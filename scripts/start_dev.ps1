@@ -13,10 +13,15 @@ if ($Profile -eq "home_windows") {
     exit $LASTEXITCODE
 }
 
+if ($Profile -eq "desktop_replay") {
+    docker compose -f $composeFile --profile desktop_replay $Action em_robot_desktop_replay
+    exit $LASTEXITCODE
+}
+
 if ($Profile -eq "work_ubuntu") {
     docker compose -f $composeFile -f $composeUbuntuFile --profile work_ubuntu $Action em_robot_work_ubuntu
     exit $LASTEXITCODE
 }
 
-Write-Error "Unsupported profile '$Profile'. Use home_windows or work_ubuntu."
+Write-Error "Unsupported profile '$Profile'. Use home_windows, desktop_replay, or work_ubuntu."
 exit 1

@@ -35,8 +35,10 @@ setup(
     entry_points={
         'console_scripts': [
             'base_controller = em_robot.base_controller_node:main',
+            'marker_map_publisher = em_robot.marker_map_publisher:main',
             'localization = em_robot.localization_node:main',
             'imu_mock = em_robot.imu_mock_node:main',
+            'robot_diagnostics = em_robot.robot_diagnostics_node:main',
         ],
     },
 )

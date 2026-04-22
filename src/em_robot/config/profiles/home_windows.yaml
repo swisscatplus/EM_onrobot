@@ -6,12 +6,14 @@ movement:
   backend: fake
   max_speed: 0.8
   odom_rate: 30.0
+  cmd_vel_timeout: 0.25
 
 imu:
   enabled: true
   backend: fake
   rate_hz: 30.0
   yaw_rate: 0.0
+  follow_cmd_vel: true
   static_tf_parent: base_link
   static_tf_child: bno055
   static_tf_xyzrpy: [0, 0, 0, 0, 0, 0]
@@ -23,10 +25,14 @@ localization:
 
 ekf:
   enabled: true
-  config: ekf.yaml
+  config: ekf_desktop.yaml
 
 visualization:
   enabled: true
   backend: foxglove
   port: 8765
   address: 0.0.0.0
+
+diagnostics:
+  enabled: true
+  publish_rate_hz: 1.0

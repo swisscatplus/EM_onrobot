@@ -12,6 +12,11 @@ x-em-robot-desktop: &em_robot_desktop
     RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
   volumes:
     - ..:/ros2_ws
+    # Keep colcon artifacts inside Linux volumes so Windows host mounts
+    # do not accumulate broken symlinks from --symlink-install builds.
+    - em_robot_colcon_build:/ros2_ws/build
+    - em_robot_colcon_install:/ros2_ws/install
+    - em_robot_colcon_log:/ros2_ws/log
   ports:
     - "${FOXGLOVE_PORT:-8765}:8765"
 
@@ -26,6 +31,16 @@ services:
       source install/setup.bash &&
       ros2 launch em_robot bringup.launch.py profile:=home_windows"
 
+  em_robot_desktop_replay:
+    <<: *em_robot_desktop
+    profiles: ["desktop_replay"]
+    command: >
+      bash -lc "source /opt/ros/$$ROS_DISTRO/setup.bash &&
+      cd /ros2_ws &&
+      colcon build --symlink-install --packages-select em_robot em_robot_srv bno055 &&
+      source install/setup.bash &&
+      ros2 launch em_robot bringup.launch.py profile:=desktop_replay"
+
   em_robot_work_ubuntu:
     <<: *em_robot_desktop
     profiles: ["work_ubuntu"]
@@ -35,3 +50,8 @@ services:
       colcon build --symlink-install --packages-select em_robot em_robot_srv bno055 &&
       source install/setup.bash &&
       ros2 launch em_robot bringup.launch.py profile:=work_ubuntu"
+
+volumes:
+  em_robot_colcon_build:
+  em_robot_colcon_install:
+  em_robot_colcon_log:

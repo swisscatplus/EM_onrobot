@@ -21,6 +21,14 @@ def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
     )
 
 
+def _resolve_config_path(config_dir, value):
+    if not value:
+        return ""
+    if os.path.isabs(value):
+        return value
+    return os.path.join(config_dir, value)
+
+
 def _build_nodes(context):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile_path = LaunchConfiguration("profile_path").perform(context)
@@ -84,6 +92,27 @@ def _build_nodes(context):
             )
 
     localization_cfg = profile.get("localization", {})
+    marker_map_cfg = profile.get("marker_map", {})
+    if marker_map_cfg.get("enabled", False):
+        nodes.append(
+            Node(
+                package="em_robot",
+                executable="marker_map_publisher",
+                parameters=[
+                    {
+                        "config_file": _resolve_config_path(
+                            config_dir,
+                            marker_map_cfg.get("config", "marker_map.yaml"),
+                        ),
+                        "diagnostics_rate_hz": float(
+                            marker_map_cfg.get("diagnostics_rate_hz", 1.0)
+                        ),
+                    }
+                ],
+                output="screen",
+            )
+        )
+
     if localization_cfg.get("enabled", True):
         nodes.append(
             Node(
@@ -93,7 +122,11 @@ def _build_nodes(context):
                     {
                         "camera_backend": localization_cfg.get("camera_backend", "picamera2"),
                         "camera_source": str(localization_cfg.get("source", "0")),
+                        "camera_loop": bool(localization_cfg.get("loop", False)),
                         "config_file": os.path.join(config_dir, "calibration.yaml"),
+                        "diagnostics_rate_hz": float(
+                            localization_cfg.get("diagnostics_rate_hz", 1.0)
+                        ),
                     }
                 ],
                 output="screen",
@@ -107,7 +140,39 @@ def _build_nodes(context):
                 package="robot_localization",
                 executable="ekf_node",
                 name="ekf_filter_node",
-                parameters=[os.path.join(config_dir, ekf_cfg.get("config", "ekf.yaml"))],
+                parameters=[
+                    _resolve_config_path(config_dir, ekf_cfg.get("config", "ekf_real.yaml"))
+                ],
+                output="screen",
+            )
+        )
+
+    diagnostics_cfg = profile.get("diagnostics", {})
+    if diagnostics_cfg.get("enabled", True):
+        expected_imu_rate = imu_cfg.get("expected_rate_hz")
+        if expected_imu_rate is None:
+            if imu_cfg.get("backend", "bno055") == "bno055":
+                expected_imu_rate = 100.0
+            else:
+                expected_imu_rate = imu_cfg.get("rate_hz", 30.0)
+
+        nodes.append(
+            Node(
+                package="em_robot",
+                executable="robot_diagnostics",
+                parameters=[
+                    {
+                        "publish_rate_hz": float(diagnostics_cfg.get("publish_rate_hz", 1.0)),
+                        "cmd_vel_timeout": float(movement_cfg.get("cmd_vel_timeout", 0.25)),
+                        "expected_odom_rate": float(movement_cfg.get("odom_rate", 0.0)),
+                        "expected_imu_rate": float(expected_imu_rate),
+                        "expected_filtered_odom_rate": float(
+                            diagnostics_cfg.get("expected_filtered_odom_rate", 30.0)
+                        ),
+                        "localization_expected": bool(localization_cfg.get("enabled", False)),
+                        "filtered_odom_expected": bool(ekf_cfg.get("enabled", False)),
+                    }
+                ],
                 output="screen",
             )
         )

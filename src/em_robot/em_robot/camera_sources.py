@@ -25,9 +25,10 @@ class PicameraSource:
 
 
 class OpenCVCameraSource:
-    def __init__(self, source, image_size):
+    def __init__(self, source, image_size, loop=False):
         source_value = int(source) if str(source).isdigit() else source
         self._capture = cv.VideoCapture(source_value)
+        self._loop = loop
         if image_size:
             self._capture.set(cv.CAP_PROP_FRAME_WIDTH, image_size[0])
             self._capture.set(cv.CAP_PROP_FRAME_HEIGHT, image_size[1])
@@ -37,6 +38,9 @@ class OpenCVCameraSource:
 
     def capture(self):
         ok, frame = self._capture.read()
+        if not ok and self._loop:
+            self._capture.set(cv.CAP_PROP_POS_FRAMES, 0)
+            ok, frame = self._capture.read()
         if not ok:
             raise RuntimeError("Failed to read frame from OpenCV camera source")
         return frame
@@ -45,9 +49,9 @@ class OpenCVCameraSource:
         self._capture.release()
 
 
-def create_camera_source(camera_backend, source, image_size, lens_position):
+def create_camera_source(camera_backend, source, image_size, lens_position, loop=False):
     if camera_backend == "picamera2":
         return PicameraSource(image_size=image_size, lens_position=lens_position)
     if camera_backend == "opencv":
-        return OpenCVCameraSource(source=source, image_size=image_size)
+        return OpenCVCameraSource(source=source, image_size=image_size, loop=loop)
     raise ValueError(f"Unsupported camera backend: {camera_backend}")

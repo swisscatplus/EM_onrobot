@@ -16,9 +16,12 @@ case "$PROFILE" in
   home_windows)
     docker compose -f "$COMPOSE_FILE" --profile home_windows "$ACTION" em_robot_home_windows
     ;;
+  desktop_replay)
+    docker compose -f "$COMPOSE_FILE" --profile desktop_replay "$ACTION" em_robot_desktop_replay
+    ;;
   *)
     echo "Unsupported profile: $PROFILE"
-    echo "Use one of: work_ubuntu, home_windows"
+    echo "Use one of: work_ubuntu, home_windows, desktop_replay"
     exit 1
     ;;
 esac

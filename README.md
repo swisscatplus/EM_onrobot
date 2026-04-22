@@ -51,6 +51,7 @@ Available profiles:
 | Profile | Intended system | Movement | IMU | Camera | Visual tools |
 |---|---|---|---|---|---|
 | `home_windows` | Windows desktop | fake | fake | disabled | Foxglove |
+| `desktop_replay` | Windows or desktop replay | fake | fake | OpenCV video file | Foxglove |
 | `work_ubuntu` | Ubuntu desktop | fake | fake | OpenCV device | RViz + Foxglove |
 | `real_robot` | Raspberry Pi on robot | real | BNO055 | Picamera2 | none by default |
 
@@ -64,9 +65,11 @@ Use this for logic development and visualization from Docker Desktop.
 
 Behavior:
 - fake base controller
-- fake IMU
+- fake IMU that follows `/cmd_vel.angular.z`
+- `cmd_vel` watchdog stop after `0.25 s` without new commands
 - no localization camera
 - Foxglove bridge on port `8765`
+- diagnostics on `/diagnostics`
 
 Start:
 
@@ -92,9 +95,39 @@ Shell:
 docker compose -f docker/compose.yaml exec em_robot_home_windows bash
 ```
 
+Keyboard teleop:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /ros2_ws/install/setup.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/cmd_vel -p repeat_rate:=30.0 -p key_timeout:=0.3
+```
+
 Foxglove:
 - connect to `ws://localhost:8765`
-- useful topics: `/odomWheel`, `/odometry/filtered`, `/bno055/imu`, `/tf`, `/cmd_vel`
+- useful topics: `/odomWheel`, `/odometry/filtered`, `/bno055/imu`, `/tf`, `/cmd_vel`, `/diagnostics`
+
+### Desktop Replay
+
+Use this to test localization from a recorded video instead of a live camera.
+
+Behavior:
+- fake base controller
+- fake IMU that follows `/cmd_vel.angular.z`
+- localization enabled through an OpenCV video file
+- marker map loaded from `src/em_robot/config/marker_map.yaml`
+- Foxglove bridge on port `8765`
+
+Start:
+
+```powershell
+.\scripts\start_dev.ps1 -Profile desktop_replay
+```
+
+Video source:
+- default file: `data/replays/localization.mp4`
+- profile: [`src/em_robot/config/profiles/desktop_replay.yaml`](./src/em_robot/config/profiles/desktop_replay.yaml)
+- place your replay video at that path, or edit the profile to another file
 
 ### Ubuntu
 
@@ -102,10 +135,12 @@ Use this for desktop testing with fake motion and IMU, but with a non-robot came
 
 Behavior:
 - fake base controller
-- fake IMU
+- fake IMU that follows `/cmd_vel.angular.z`
+- `cmd_vel` watchdog stop after `0.25 s` without new commands
 - localization enabled through an OpenCV camera source
 - RViz enabled
 - Foxglove bridge on port `8765`
+- diagnostics on `/diagnostics`
 
 Start:
 
@@ -224,6 +259,7 @@ ros2 node list
 ros2 topic list
 ros2 topic echo /odomWheel
 ros2 topic echo /bno055/imu
+ros2 topic echo /diagnostics
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}"
 ```
 
@@ -236,6 +272,7 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0
 | `/cmd_vel` | `geometry_msgs/Twist` | Velocity command input for the base |
 | `/odomWheel` | `nav_msgs/Odometry` | Wheel odometry from the real or fake base controller |
 | `/bno055/imu` | `sensor_msgs/Imu` | IMU orientation and angular velocity |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | Runtime health for command link, sensors, filter, and localization |
 
 ### Services
 
@@ -268,6 +305,7 @@ Important operational files:
 - [`scripts/buildBase.sh`](./scripts/buildBase.sh): base image build/push helper
 - [`scripts/buildBaseLocal.sh`](./scripts/buildBaseLocal.sh): local base image build helper
 - [`config/fastdds.xml`](./config/fastdds.xml): Fast DDS transport config
+- [`src/em_robot/config/marker_map.yaml`](./src/em_robot/config/marker_map.yaml): static ArUco marker map used by localization
 - [`DEVELOPMENT_WORKFLOWS.md`](./DEVELOPMENT_WORKFLOWS.md): shorter day-to-day command reference
 
 ## Repository Layout

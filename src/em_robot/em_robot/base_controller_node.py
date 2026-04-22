@@ -36,6 +36,7 @@ class BaseControllerNode(Node):
         self.declare_parameter("backend", "real")
         self.declare_parameter("max_speed", 1000.0)
         self.declare_parameter("odom_rate", 30.0)
+        self.declare_parameter("cmd_vel_timeout", 0.25)
         self.declare_parameter("device_name", "/dev/dynamixel")
         self.declare_parameter("baudrate", 57600)
         self.declare_parameter("right_motor_id", 2)
@@ -44,6 +45,7 @@ class BaseControllerNode(Node):
         self.backend = self.get_parameter("backend").value
         self.max_speed = float(self.get_parameter("max_speed").value)
         self.odom_rate = float(self.get_parameter("odom_rate").value)
+        self.cmd_vel_timeout = float(self.get_parameter("cmd_vel_timeout").value)
         self.device_name = self.get_parameter("device_name").value
         self.baudrate = int(self.get_parameter("baudrate").value)
         self.right_motor_id = int(self.get_parameter("right_motor_id").value)
@@ -58,8 +60,11 @@ class BaseControllerNode(Node):
         self.prev_position_r = None
         self.prev_position_l = None
         self.prev_time = self.get_clock().now()
+        self.last_cmd_time = None
         self.last_cmd_linear = 0.0
         self.last_cmd_angular = 0.0
+        self.cmd_vel_stale = False
+        self.watchdog_trip_count = 0
         self.port_handler = None
         self.packet_handler = None
 
@@ -94,6 +99,11 @@ class BaseControllerNode(Node):
     def cmd_vel_callback(self, msg: Twist):
         self.last_cmd_linear = float(msg.linear.x)
         self.last_cmd_angular = float(msg.angular.z)
+        self.last_cmd_time = self.get_clock().now()
+
+        if self.cmd_vel_stale:
+            self.get_logger().info("cmd_vel resumed; base controller watchdog cleared")
+            self.cmd_vel_stale = False
 
         if self.backend != "real":
             return
@@ -111,8 +121,30 @@ class BaseControllerNode(Node):
             self.port_handler, self.left_motor_id, ADDR_GOAL_VELOCITY, motor_speed_l
         )
 
+    def apply_cmd_vel_watchdog(self, now):
+        if self.cmd_vel_timeout <= 0.0 or self.last_cmd_time is None:
+            return
+
+        cmd_age = (now - self.last_cmd_time).nanoseconds / 1e9
+        if cmd_age <= self.cmd_vel_timeout:
+            return
+
+        if not self.cmd_vel_stale:
+            self.watchdog_trip_count += 1
+            self.cmd_vel_stale = True
+            self.get_logger().warn(
+                f"cmd_vel timed out after {cmd_age:.3f}s; stopping base "
+                f"(watchdog trip #{self.watchdog_trip_count})"
+            )
+            if self.backend == "real":
+                self.stop_motors()
+
+        self.last_cmd_linear = 0.0
+        self.last_cmd_angular = 0.0
+
     def odom_callback(self):
         now = self.get_clock().now()
+        self.apply_cmd_vel_watchdog(now)
         dt = (now - self.prev_time).nanoseconds / 1e9
 
         if self.backend == "real":

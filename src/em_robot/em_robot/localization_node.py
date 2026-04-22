@@ -7,8 +7,10 @@ import numpy as np
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from em_robot_srv.srv import SetInitialPose
 from em_robot.camera_sources import create_camera_source
+from em_robot.diagnostic_utils import build_diagnostic_array, build_diagnostic_status
 from em_robot.transform_utils import (
     blend_angles,
     build_transform,
@@ -54,6 +56,8 @@ class LocalizationNode(Node):
         self.declare_parameter("config_file", "")
         self.declare_parameter("camera_backend", "picamera2")
         self.declare_parameter("camera_source", "0")
+        self.declare_parameter("camera_loop", False)
+        self.declare_parameter("diagnostics_rate_hz", 1.0)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -62,6 +66,8 @@ class LocalizationNode(Node):
         )
         self.camera_backend = self.get_parameter("camera_backend").value
         self.camera_source = self.get_parameter("camera_source").value
+        self.camera_loop = bool(self.get_parameter("camera_loop").value)
+        self.diagnostics_rate_hz = float(self.get_parameter("diagnostics_rate_hz").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -116,6 +122,7 @@ class LocalizationNode(Node):
             source=self.camera_source,
             image_size=self.image_size,
             lens_position=self.lens_position,
+            loop=self.camera_loop,
         )
         self.get_logger().info(
             f"Camera backend '{self.camera_backend}' initialized with source '{self.camera_source}'"
@@ -129,13 +136,21 @@ class LocalizationNode(Node):
         self.set_pose_srv = self.create_service(
             SetInitialPose, "set_initial_pose", self.handle_set_initial_pose
         )
+        self.diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
 
         self.last_map_to_odom = np.identity(4, dtype=np.float64)
-        self.last_marker_time = self.get_clock().now()
+        self.last_marker_time = None
+        self.last_frame_time = None
         self.last_debug_log_time = self.get_clock().now()
         self.last_tf_fallback_log_time = self.get_clock().now()
         self.last_update_log_time = self.get_clock().now()
+        self.last_camera_error_log_time = self.get_clock().now()
         self.has_map_lock = False
+        self.last_camera_error = ""
+        self.last_detection_count = 0
+        self.last_rejected_for_gating = 0
+        self.last_rejected_for_reprojection = 0
+        self.last_missing_marker_tf = 0
 
         self.publish_static_transform()
         self.publish_initial_map_to_odom()
@@ -143,6 +158,8 @@ class LocalizationNode(Node):
         timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
         self.timer = self.create_timer(timer_period, self.process_frame)
         self.map_odom_timer = self.create_timer(0.2, self.broadcast_last_map_to_odom)
+        diagnostics_period = 1.0 / self.diagnostics_rate_hz if self.diagnostics_rate_hz > 0.0 else 1.0
+        self.diagnostics_timer = self.create_timer(diagnostics_period, self.publish_diagnostics)
 
     def publish_static_transform(self):
         transform = build_transform(
@@ -264,8 +281,22 @@ class LocalizationNode(Node):
 
     def process_frame(self):
         capture_stamp = self.get_clock().now()
-        frame = self.camera.capture()
+        try:
+            frame = self.camera.capture()
+        except Exception as exc:
+            self.last_camera_error = str(exc)
+            if (capture_stamp - self.last_camera_error_log_time).nanoseconds > int(2e9):
+                self.get_logger().warn(f"Camera capture failed: {exc}")
+                self.last_camera_error_log_time = capture_stamp
+            return
+
+        self.last_frame_time = capture_stamp
+        self.last_camera_error = ""
         detections = detect_aruco_markers(frame)
+        self.last_detection_count = len(detections)
+        self.last_rejected_for_gating = 0
+        self.last_rejected_for_reprojection = 0
+        self.last_missing_marker_tf = 0
         if not detections:
             return
 
@@ -321,6 +352,10 @@ class LocalizationNode(Node):
                     "reprojection_error": reprojection_error,
                 }
             )
+
+        self.last_rejected_for_gating = rejected_for_gating
+        self.last_rejected_for_reprojection = rejected_for_reprojection
+        self.last_missing_marker_tf = missing_marker_tf
 
         if not candidates:
             now = self.get_clock().now()
@@ -420,6 +455,55 @@ class LocalizationNode(Node):
                 f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
             )
             self.last_update_log_time = self.last_marker_time
+
+    def publish_diagnostics(self):
+        now = self.get_clock().now()
+        frame_age = None
+        marker_age = None
+        if self.last_frame_time is not None:
+            frame_age = (now - self.last_frame_time).nanoseconds / 1e9
+        if self.last_marker_time is not None:
+            marker_age = (now - self.last_marker_time).nanoseconds / 1e9
+
+        frame_timeout = max(1.0, 3.0 / self.process_rate_hz) if self.process_rate_hz > 0.0 else 1.0
+        marker_timeout = max(2.0, 5.0 / self.process_rate_hz) if self.process_rate_hz > 0.0 else 2.0
+
+        level = DiagnosticStatus.OK
+        message = "Localization healthy"
+        if self.last_camera_error:
+            level = DiagnosticStatus.ERROR
+            message = "Camera capture is failing"
+        elif frame_age is None or frame_age > frame_timeout:
+            level = DiagnosticStatus.WARN
+            message = "Camera frames are stale"
+        elif not self.has_map_lock:
+            level = DiagnosticStatus.WARN
+            message = "No localization map lock yet"
+        elif marker_age is None or marker_age > marker_timeout:
+            level = DiagnosticStatus.WARN
+            message = "No recent marker-based localization update"
+
+        status = build_diagnostic_status(
+            "em_robot/localization",
+            level,
+            message,
+            values={
+                "camera_backend": self.camera_backend,
+                "camera_source": self.camera_source,
+                "camera_loop": self.camera_loop,
+                "has_map_lock": self.has_map_lock,
+                "last_frame_age_s": "n/a" if frame_age is None else f"{frame_age:.3f}",
+                "last_marker_age_s": "n/a" if marker_age is None else f"{marker_age:.3f}",
+                "last_detection_count": self.last_detection_count,
+                "rejected_for_gating": self.last_rejected_for_gating,
+                "rejected_for_reprojection": self.last_rejected_for_reprojection,
+                "missing_marker_tf": self.last_missing_marker_tf,
+                "camera_error": self.last_camera_error or "none",
+            },
+        )
+        self.diagnostics_pub.publish(
+            build_diagnostic_array([status], self.get_clock().now().to_msg())
+        )
 
     def destroy_node(self):
         if hasattr(self, "camera") and self.camera is not None:
