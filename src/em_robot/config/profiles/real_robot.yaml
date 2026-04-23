@@ -20,7 +20,7 @@ movement:
   startup_motion_gate_linear_delta_v_threshold: 0.03
   startup_motion_gate_gyro_threshold: 0.12
   startup_motion_gate_imu_timeout: 0.2
-  overload_stall_gate_enabled: true
+  overload_stall_gate_enabled: false
   load_stall_gate_enabled: false
   load_stall_gate_confirmation_time: 0.2
   load_stall_gate_linear_velocity_threshold: 0.05
