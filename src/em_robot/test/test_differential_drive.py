@@ -1,18 +1,15 @@
 import math
 
 from em_robot.differential_drive import (
-    LoadStallGateState,
     PoseState,
     StartupMotionGateState,
     apply_pose_delta,
     cmd_vel_to_motor_speeds,
     compute_wheel_odometry_delta,
-    convert_to_signed,
     encoder_delta_limit,
-    hardware_overload_detected,
+    imu_motion_detected,
     integrate_fake_motion,
     normalize_encoder_delta,
-    update_load_stall_gate,
     update_startup_motion_gate,
 )
 
@@ -50,12 +47,6 @@ def test_normalize_encoder_delta_wraps_single_turn_values():
     assert normalize_encoder_delta(-4090) == 6
 
 
-def test_convert_to_signed_supports_16_bit_and_32_bit_values():
-    assert convert_to_signed(0xFFFFFFFF) == -1
-    assert convert_to_signed(0xFFFF, bits=16) == -1
-    assert convert_to_signed(1000, bits=16) == 1000
-
-
 def test_encoder_delta_limit_matches_physical_cycle_budget():
     limit = encoder_delta_limit(1.0 / 30.0)
 
@@ -81,6 +72,12 @@ def test_compute_wheel_odometry_delta_matches_applied_pose_update():
     assert math.isclose(pose_state.y, 0.0, abs_tol=1e-9)
 
 
+def test_imu_motion_detected_accepts_linear_acceleration_or_yaw_rate():
+    assert imu_motion_detected(0.3, 0.0, 0.0, accel_threshold=0.2, gyro_threshold=0.15)
+    assert imu_motion_detected(0.0, 0.0, 0.2, accel_threshold=0.2, gyro_threshold=0.15)
+    assert not imu_motion_detected(0.05, 0.05, 0.01, accel_threshold=0.2, gyro_threshold=0.15)
+
+
 def test_startup_motion_gate_enters_hold_and_then_stall_without_imu_confirmation():
     gate_state = StartupMotionGateState()
 
@@ -88,28 +85,20 @@ def test_startup_motion_gate_enters_hold_and_then_stall_without_imu_confirmation
         gate_state,
         wheel_vx=0.15,
         wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
+        imu_motion_seen=False,
         now_s=1.0,
         linear_velocity_threshold=0.05,
         angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
         confirmation_time_s=0.2,
     )
     second_action = update_startup_motion_gate(
         gate_state,
         wheel_vx=0.15,
         wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
+        imu_motion_seen=False,
         now_s=1.25,
         linear_velocity_threshold=0.05,
         angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
         confirmation_time_s=0.2,
     )
 
@@ -119,102 +108,37 @@ def test_startup_motion_gate_enters_hold_and_then_stall_without_imu_confirmation
     assert not gate_state.motion_confirmed
 
 
-def test_startup_motion_gate_ignores_short_linear_accel_spike_without_enough_delta_v():
-    gate_state = StartupMotionGateState()
-
-    first_action = update_startup_motion_gate(
-        gate_state,
-        wheel_vx=0.15,
-        wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
-        now_s=1.0,
-        linear_velocity_threshold=0.05,
-        angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
-        confirmation_time_s=0.2,
-    )
-    second_action = update_startup_motion_gate(
-        gate_state,
-        wheel_vx=0.15,
-        wheel_vth=0.0,
-        imu_linear_accel_x=0.4,
-        imu_angular_velocity_z=0.0,
-        now_s=1.05,
-        linear_velocity_threshold=0.05,
-        angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
-        confirmation_time_s=0.2,
-    )
-    third_action = update_startup_motion_gate(
-        gate_state,
-        wheel_vx=0.15,
-        wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
-        now_s=1.12,
-        linear_velocity_threshold=0.05,
-        angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
-        confirmation_time_s=0.2,
-    )
-
-    assert first_action == "hold"
-    assert second_action == "hold"
-    assert third_action == "hold"
-    assert not gate_state.motion_confirmed
-    assert gate_state.forward_delta_v < 0.03
-
-
-def test_startup_motion_gate_allows_linear_motion_after_enough_signed_delta_v():
+def test_startup_motion_gate_allows_motion_once_imu_confirms_and_resets_after_stop():
     gate_state = StartupMotionGateState()
 
     hold_action = update_startup_motion_gate(
         gate_state,
         wheel_vx=0.15,
         wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
+        imu_motion_seen=False,
         now_s=1.0,
         linear_velocity_threshold=0.05,
         angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
         confirmation_time_s=0.2,
     )
     allow_action = update_startup_motion_gate(
         gate_state,
         wheel_vx=0.15,
         wheel_vth=0.0,
-        imu_linear_accel_x=0.8,
-        imu_angular_velocity_z=0.0,
+        imu_motion_seen=True,
         now_s=1.05,
         linear_velocity_threshold=0.05,
         angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
         confirmation_time_s=0.2,
     )
     reset_action = update_startup_motion_gate(
         gate_state,
         wheel_vx=0.0,
         wheel_vth=0.0,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
+        imu_motion_seen=False,
         now_s=1.4,
         linear_velocity_threshold=0.05,
         angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
         confirmation_time_s=0.2,
     )
 
@@ -223,137 +147,3 @@ def test_startup_motion_gate_allows_linear_motion_after_enough_signed_delta_v():
     assert reset_action == "allow"
     assert not gate_state.motion_confirmed
     assert not gate_state.stall_active
-
-
-def test_startup_motion_gate_allows_rotation_from_gyro_confirmation():
-    gate_state = StartupMotionGateState()
-
-    hold_action = update_startup_motion_gate(
-        gate_state,
-        wheel_vx=0.0,
-        wheel_vth=0.4,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.0,
-        now_s=1.0,
-        linear_velocity_threshold=0.05,
-        angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
-        confirmation_time_s=0.2,
-    )
-    allow_action = update_startup_motion_gate(
-        gate_state,
-        wheel_vx=0.0,
-        wheel_vth=0.4,
-        imu_linear_accel_x=0.0,
-        imu_angular_velocity_z=0.15,
-        now_s=1.05,
-        linear_velocity_threshold=0.05,
-        angular_velocity_threshold=0.2,
-        linear_accel_deadband=0.15,
-        linear_delta_v_threshold=0.03,
-        angular_velocity_confirmation_threshold=0.12,
-        confirmation_time_s=0.2,
-    )
-
-    assert hold_action == "hold"
-    assert allow_action == "allow"
-
-
-def test_hardware_overload_detected_checks_overload_bit():
-    assert hardware_overload_detected(0x20)
-    assert hardware_overload_detected(0x24)
-    assert not hardware_overload_detected(0x10)
-
-
-def test_load_stall_gate_allows_low_load_motion():
-    gate_state = LoadStallGateState()
-
-    action = update_load_stall_gate(
-        gate_state,
-        wheel_vx=0.15,
-        motor_loads=[120, 180],
-        overload_detected=False,
-        now_s=1.0,
-        linear_velocity_threshold=0.05,
-        load_threshold=450.0,
-        confirmation_time_s=0.2,
-    )
-
-    assert action == "allow"
-    assert not gate_state.stall_active
-    assert gate_state.high_load_started_at is None
-
-
-def test_load_stall_gate_holds_after_sustained_high_load():
-    gate_state = LoadStallGateState()
-
-    first_action = update_load_stall_gate(
-        gate_state,
-        wheel_vx=0.15,
-        motor_loads=[520, 540],
-        overload_detected=False,
-        now_s=1.0,
-        linear_velocity_threshold=0.05,
-        load_threshold=450.0,
-        confirmation_time_s=0.2,
-    )
-    second_action = update_load_stall_gate(
-        gate_state,
-        wheel_vx=0.15,
-        motor_loads=[530, 560],
-        overload_detected=False,
-        now_s=1.25,
-        linear_velocity_threshold=0.05,
-        load_threshold=450.0,
-        confirmation_time_s=0.2,
-    )
-
-    assert first_action == "allow"
-    assert second_action == "hold"
-    assert gate_state.stall_active
-    assert not gate_state.overload_active
-
-
-def test_load_stall_gate_holds_immediately_on_overload():
-    gate_state = LoadStallGateState()
-
-    action = update_load_stall_gate(
-        gate_state,
-        wheel_vx=0.15,
-        motor_loads=[100, 140],
-        overload_detected=True,
-        now_s=1.0,
-        linear_velocity_threshold=0.05,
-        load_threshold=450.0,
-        confirmation_time_s=0.2,
-    )
-
-    assert action == "hold"
-    assert gate_state.stall_active
-    assert gate_state.overload_active
-
-
-def test_load_stall_gate_resets_after_motion_stops():
-    gate_state = LoadStallGateState(
-        high_load_started_at=1.0,
-        stall_active=True,
-        overload_active=True,
-    )
-
-    action = update_load_stall_gate(
-        gate_state,
-        wheel_vx=0.0,
-        motor_loads=[0, 0],
-        overload_detected=False,
-        now_s=1.4,
-        linear_velocity_threshold=0.05,
-        load_threshold=450.0,
-        confirmation_time_s=0.2,
-    )
-
-    assert action == "allow"
-    assert gate_state.high_load_started_at is None
-    assert not gate_state.stall_active
-    assert not gate_state.overload_active

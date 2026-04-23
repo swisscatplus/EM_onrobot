@@ -8,7 +8,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import Imu
 
 from em_robot.differential_drive import (
-    LoadStallGateState,
     PoseState,
     StartupMotionGateState,
     apply_pose_delta,
@@ -16,10 +15,9 @@ from em_robot.differential_drive import (
     compute_wheel_odometry_delta,
     convert_to_signed,
     encoder_delta_limit,
-    hardware_overload_detected,
+    imu_motion_detected,
     integrate_fake_motion,
     normalize_encoder_delta,
-    update_load_stall_gate,
     update_startup_motion_gate,
 )
 
@@ -32,11 +30,8 @@ except ImportError:  # pragma: no cover - depends on runtime image
 
 
 ADDR_TORQUE_ENABLE = 64
-ADDR_HARDWARE_ERROR_STATUS = 70
 ADDR_GOAL_VELOCITY = 104
-ADDR_PRESENT_LOAD = 126
 ADDR_PRESENT_POSITION = 132
-DYNAMIXEL_OVERLOAD_ERROR_BIT = 0x20
 TORQUE_ENABLE = 1
 
 
@@ -59,14 +54,8 @@ class BaseControllerNode(Node):
         self.declare_parameter("startup_motion_gate_linear_velocity_threshold", 0.05)
         self.declare_parameter("startup_motion_gate_angular_velocity_threshold", 0.2)
         self.declare_parameter("startup_motion_gate_accel_threshold", 0.15)
-        self.declare_parameter("startup_motion_gate_linear_delta_v_threshold", 0.03)
         self.declare_parameter("startup_motion_gate_gyro_threshold", 0.12)
         self.declare_parameter("startup_motion_gate_imu_timeout", 0.2)
-        self.declare_parameter("overload_stall_gate_enabled", False)
-        self.declare_parameter("load_stall_gate_enabled", False)
-        self.declare_parameter("load_stall_gate_confirmation_time", 0.2)
-        self.declare_parameter("load_stall_gate_linear_velocity_threshold", 0.05)
-        self.declare_parameter("load_stall_gate_load_threshold", 450.0)
 
         self.backend = self.get_parameter("backend").value
         self.max_speed = float(self.get_parameter("max_speed").value)
@@ -92,29 +81,11 @@ class BaseControllerNode(Node):
         self.startup_motion_gate_accel_threshold = float(
             self.get_parameter("startup_motion_gate_accel_threshold").value
         )
-        self.startup_motion_gate_linear_delta_v_threshold = float(
-            self.get_parameter("startup_motion_gate_linear_delta_v_threshold").value
-        )
         self.startup_motion_gate_gyro_threshold = float(
             self.get_parameter("startup_motion_gate_gyro_threshold").value
         )
         self.startup_motion_gate_imu_timeout = float(
             self.get_parameter("startup_motion_gate_imu_timeout").value
-        )
-        self.overload_stall_gate_enabled = bool(
-            self.get_parameter("overload_stall_gate_enabled").value
-        )
-        self.load_stall_gate_enabled = bool(
-            self.get_parameter("load_stall_gate_enabled").value
-        )
-        self.load_stall_gate_confirmation_time = float(
-            self.get_parameter("load_stall_gate_confirmation_time").value
-        )
-        self.load_stall_gate_linear_velocity_threshold = float(
-            self.get_parameter("load_stall_gate_linear_velocity_threshold").value
-        )
-        self.load_stall_gate_load_threshold = float(
-            self.get_parameter("load_stall_gate_load_threshold").value
         )
         self.max_pos_step = self.max_speed / self.odom_rate
 
@@ -141,9 +112,6 @@ class BaseControllerNode(Node):
         self.last_imu_angular_velocity_z = 0.0
         self.motion_gate_state = StartupMotionGateState()
         self.startup_stall_hold_count = 0
-        self.load_stall_gate_state = LoadStallGateState()
-        self.load_stall_hold_count = 0
-        self.overload_hold_count = 0
 
         if self.startup_motion_gate_enabled:
             self.imu_subscription = self.create_subscription(
@@ -199,47 +167,6 @@ class BaseControllerNode(Node):
             return None
 
         return convert_to_signed(present_position)
-
-    def _read_present_load(self, motor_id):
-        present_load, comm_result, error = self.packet_handler.read2ByteTxRx(
-            self.port_handler, motor_id, ADDR_PRESENT_LOAD
-        )
-
-        if comm_result != COMM_SUCCESS:
-            message = self.packet_handler.getTxRxResult(comm_result)
-            self.get_logger().warn(f"Failed to read present load for motor ID={motor_id}: {message}")
-            return None
-
-        if error != 0:
-            message = self.packet_handler.getRxPacketError(error)
-            self.get_logger().warn(
-                f"Dynamixel reported a hardware error while reading load for motor ID={motor_id}: {message}"
-            )
-            return None
-
-        return convert_to_signed(present_load, bits=16)
-
-    def _read_hardware_error_status(self, motor_id):
-        hardware_error_status, comm_result, error = self.packet_handler.read1ByteTxRx(
-            self.port_handler, motor_id, ADDR_HARDWARE_ERROR_STATUS
-        )
-
-        if comm_result != COMM_SUCCESS:
-            message = self.packet_handler.getTxRxResult(comm_result)
-            self.get_logger().warn(
-                f"Failed to read hardware error status for motor ID={motor_id}: {message}"
-            )
-            return None
-
-        if error != 0:
-            message = self.packet_handler.getRxPacketError(error)
-            self.get_logger().warn(
-                "Dynamixel reported a hardware error while reading hardware error "
-                f"status for motor ID={motor_id}: {message}"
-            )
-            return None
-
-        return hardware_error_status
 
     def imu_callback(self, msg: Imu):
         self.last_imu_time = self.get_clock().now()
@@ -321,13 +248,6 @@ class BaseControllerNode(Node):
         self.motion_gate_state.motion_confirmed = False
         self.motion_gate_state.validation_started_at = None
         self.motion_gate_state.stall_active = False
-        self.motion_gate_state.last_update_at = None
-        self.motion_gate_state.forward_delta_v = 0.0
-
-    def _reset_load_stall_gate(self):
-        self.load_stall_gate_state.high_load_started_at = None
-        self.load_stall_gate_state.stall_active = False
-        self.load_stall_gate_state.overload_active = False
 
     def _imu_is_fresh(self, now):
         if self.last_imu_time is None:
@@ -343,19 +263,23 @@ class BaseControllerNode(Node):
             self._reset_startup_motion_gate()
             return False
 
+        imu_motion_seen = imu_motion_detected(
+            linear_accel_x=self.last_imu_linear_accel_x,
+            linear_accel_y=self.last_imu_linear_accel_y,
+            angular_velocity_z=self.last_imu_angular_velocity_z,
+            accel_threshold=self.startup_motion_gate_accel_threshold,
+            gyro_threshold=self.startup_motion_gate_gyro_threshold,
+        )
+
         was_stalled = self.motion_gate_state.stall_active
         action = update_startup_motion_gate(
             self.motion_gate_state,
             wheel_vx=wheel_vx,
             wheel_vth=wheel_vth,
-            imu_linear_accel_x=self.last_imu_linear_accel_x,
-            imu_angular_velocity_z=self.last_imu_angular_velocity_z,
+            imu_motion_seen=imu_motion_seen,
             now_s=now.nanoseconds / 1e9,
             linear_velocity_threshold=self.startup_motion_gate_linear_velocity_threshold,
             angular_velocity_threshold=self.startup_motion_gate_angular_velocity_threshold,
-            linear_accel_deadband=self.startup_motion_gate_accel_threshold,
-            linear_delta_v_threshold=self.startup_motion_gate_linear_delta_v_threshold,
-            angular_velocity_confirmation_threshold=self.startup_motion_gate_gyro_threshold,
             confirmation_time_s=self.startup_motion_gate_confirmation_time,
         )
 
@@ -367,84 +291,6 @@ class BaseControllerNode(Node):
             )
         elif was_stalled and action == "allow":
             self.get_logger().info("Resuming wheel odometry after IMU confirmed body motion")
-
-        return action == "hold"
-
-    def _should_hold_load_stall(self, now, wheel_vx):
-        if not self.overload_stall_gate_enabled and not self.load_stall_gate_enabled:
-            return False
-
-        if abs(wheel_vx) < self.load_stall_gate_linear_velocity_threshold:
-            self._reset_load_stall_gate()
-            return False
-
-        right_hardware_error_status = self._read_hardware_error_status(self.right_motor_id)
-        left_hardware_error_status = self._read_hardware_error_status(self.left_motor_id)
-        if right_hardware_error_status is None or left_hardware_error_status is None:
-            self._reset_load_stall_gate()
-            return False
-
-        overload_detected = False
-        if self.overload_stall_gate_enabled:
-            overload_detected = hardware_overload_detected(
-                right_hardware_error_status,
-                overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
-            ) or hardware_overload_detected(
-                left_hardware_error_status,
-                overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
-            )
-
-        if overload_detected:
-            was_stalled = self.load_stall_gate_state.stall_active
-            action = update_load_stall_gate(
-                self.load_stall_gate_state,
-                wheel_vx=wheel_vx,
-                motor_loads=[],
-                overload_detected=True,
-                now_s=now.nanoseconds / 1e9,
-                linear_velocity_threshold=self.load_stall_gate_linear_velocity_threshold,
-                load_threshold=self.load_stall_gate_load_threshold,
-                confirmation_time_s=self.load_stall_gate_confirmation_time,
-            )
-            if self.load_stall_gate_state.stall_active and not was_stalled:
-                self.overload_hold_count += 1
-                self.get_logger().warn(
-                    "Holding wheel odometry because a Dynamixel reported overload "
-                    f"(overload hold #{self.overload_hold_count})"
-                )
-            return action == "hold"
-
-        if not self.load_stall_gate_enabled:
-            self._reset_load_stall_gate()
-            return False
-
-        right_motor_load = self._read_present_load(self.right_motor_id)
-        left_motor_load = self._read_present_load(self.left_motor_id)
-        if right_motor_load is None or left_motor_load is None:
-            self._reset_load_stall_gate()
-            return False
-
-        was_stalled = self.load_stall_gate_state.stall_active
-        action = update_load_stall_gate(
-            self.load_stall_gate_state,
-            wheel_vx=wheel_vx,
-            motor_loads=[right_motor_load, left_motor_load],
-            overload_detected=overload_detected,
-            now_s=now.nanoseconds / 1e9,
-            linear_velocity_threshold=self.load_stall_gate_linear_velocity_threshold,
-            load_threshold=self.load_stall_gate_load_threshold,
-            confirmation_time_s=self.load_stall_gate_confirmation_time,
-        )
-
-        if self.load_stall_gate_state.stall_active and not was_stalled:
-            self.load_stall_hold_count += 1
-            self.get_logger().warn(
-                "Holding wheel odometry because both wheel motors report high load: "
-                f"right={right_motor_load}, left={left_motor_load} "
-                f"(load hold #{self.load_stall_hold_count})"
-            )
-        elif was_stalled and action == "allow":
-            self.get_logger().info("Resuming wheel odometry after load/overload stall cleared")
 
         return action == "hold"
 
@@ -489,13 +335,6 @@ class BaseControllerNode(Node):
         self.prev_position_l = current_position_l
 
         if self._should_hold_startup_motion(now, odom_delta["vx"], odom_delta["vth"]):
-            return {
-                "pose": self.pose_state,
-                "vx": 0.0,
-                "vth": 0.0,
-            }
-
-        if self._should_hold_load_stall(now, odom_delta["vx"]):
             return {
                 "pose": self.pose_state,
                 "vx": 0.0,
