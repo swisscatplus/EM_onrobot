@@ -13,11 +13,11 @@ movement:
   left_motor_id: 1
   imu_topic: /bno055/imu
   startup_motion_gate_enabled: true
-  startup_motion_gate_confirmation_time: 0.2
-  startup_motion_gate_linear_velocity_threshold: 0.05
+  startup_motion_gate_confirmation_time: 0.12
+  startup_motion_gate_linear_velocity_threshold: 0.10
   startup_motion_gate_angular_velocity_threshold: 0.2
-  startup_motion_gate_accel_threshold: 0.15
-  startup_motion_gate_linear_delta_v_threshold: 0.03
+  startup_motion_gate_accel_threshold: 0.08
+  startup_motion_gate_linear_delta_v_threshold: 0.015
   startup_motion_gate_gyro_threshold: 0.12
   startup_motion_gate_imu_timeout: 0.2
   overload_stall_gate_enabled: false
