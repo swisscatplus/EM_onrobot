@@ -62,6 +62,7 @@ class BaseControllerNode(Node):
         self.declare_parameter("startup_motion_gate_linear_delta_v_threshold", 0.03)
         self.declare_parameter("startup_motion_gate_gyro_threshold", 0.12)
         self.declare_parameter("startup_motion_gate_imu_timeout", 0.2)
+        self.declare_parameter("overload_stall_gate_enabled", False)
         self.declare_parameter("load_stall_gate_enabled", False)
         self.declare_parameter("load_stall_gate_confirmation_time", 0.2)
         self.declare_parameter("load_stall_gate_linear_velocity_threshold", 0.05)
@@ -99,6 +100,9 @@ class BaseControllerNode(Node):
         )
         self.startup_motion_gate_imu_timeout = float(
             self.get_parameter("startup_motion_gate_imu_timeout").value
+        )
+        self.overload_stall_gate_enabled = bool(
+            self.get_parameter("overload_stall_gate_enabled").value
         )
         self.load_stall_gate_enabled = bool(
             self.get_parameter("load_stall_gate_enabled").value
@@ -367,16 +371,10 @@ class BaseControllerNode(Node):
         return action == "hold"
 
     def _should_hold_load_stall(self, now, wheel_vx):
-        if not self.load_stall_gate_enabled:
+        if not self.overload_stall_gate_enabled and not self.load_stall_gate_enabled:
             return False
 
         if abs(wheel_vx) < self.load_stall_gate_linear_velocity_threshold:
-            self._reset_load_stall_gate()
-            return False
-
-        right_motor_load = self._read_present_load(self.right_motor_id)
-        left_motor_load = self._read_present_load(self.left_motor_id)
-        if right_motor_load is None or left_motor_load is None:
             self._reset_load_stall_gate()
             return False
 
@@ -386,13 +384,45 @@ class BaseControllerNode(Node):
             self._reset_load_stall_gate()
             return False
 
-        overload_detected = hardware_overload_detected(
-            right_hardware_error_status,
-            overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
-        ) or hardware_overload_detected(
-            left_hardware_error_status,
-            overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
-        )
+        overload_detected = False
+        if self.overload_stall_gate_enabled:
+            overload_detected = hardware_overload_detected(
+                right_hardware_error_status,
+                overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
+            ) or hardware_overload_detected(
+                left_hardware_error_status,
+                overload_bit_mask=DYNAMIXEL_OVERLOAD_ERROR_BIT,
+            )
+
+        if overload_detected:
+            was_stalled = self.load_stall_gate_state.stall_active
+            action = update_load_stall_gate(
+                self.load_stall_gate_state,
+                wheel_vx=wheel_vx,
+                motor_loads=[],
+                overload_detected=True,
+                now_s=now.nanoseconds / 1e9,
+                linear_velocity_threshold=self.load_stall_gate_linear_velocity_threshold,
+                load_threshold=self.load_stall_gate_load_threshold,
+                confirmation_time_s=self.load_stall_gate_confirmation_time,
+            )
+            if self.load_stall_gate_state.stall_active and not was_stalled:
+                self.overload_hold_count += 1
+                self.get_logger().warn(
+                    "Holding wheel odometry because a Dynamixel reported overload "
+                    f"(overload hold #{self.overload_hold_count})"
+                )
+            return action == "hold"
+
+        if not self.load_stall_gate_enabled:
+            self._reset_load_stall_gate()
+            return False
+
+        right_motor_load = self._read_present_load(self.right_motor_id)
+        left_motor_load = self._read_present_load(self.left_motor_id)
+        if right_motor_load is None or left_motor_load is None:
+            self._reset_load_stall_gate()
+            return False
 
         was_stalled = self.load_stall_gate_state.stall_active
         action = update_load_stall_gate(
@@ -407,19 +437,12 @@ class BaseControllerNode(Node):
         )
 
         if self.load_stall_gate_state.stall_active and not was_stalled:
-            if self.load_stall_gate_state.overload_active:
-                self.overload_hold_count += 1
-                self.get_logger().warn(
-                    "Holding wheel odometry because a Dynamixel reported overload "
-                    f"(overload hold #{self.overload_hold_count})"
-                )
-            else:
-                self.load_stall_hold_count += 1
-                self.get_logger().warn(
-                    "Holding wheel odometry because both wheel motors report high load: "
-                    f"right={right_motor_load}, left={left_motor_load} "
-                    f"(load hold #{self.load_stall_hold_count})"
-                )
+            self.load_stall_hold_count += 1
+            self.get_logger().warn(
+                "Holding wheel odometry because both wheel motors report high load: "
+                f"right={right_motor_load}, left={left_motor_load} "
+                f"(load hold #{self.load_stall_hold_count})"
+            )
         elif was_stalled and action == "allow":
             self.get_logger().info("Resuming wheel odometry after load/overload stall cleared")
 
