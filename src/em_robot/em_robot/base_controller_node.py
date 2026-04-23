@@ -5,15 +5,20 @@ import rclpy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from sensor_msgs.msg import Imu
 
 from em_robot.differential_drive import (
     PoseState,
+    StartupMotionGateState,
+    apply_pose_delta,
     cmd_vel_to_motor_speeds,
+    compute_wheel_odometry_delta,
     convert_to_signed,
     encoder_delta_limit,
+    imu_motion_detected,
     integrate_fake_motion,
-    integrate_wheel_odometry,
     normalize_encoder_delta,
+    update_startup_motion_gate,
 )
 
 try:
@@ -43,6 +48,14 @@ class BaseControllerNode(Node):
         self.declare_parameter("baudrate", 57600)
         self.declare_parameter("right_motor_id", 2)
         self.declare_parameter("left_motor_id", 1)
+        self.declare_parameter("imu_topic", "/bno055/imu")
+        self.declare_parameter("startup_motion_gate_enabled", False)
+        self.declare_parameter("startup_motion_gate_confirmation_time", 0.2)
+        self.declare_parameter("startup_motion_gate_linear_velocity_threshold", 0.05)
+        self.declare_parameter("startup_motion_gate_angular_velocity_threshold", 0.2)
+        self.declare_parameter("startup_motion_gate_accel_threshold", 0.15)
+        self.declare_parameter("startup_motion_gate_gyro_threshold", 0.12)
+        self.declare_parameter("startup_motion_gate_imu_timeout", 0.2)
 
         self.backend = self.get_parameter("backend").value
         self.max_speed = float(self.get_parameter("max_speed").value)
@@ -52,6 +65,28 @@ class BaseControllerNode(Node):
         self.baudrate = int(self.get_parameter("baudrate").value)
         self.right_motor_id = int(self.get_parameter("right_motor_id").value)
         self.left_motor_id = int(self.get_parameter("left_motor_id").value)
+        self.imu_topic = self.get_parameter("imu_topic").value
+        self.startup_motion_gate_enabled = bool(
+            self.get_parameter("startup_motion_gate_enabled").value
+        )
+        self.startup_motion_gate_confirmation_time = float(
+            self.get_parameter("startup_motion_gate_confirmation_time").value
+        )
+        self.startup_motion_gate_linear_velocity_threshold = float(
+            self.get_parameter("startup_motion_gate_linear_velocity_threshold").value
+        )
+        self.startup_motion_gate_angular_velocity_threshold = float(
+            self.get_parameter("startup_motion_gate_angular_velocity_threshold").value
+        )
+        self.startup_motion_gate_accel_threshold = float(
+            self.get_parameter("startup_motion_gate_accel_threshold").value
+        )
+        self.startup_motion_gate_gyro_threshold = float(
+            self.get_parameter("startup_motion_gate_gyro_threshold").value
+        )
+        self.startup_motion_gate_imu_timeout = float(
+            self.get_parameter("startup_motion_gate_imu_timeout").value
+        )
         self.max_pos_step = self.max_speed / self.odom_rate
 
         self.subscription = self.create_subscription(Twist, "cmd_vel", self.cmd_vel_callback, 10)
@@ -70,6 +105,21 @@ class BaseControllerNode(Node):
         self.encoder_glitch_count = 0
         self.port_handler = None
         self.packet_handler = None
+        self.imu_subscription = None
+        self.last_imu_time = None
+        self.last_imu_linear_accel_x = 0.0
+        self.last_imu_linear_accel_y = 0.0
+        self.last_imu_angular_velocity_z = 0.0
+        self.motion_gate_state = StartupMotionGateState()
+        self.startup_stall_hold_count = 0
+
+        if self.startup_motion_gate_enabled:
+            self.imu_subscription = self.create_subscription(
+                Imu,
+                self.imu_topic,
+                self.imu_callback,
+                10,
+            )
 
         if self.backend == "real":
             self._setup_real_backend()
@@ -117,6 +167,12 @@ class BaseControllerNode(Node):
             return None
 
         return convert_to_signed(present_position)
+
+    def imu_callback(self, msg: Imu):
+        self.last_imu_time = self.get_clock().now()
+        self.last_imu_linear_accel_x = float(msg.linear_acceleration.x)
+        self.last_imu_linear_accel_y = float(msg.linear_acceleration.y)
+        self.last_imu_angular_velocity_z = float(msg.angular_velocity.z)
 
     def cmd_vel_callback(self, msg: Twist):
         self.last_cmd_linear = float(msg.linear.x)
@@ -170,7 +226,7 @@ class BaseControllerNode(Node):
         dt = (now - self.prev_time).nanoseconds / 1e9
 
         if self.backend == "real":
-            odom_data = self._compute_real_odom(dt)
+            odom_data = self._compute_real_odom(now, dt)
         else:
             odom_data = integrate_fake_motion(
                 linear_x=self.last_cmd_linear,
@@ -188,7 +244,57 @@ class BaseControllerNode(Node):
         self.publish_odom(now, odom_data["vx"], odom_data["vth"])
         self.prev_time = now
 
-    def _compute_real_odom(self, dt):
+    def _reset_startup_motion_gate(self):
+        self.motion_gate_state.motion_confirmed = False
+        self.motion_gate_state.validation_started_at = None
+        self.motion_gate_state.stall_active = False
+
+    def _imu_is_fresh(self, now):
+        if self.last_imu_time is None:
+            return False
+        age_s = (now - self.last_imu_time).nanoseconds / 1e9
+        return age_s <= self.startup_motion_gate_imu_timeout
+
+    def _should_hold_startup_motion(self, now, wheel_vx, wheel_vth):
+        if not self.startup_motion_gate_enabled:
+            return False
+
+        if not self._imu_is_fresh(now):
+            self._reset_startup_motion_gate()
+            return False
+
+        imu_motion_seen = imu_motion_detected(
+            linear_accel_x=self.last_imu_linear_accel_x,
+            linear_accel_y=self.last_imu_linear_accel_y,
+            angular_velocity_z=self.last_imu_angular_velocity_z,
+            accel_threshold=self.startup_motion_gate_accel_threshold,
+            gyro_threshold=self.startup_motion_gate_gyro_threshold,
+        )
+
+        was_stalled = self.motion_gate_state.stall_active
+        action = update_startup_motion_gate(
+            self.motion_gate_state,
+            wheel_vx=wheel_vx,
+            wheel_vth=wheel_vth,
+            imu_motion_seen=imu_motion_seen,
+            now_s=now.nanoseconds / 1e9,
+            linear_velocity_threshold=self.startup_motion_gate_linear_velocity_threshold,
+            angular_velocity_threshold=self.startup_motion_gate_angular_velocity_threshold,
+            confirmation_time_s=self.startup_motion_gate_confirmation_time,
+        )
+
+        if self.motion_gate_state.stall_active and not was_stalled:
+            self.startup_stall_hold_count += 1
+            self.get_logger().warn(
+                "Holding startup wheel odometry because encoders moved without IMU motion "
+                f"(stall hold #{self.startup_stall_hold_count})"
+            )
+        elif was_stalled and action == "allow":
+            self.get_logger().info("Resuming wheel odometry after IMU confirmed body motion")
+
+        return action == "hold"
+
+    def _compute_real_odom(self, now, dt):
         current_position_r = self._read_present_position(self.right_motor_id)
         current_position_l = self._read_present_position(self.left_motor_id)
 
@@ -217,18 +323,30 @@ class BaseControllerNode(Node):
             )
             return None
 
-        odom_data = integrate_wheel_odometry(
+        odom_delta = compute_wheel_odometry_delta(
             delta_r_ticks=delta_r_ticks,
             delta_l_ticks=delta_l_ticks,
             dt=dt,
-            pose_state=self.pose_state,
             max_speed=self.max_speed,
             max_pos_step=self.max_pos_step,
         )
 
         self.prev_position_r = current_position_r
         self.prev_position_l = current_position_l
-        return odom_data
+
+        if self._should_hold_startup_motion(now, odom_delta["vx"], odom_delta["vth"]):
+            return {
+                "pose": self.pose_state,
+                "vx": 0.0,
+                "vth": 0.0,
+            }
+
+        apply_pose_delta(self.pose_state, odom_delta["d"], odom_delta["dtheta"])
+        return {
+            "pose": self.pose_state,
+            "vx": odom_delta["vx"],
+            "vth": odom_delta["vth"],
+        }
 
     def publish_odom(self, now, vx, vth):
         odom_msg = Odometry()

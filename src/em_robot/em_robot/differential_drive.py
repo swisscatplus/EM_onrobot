@@ -18,6 +18,13 @@ class PoseState:
     theta: float = 0.0
 
 
+@dataclass
+class StartupMotionGateState:
+    motion_confirmed: bool = False
+    validation_started_at: float | None = None
+    stall_active: bool = False
+
+
 def convert_to_signed(value):
     return value - 4294967296 if value > 2147483647 else value
 
@@ -48,7 +55,7 @@ def encoder_delta_limit(dt, safety_factor=3.0, minimum_ticks=64.0):
     return max(minimum_ticks, max_ticks)
 
 
-def integrate_wheel_odometry(delta_r_ticks, delta_l_ticks, dt, pose_state, max_speed, max_pos_step):
+def compute_wheel_odometry_delta(delta_r_ticks, delta_l_ticks, dt, max_speed, max_pos_step):
     delta_r_ticks = normalize_encoder_delta(delta_r_ticks)
     delta_l_ticks = normalize_encoder_delta(delta_l_ticks)
 
@@ -69,14 +76,34 @@ def integrate_wheel_odometry(delta_r_ticks, delta_l_ticks, dt, pose_state, max_s
         d = math.copysign(max_pos_step, d)
         vx = d / safe_dt
 
+    return {
+        "d": d,
+        "dtheta": dtheta,
+        "vx": vx,
+        "vth": dtheta / safe_dt,
+    }
+
+
+def apply_pose_delta(pose_state, d, dtheta):
     pose_state.x += d * math.cos(pose_state.theta + dtheta / 2.0)
     pose_state.y += d * math.sin(pose_state.theta + dtheta / 2.0)
     pose_state.theta += dtheta
 
+
+def integrate_wheel_odometry(delta_r_ticks, delta_l_ticks, dt, pose_state, max_speed, max_pos_step):
+    odom_delta = compute_wheel_odometry_delta(
+        delta_r_ticks=delta_r_ticks,
+        delta_l_ticks=delta_l_ticks,
+        dt=dt,
+        max_speed=max_speed,
+        max_pos_step=max_pos_step,
+    )
+    apply_pose_delta(pose_state, odom_delta["d"], odom_delta["dtheta"])
+
     return {
         "pose": pose_state,
-        "vx": vx,
-        "vth": dtheta / safe_dt,
+        "vx": odom_delta["vx"],
+        "vth": odom_delta["vth"],
     }
 
 
@@ -95,3 +122,51 @@ def integrate_fake_motion(linear_x, angular_z, dt, pose_state, max_speed, max_po
         "vx": d / safe_dt,
         "vth": dtheta / safe_dt,
     }
+
+
+def imu_motion_detected(linear_accel_x, linear_accel_y, angular_velocity_z, accel_threshold, gyro_threshold):
+    linear_accel_xy = math.hypot(linear_accel_x, linear_accel_y)
+    return linear_accel_xy >= accel_threshold or abs(angular_velocity_z) >= gyro_threshold
+
+
+def update_startup_motion_gate(
+    gate_state,
+    *,
+    wheel_vx,
+    wheel_vth,
+    imu_motion_seen,
+    now_s,
+    linear_velocity_threshold,
+    angular_velocity_threshold,
+    confirmation_time_s,
+):
+    wheel_motion_seen = (
+        abs(wheel_vx) >= linear_velocity_threshold
+        or abs(wheel_vth) >= angular_velocity_threshold
+    )
+
+    if gate_state.motion_confirmed:
+        if not wheel_motion_seen:
+            gate_state.motion_confirmed = False
+            gate_state.validation_started_at = None
+            gate_state.stall_active = False
+        return "allow"
+
+    if not wheel_motion_seen:
+        gate_state.validation_started_at = None
+        gate_state.stall_active = False
+        return "allow"
+
+    if imu_motion_seen:
+        gate_state.motion_confirmed = True
+        gate_state.validation_started_at = None
+        gate_state.stall_active = False
+        return "allow"
+
+    if gate_state.validation_started_at is None:
+        gate_state.validation_started_at = now_s
+
+    if now_s - gate_state.validation_started_at >= confirmation_time_s:
+        gate_state.stall_active = True
+
+    return "hold"

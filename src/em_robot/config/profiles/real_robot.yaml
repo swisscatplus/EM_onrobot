@@ -11,6 +11,14 @@ movement:
   baudrate: 57600
   right_motor_id: 2
   left_motor_id: 1
+  imu_topic: /bno055/imu
+  startup_motion_gate_enabled: true
+  startup_motion_gate_confirmation_time: 0.2
+  startup_motion_gate_linear_velocity_threshold: 0.05
+  startup_motion_gate_angular_velocity_threshold: 0.2
+  startup_motion_gate_accel_threshold: 0.15
+  startup_motion_gate_gyro_threshold: 0.12
+  startup_motion_gate_imu_timeout: 0.2
 
 imu:
   enabled: true

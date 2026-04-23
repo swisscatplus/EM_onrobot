@@ -2,10 +2,15 @@ import math
 
 from em_robot.differential_drive import (
     PoseState,
+    StartupMotionGateState,
     cmd_vel_to_motor_speeds,
+    compute_wheel_odometry_delta,
     encoder_delta_limit,
+    imu_motion_detected,
+    apply_pose_delta,
     integrate_fake_motion,
     normalize_encoder_delta,
+    update_startup_motion_gate,
 )
 
 
@@ -46,3 +51,99 @@ def test_encoder_delta_limit_matches_physical_cycle_budget():
     limit = encoder_delta_limit(1.0 / 30.0)
 
     assert 600.0 <= limit < 700.0
+
+
+def test_compute_wheel_odometry_delta_matches_applied_pose_update():
+    pose_state = PoseState()
+    odom_delta = compute_wheel_odometry_delta(
+        delta_r_ticks=256,
+        delta_l_ticks=256,
+        dt=0.1,
+        max_speed=10.0,
+        max_pos_step=10.0,
+    )
+
+    apply_pose_delta(pose_state, odom_delta["d"], odom_delta["dtheta"])
+
+    expected_distance = 256 * (2.0 * math.pi / 4096.0) * 0.035
+    assert math.isclose(odom_delta["d"], expected_distance, rel_tol=1e-6)
+    assert math.isclose(odom_delta["dtheta"], 0.0, abs_tol=1e-9)
+    assert math.isclose(pose_state.x, expected_distance, rel_tol=1e-6)
+    assert math.isclose(pose_state.y, 0.0, abs_tol=1e-9)
+
+
+def test_imu_motion_detected_accepts_linear_acceleration_or_yaw_rate():
+    assert imu_motion_detected(0.3, 0.0, 0.0, accel_threshold=0.2, gyro_threshold=0.15)
+    assert imu_motion_detected(0.0, 0.0, 0.2, accel_threshold=0.2, gyro_threshold=0.15)
+    assert not imu_motion_detected(0.05, 0.05, 0.01, accel_threshold=0.2, gyro_threshold=0.15)
+
+
+def test_startup_motion_gate_enters_hold_and_then_stall_without_imu_confirmation():
+    gate_state = StartupMotionGateState()
+
+    first_action = update_startup_motion_gate(
+        gate_state,
+        wheel_vx=0.15,
+        wheel_vth=0.0,
+        imu_motion_seen=False,
+        now_s=1.0,
+        linear_velocity_threshold=0.05,
+        angular_velocity_threshold=0.2,
+        confirmation_time_s=0.2,
+    )
+    second_action = update_startup_motion_gate(
+        gate_state,
+        wheel_vx=0.15,
+        wheel_vth=0.0,
+        imu_motion_seen=False,
+        now_s=1.25,
+        linear_velocity_threshold=0.05,
+        angular_velocity_threshold=0.2,
+        confirmation_time_s=0.2,
+    )
+
+    assert first_action == "hold"
+    assert second_action == "hold"
+    assert gate_state.stall_active
+    assert not gate_state.motion_confirmed
+
+
+def test_startup_motion_gate_allows_motion_once_imu_confirms_and_resets_after_stop():
+    gate_state = StartupMotionGateState()
+
+    hold_action = update_startup_motion_gate(
+        gate_state,
+        wheel_vx=0.15,
+        wheel_vth=0.0,
+        imu_motion_seen=False,
+        now_s=1.0,
+        linear_velocity_threshold=0.05,
+        angular_velocity_threshold=0.2,
+        confirmation_time_s=0.2,
+    )
+    allow_action = update_startup_motion_gate(
+        gate_state,
+        wheel_vx=0.15,
+        wheel_vth=0.0,
+        imu_motion_seen=True,
+        now_s=1.05,
+        linear_velocity_threshold=0.05,
+        angular_velocity_threshold=0.2,
+        confirmation_time_s=0.2,
+    )
+    reset_action = update_startup_motion_gate(
+        gate_state,
+        wheel_vx=0.0,
+        wheel_vth=0.0,
+        imu_motion_seen=False,
+        now_s=1.4,
+        linear_velocity_threshold=0.05,
+        angular_velocity_threshold=0.2,
+        confirmation_time_s=0.2,
+    )
+
+    assert hold_action == "hold"
+    assert allow_action == "allow"
+    assert reset_action == "allow"
+    assert not gate_state.motion_confirmed
+    assert not gate_state.stall_active
