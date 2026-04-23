@@ -10,8 +10,10 @@ from em_robot.differential_drive import (
     PoseState,
     cmd_vel_to_motor_speeds,
     convert_to_signed,
+    encoder_delta_limit,
     integrate_fake_motion,
     integrate_wheel_odometry,
+    normalize_encoder_delta,
 )
 
 try:
@@ -65,6 +67,7 @@ class BaseControllerNode(Node):
         self.last_cmd_angular = 0.0
         self.cmd_vel_stale = False
         self.watchdog_trip_count = 0
+        self.encoder_glitch_count = 0
         self.port_handler = None
         self.packet_handler = None
 
@@ -95,6 +98,25 @@ class BaseControllerNode(Node):
                 raise RuntimeError(f"Torque enable failed on motor ID={motor_id}")
 
         self.get_logger().info(f"Using real movement backend on {self.device_name}")
+
+    def _read_present_position(self, motor_id):
+        present_position, comm_result, error = self.packet_handler.read4ByteTxRx(
+            self.port_handler, motor_id, ADDR_PRESENT_POSITION
+        )
+
+        if comm_result != COMM_SUCCESS:
+            message = self.packet_handler.getTxRxResult(comm_result)
+            self.get_logger().warn(f"Failed to read present position for motor ID={motor_id}: {message}")
+            return None
+
+        if error != 0:
+            message = self.packet_handler.getRxPacketError(error)
+            self.get_logger().warn(
+                f"Dynamixel reported a hardware error while reading motor ID={motor_id}: {message}"
+            )
+            return None
+
+        return convert_to_signed(present_position)
 
     def cmd_vel_callback(self, msg: Twist):
         self.last_cmd_linear = float(msg.linear.x)
@@ -167,24 +189,37 @@ class BaseControllerNode(Node):
         self.prev_time = now
 
     def _compute_real_odom(self, dt):
-        current_position_r, _, _ = self.packet_handler.read4ByteTxRx(
-            self.port_handler, self.right_motor_id, ADDR_PRESENT_POSITION
-        )
-        current_position_l, _, _ = self.packet_handler.read4ByteTxRx(
-            self.port_handler, self.left_motor_id, ADDR_PRESENT_POSITION
-        )
+        current_position_r = self._read_present_position(self.right_motor_id)
+        current_position_l = self._read_present_position(self.left_motor_id)
 
-        current_position_r = convert_to_signed(current_position_r)
-        current_position_l = convert_to_signed(current_position_l)
+        if current_position_r is None or current_position_l is None:
+            return None
 
         if self.prev_position_r is None:
             self.prev_position_r = current_position_r
             self.prev_position_l = current_position_l
             return None
 
+        delta_r_ticks = current_position_r - self.prev_position_r
+        delta_l_ticks = current_position_l - self.prev_position_l
+        normalized_delta_r = normalize_encoder_delta(delta_r_ticks)
+        normalized_delta_l = normalize_encoder_delta(delta_l_ticks)
+        delta_limit_ticks = encoder_delta_limit(dt)
+
+        if abs(normalized_delta_r) > delta_limit_ticks or abs(normalized_delta_l) > delta_limit_ticks:
+            self.encoder_glitch_count += 1
+            self.get_logger().warn(
+                "Ignoring implausible encoder jump: "
+                f"raw=({delta_r_ticks}, {delta_l_ticks}), "
+                f"normalized=({normalized_delta_r}, {normalized_delta_l}), "
+                f"limit={delta_limit_ticks:.1f} ticks "
+                f"(glitch #{self.encoder_glitch_count})"
+            )
+            return None
+
         odom_data = integrate_wheel_odometry(
-            delta_r_ticks=current_position_r - self.prev_position_r,
-            delta_l_ticks=current_position_l - self.prev_position_l,
+            delta_r_ticks=delta_r_ticks,
+            delta_l_ticks=delta_l_ticks,
             dt=dt,
             pose_state=self.pose_state,
             max_speed=self.max_speed,

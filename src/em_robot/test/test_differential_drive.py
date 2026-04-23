@@ -1,6 +1,12 @@
 import math
 
-from em_robot.differential_drive import PoseState, cmd_vel_to_motor_speeds, integrate_fake_motion
+from em_robot.differential_drive import (
+    PoseState,
+    cmd_vel_to_motor_speeds,
+    encoder_delta_limit,
+    integrate_fake_motion,
+    normalize_encoder_delta,
+)
 
 
 def test_cmd_vel_to_motor_speeds_clamps_output():
@@ -29,3 +35,14 @@ def test_integrate_fake_motion_updates_pose():
     assert math.isclose(result["pose"].x, 0.2, rel_tol=1e-6)
     assert math.isclose(result["pose"].y, 0.0, abs_tol=1e-9)
     assert math.isclose(result["vx"], 0.2, rel_tol=1e-6)
+
+
+def test_normalize_encoder_delta_wraps_single_turn_values():
+    assert normalize_encoder_delta(4090) == -6
+    assert normalize_encoder_delta(-4090) == 6
+
+
+def test_encoder_delta_limit_matches_physical_cycle_budget():
+    limit = encoder_delta_limit(1.0 / 30.0)
+
+    assert 600.0 <= limit < 700.0

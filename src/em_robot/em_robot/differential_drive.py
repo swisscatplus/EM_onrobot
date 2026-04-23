@@ -6,6 +6,8 @@ from dataclasses import dataclass
 WHEEL_RADIUS = 0.035
 WHEEL_BASE = 0.131
 ENCODER_RESOLUTION = 4096
+MAX_GOAL_VELOCITY_TICKS = 410
+GOAL_VELOCITY_RPM_PER_TICK = 0.229
 MOTOR_RPM_TO_TICKS_FACTOR = 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
 
 
@@ -37,6 +39,13 @@ def normalize_encoder_delta(delta):
     if delta < -ENCODER_RESOLUTION / 2:
         return delta + ENCODER_RESOLUTION
     return delta
+
+
+def encoder_delta_limit(dt, safety_factor=3.0, minimum_ticks=64.0):
+    safe_dt = max(dt, 1e-6)
+    max_wheel_rps = (MAX_GOAL_VELOCITY_TICKS * GOAL_VELOCITY_RPM_PER_TICK) / 60.0
+    max_ticks = max_wheel_rps * ENCODER_RESOLUTION * safe_dt * safety_factor
+    return max(minimum_ticks, max_ticks)
 
 
 def integrate_wheel_odometry(delta_r_ticks, delta_l_ticks, dt, pose_state, max_speed, max_pos_step):
