@@ -1,0 +1,27 @@
+# Starter config for Ubuntu USB-camera tests.
+# Replace camera_matrix/dist_coeff with a Logitech calibration for accurate pose.
+camera_matrix:
+  - [840.0, 0.0, 650.0]
+  - [0.0, 839.2, 353.3]
+  - [0.0, 0.0, 1.0]
+dist_coeff: [-0.01955339, -0.00970571, -0.00145232, 0.00186774, 0.08397236]
+
+image_size: [1280, 720]
+process_rate_hz: 5.0
+lens_position: 0.0
+marker_size: 0.038
+max_position_jump: 0.25
+max_yaw_jump_deg: 20.0
+max_reprojection_error_px: 8.0
+position_smoothing_alpha: 0.2
+yaw_smoothing_alpha: 0.2
+min_update_translation: 0.01
+min_update_yaw_deg: 1.0
+
+camera_to_base:
+  x: 0.0
+  y: 0.0
+  z: 0.0
+  roll: 0.0
+  pitch: 0.0
+  yaw: 0.0

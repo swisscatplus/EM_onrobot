@@ -40,7 +40,11 @@ def _build_nodes(context):
     )
 
     pkg_share = get_package_share_directory("em_robot")
-    rviz_config = os.path.join(pkg_share, "rviz", "localization_debug.rviz")
+    rviz_config = os.path.join(
+        pkg_share,
+        "rviz",
+        profile.get("rviz_config", "localization_debug.rviz"),
+    )
     config_dir = os.path.join(pkg_share, "config")
     nodes = []
 
@@ -123,9 +127,58 @@ def _build_nodes(context):
                         "camera_backend": localization_cfg.get("camera_backend", "picamera2"),
                         "camera_source": str(localization_cfg.get("source", "0")),
                         "camera_loop": bool(localization_cfg.get("loop", False)),
-                        "config_file": os.path.join(config_dir, "calibration.yaml"),
+                        "config_file": _resolve_config_path(
+                            config_dir,
+                            localization_cfg.get("config", "calibration.yaml"),
+                        ),
                         "diagnostics_rate_hz": float(
                             localization_cfg.get("diagnostics_rate_hz", 1.0)
+                        ),
+                    }
+                ],
+                output="screen",
+            )
+        )
+
+    aruco_test_cfg = profile.get("aruco_test", {})
+    if aruco_test_cfg.get("enabled", False):
+        nodes.append(
+            Node(
+                package="em_robot",
+                executable="aruco_camera_test",
+                parameters=[
+                    {
+                        "config_file": _resolve_config_path(
+                            config_dir,
+                            aruco_test_cfg.get("config", "calibration_ubuntu_test.yaml"),
+                        ),
+                        "marker_map_file": _resolve_config_path(
+                            config_dir,
+                            aruco_test_cfg.get("marker_map_config", ""),
+                        ),
+                        "camera_backend": aruco_test_cfg.get("camera_backend", "opencv"),
+                        "camera_source": str(aruco_test_cfg.get("source", "0")),
+                        "camera_loop": bool(aruco_test_cfg.get("loop", False)),
+                        "diagnostics_rate_hz": float(
+                            aruco_test_cfg.get("diagnostics_rate_hz", 1.0)
+                        ),
+                        "camera_frame": str(
+                            aruco_test_cfg.get("camera_frame", "camera_frame")
+                        ),
+                        "map_camera_frame": str(
+                            aruco_test_cfg.get("map_camera_frame", "camera_test")
+                        ),
+                        "debug_image_topic": str(
+                            aruco_test_cfg.get("debug_image_topic", "/aruco_test/debug_image")
+                        ),
+                        "marker_pose_topic": str(
+                            aruco_test_cfg.get("marker_pose_topic", "/aruco_test/marker_poses")
+                        ),
+                        "camera_pose_topic": str(
+                            aruco_test_cfg.get("camera_pose_topic", "/aruco_test/camera_pose")
+                        ),
+                        "summary_topic": str(
+                            aruco_test_cfg.get("summary_topic", "/aruco_test/summary")
                         ),
                     }
                 ],

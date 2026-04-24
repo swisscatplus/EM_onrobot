@@ -2,12 +2,17 @@
 import math
 import os
 
-import cv2 as cv
 import numpy as np
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+from em_robot.aruco_utils import (
+    build_marker_object_points,
+    create_aruco_detector,
+    detect_aruco_markers,
+    estimate_marker_pose,
+)
 from em_robot_srv.srv import SetInitialPose
 from em_robot.camera_sources import create_camera_source
 from em_robot.diagnostic_utils import build_diagnostic_array, build_diagnostic_status
@@ -29,23 +34,6 @@ from tf_transformations import (
     quaternion_matrix,
     translation_matrix,
 )
-
-
-dictionary = cv.aruco.getPredefinedDictionary(cv.aruco.DICT_ARUCO_ORIGINAL)
-detector_params = cv.aruco.DetectorParameters()
-detector = cv.aruco.ArucoDetector(dictionary, detector_params)
-
-
-def detect_aruco_markers(frame):
-    gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
-    corners_list, ids, _ = detector.detectMarkers(gray)
-    if ids is None or len(ids) == 0:
-        return []
-
-    return [
-        {"id": int(marker_id), "corners": corners[0].astype(np.float32)}
-        for corners, marker_id in zip(corners_list, ids.flatten())
-    ]
 
 
 class LocalizationNode(Node):
@@ -86,6 +74,7 @@ class LocalizationNode(Node):
         self.yaw_smoothing_alpha = float(config.get("yaw_smoothing_alpha", 0.2))
         self.min_update_translation = float(config.get("min_update_translation", 0.01))
         self.min_update_yaw = math.radians(float(config.get("min_update_yaw_deg", 1.0)))
+        self.aruco_detector = create_aruco_detector()
 
         camera_offset = config.get("camera_to_base", {})
         self.t_base_camera = concatenate_matrices(
@@ -105,17 +94,7 @@ class LocalizationNode(Node):
             ),
         )
         self.t_camera_base = inverse_matrix(self.t_base_camera)
-
-        half_marker = self.marker_size / 2.0
-        self.marker_object_points = np.array(
-            [
-                [-half_marker, half_marker, 0.0],
-                [half_marker, half_marker, 0.0],
-                [half_marker, -half_marker, 0.0],
-                [-half_marker, -half_marker, 0.0],
-            ],
-            dtype=np.float32,
-        )
+        self.marker_object_points = build_marker_object_points(self.marker_size)
 
         self.camera = create_camera_source(
             camera_backend=self.camera_backend,
@@ -249,36 +228,6 @@ class LocalizationNode(Node):
         response.success = True
         return response
 
-    def estimate_marker_pose(self, corners):
-        success, rvec, tvec = cv.solvePnP(
-            self.marker_object_points,
-            corners,
-            self.camera_matrix,
-            self.dist_coeffs,
-            flags=cv.SOLVEPNP_IPPE_SQUARE,
-        )
-        if not success:
-            return None, None
-
-        projected_points, _ = cv.projectPoints(
-            self.marker_object_points,
-            rvec,
-            tvec,
-            self.camera_matrix,
-            self.dist_coeffs,
-        )
-        reprojection_error = float(
-            np.mean(np.linalg.norm(projected_points.reshape(-1, 2) - corners, axis=1))
-        )
-        if reprojection_error > self.max_reprojection_error:
-            return None, reprojection_error
-
-        rotation_matrix, _ = cv.Rodrigues(rvec)
-        camera_to_marker = np.eye(4, dtype=np.float64)
-        camera_to_marker[:3, :3] = rotation_matrix
-        camera_to_marker[:3, 3] = tvec.reshape(3)
-        return camera_to_marker, reprojection_error
-
     def process_frame(self):
         capture_stamp = self.get_clock().now()
         try:
@@ -292,7 +241,7 @@ class LocalizationNode(Node):
 
         self.last_frame_time = capture_stamp
         self.last_camera_error = ""
-        detections = detect_aruco_markers(frame)
+        detections = detect_aruco_markers(frame, detector=self.aruco_detector)
         self.last_detection_count = len(detections)
         self.last_rejected_for_gating = 0
         self.last_rejected_for_reprojection = 0
@@ -318,7 +267,13 @@ class LocalizationNode(Node):
         missing_marker_tf = 0
 
         for detection in detections:
-            camera_to_marker, reprojection_error = self.estimate_marker_pose(detection["corners"])
+            camera_to_marker, reprojection_error = estimate_marker_pose(
+                detection["corners"],
+                self.marker_object_points,
+                self.camera_matrix,
+                self.dist_coeffs,
+                self.max_reprojection_error,
+            )
             if camera_to_marker is None:
                 rejected_for_reprojection += 1
                 continue

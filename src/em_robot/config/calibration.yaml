@@ -23,7 +23,7 @@ camera_to_base:
   z: 0.0
   roll: 0.0
   pitch: 0.0
-  yaw: 3.141592653589793
+  yaw: 0.0 #3.141592653589793
 
 
 #Camera matrix:

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import threading
+import time
+
 import cv2 as cv
 
 
@@ -29,6 +32,20 @@ class OpenCVCameraSource:
         source_value = int(source) if str(source).isdigit() else source
         self._capture = cv.VideoCapture(source_value)
         self._loop = loop
+        self._source = source
+        self._is_live_source = not loop and (
+            isinstance(source_value, int) or str(source).startswith("/dev/video")
+        )
+        self._latest_frame = None
+        self._latest_error = None
+        self._frame_lock = threading.Lock()
+        self._stop_reader = threading.Event()
+        self._reader_thread = None
+
+        if self._is_live_source:
+            # Keep only the freshest frame for live cameras to avoid multi-second lag.
+            self._capture.set(cv.CAP_PROP_BUFFERSIZE, 1)
+
         if image_size:
             self._capture.set(cv.CAP_PROP_FRAME_WIDTH, image_size[0])
             self._capture.set(cv.CAP_PROP_FRAME_HEIGHT, image_size[1])
@@ -36,7 +53,41 @@ class OpenCVCameraSource:
         if not self._capture.isOpened():
             raise RuntimeError(f"Failed to open OpenCV camera source: {source}")
 
+        if self._is_live_source:
+            self._reader_thread = threading.Thread(
+                target=self._reader_loop,
+                name="opencv-camera-reader",
+                daemon=True,
+            )
+            self._reader_thread.start()
+
+    def _reader_loop(self):
+        while not self._stop_reader.is_set():
+            ok, frame = self._capture.read()
+            if not ok:
+                self._latest_error = "Failed to read frame from OpenCV camera source"
+                time.sleep(0.01)
+                continue
+
+            with self._frame_lock:
+                self._latest_frame = frame
+                self._latest_error = None
+
     def capture(self):
+        if self._is_live_source:
+            deadline = time.monotonic() + 2.0
+            while not self._stop_reader.is_set():
+                with self._frame_lock:
+                    if self._latest_frame is not None:
+                        return self._latest_frame.copy()
+                    latest_error = self._latest_error
+
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        latest_error or f"Timed out waiting for camera source: {self._source}"
+                    )
+                time.sleep(0.01)
+
         ok, frame = self._capture.read()
         if not ok and self._loop:
             self._capture.set(cv.CAP_PROP_POS_FRAMES, 0)
@@ -46,6 +97,9 @@ class OpenCVCameraSource:
         return frame
 
     def close(self):
+        self._stop_reader.set()
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=1.0)
         self._capture.release()
 
 

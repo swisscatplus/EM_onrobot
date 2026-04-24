@@ -33,9 +33,15 @@ The current stack combines:
 - camera-based map correction from detected ArUco markers
 - `robot_localization` EKF fusion
 
+The ArUco detector and pose-estimation helpers live in
+[`src/em_robot/em_robot/aruco_utils.py`](./src/em_robot/em_robot/aruco_utils.py)
+and are shared by both:
+- [`aruco_camera_test_node.py`](./src/em_robot/em_robot/aruco_camera_test_node.py)
+- [`localization_node.py`](./src/em_robot/em_robot/localization_node.py)
+
 The repo also includes desktop development workflows so the same codebase can be exercised on:
 - Windows with fake base + fake IMU + Foxglove
-- Ubuntu with fake base + fake IMU + OpenCV camera + RViz + Foxglove
+- Ubuntu with fake base + fake IMU + OpenCV camera + RViz2
 - Raspberry Pi on the real robot with real motors, real IMU, and Pi camera
 
 ## Runtime Profiles
@@ -52,10 +58,84 @@ Available profiles:
 |---|---|---|---|---|---|
 | `home_windows` | Windows desktop | fake | fake | disabled | Foxglove |
 | `desktop_replay` | Windows or desktop replay | fake | fake | OpenCV video file | Foxglove |
-| `work_ubuntu` | Ubuntu desktop | fake | fake | OpenCV device | RViz + Foxglove |
+| `work_ubuntu` | Ubuntu desktop | fake | fake | OpenCV device | RViz2 |
+| `work_ubuntu_aruco_test` | Ubuntu laptop ArUco sanity check | none | none | OpenCV device | RViz2 |
+| `work_ubuntu_localization_test` | Ubuntu laptop localization pipeline test | fake | fake | OpenCV device | RViz2 |
 | `real_robot` | Raspberry Pi on robot | real | BNO055 | Picamera2 | none by default |
 
 Profile files live in [`src/em_robot/config/profiles`](./src/em_robot/config/profiles).
+
+## Shared ArUco Path
+
+The laptop ArUco test is meaningful because it uses the same marker-detection and
+pose-estimation code as the real robot localization path.
+
+Shared between laptop test and robot:
+- `create_aruco_detector()`
+- `detect_aruco_markers()`
+- `estimate_marker_pose()`
+- marker-map loading from [`marker_map_loader.py`](./src/em_robot/em_robot/marker_map_loader.py)
+
+Validated by the laptop ArUco test:
+- USB camera access through the desktop Docker workflow
+- ArUco detection and pose estimation
+- marker-map lookup and map-relative camera pose output
+- RViz2 visualization of TF and debug image topics
+
+Not covered by the laptop ArUco test:
+- `picamera2` camera backend used on the Raspberry Pi
+- fake/real base integration
+- IMU integration
+- `map -> odom` fusion inside [`localization_node.py`](./src/em_robot/em_robot/localization_node.py)
+- EKF behavior on the full robot stack
+
+## Quick Launch Reference
+
+| Profile | Command | Purpose |
+|---|---|---|
+| `home_windows` | `.\scripts\start_dev.ps1` | Fake base + fake IMU development on Windows with Foxglove |
+| `desktop_replay` | `.\scripts\start_dev.ps1 -Profile desktop_replay` | Replay localization from a recorded video |
+| `work_ubuntu` | `./scripts/start_dev.sh work_ubuntu` | Fake base + fake IMU + OpenCV camera on Ubuntu |
+| `work_ubuntu_aruco_test` | `export EM_ROBOT_CAMERA_DEVICE=/dev/videoX && ./scripts/start_dev.sh work_ubuntu_aruco_test` | Laptop-only ArUco sanity check with host RViz2 |
+| `work_ubuntu_localization_test` | `export EM_ROBOT_CAMERA_DEVICE=/dev/videoX && ./scripts/start_dev.sh work_ubuntu_localization_test` | Laptop test of the full localization node with fake base/IMU |
+| `real_robot` | `EM_ROBOT_PROFILE_VALUE=real_robot ./scripts/deploy_dev.sh` | Full robot stack on the Raspberry Pi |
+
+Use your actual Linux camera path for `EM_ROBOT_CAMERA_DEVICE`, for example `/dev/video4` for a Logitech C920 on many laptops.
+
+## Validation Status
+
+This section is meant to reflect the current branch state and should be updated as more manual tests are completed.
+
+### Manually Verified
+
+- `work_ubuntu_aruco_test` on Ubuntu with a USB webcam and host-side RViz2
+- host-to-container ROS 2 discovery for the Ubuntu desktop workflow after the Fast DDS cleanup
+- RViz2 display of `/aruco_test/debug_image` and ArUco TF/debug outputs
+
+### Automated Tests Already In The Repo
+
+- ArUco helper tests in [`test_aruco_utils.py`](./src/em_robot/test/test_aruco_utils.py)
+  - detector output normalization
+  - synthetic pose recovery from projected marker corners
+- marker map parsing and duplicate-ID checks in [`test_marker_map_loader.py`](./src/em_robot/test/test_marker_map_loader.py)
+- profile loading in [`test_profile_loader.py`](./src/em_robot/test/test_profile_loader.py)
+- differential-drive math and startup motion gate logic in [`test_differential_drive.py`](./src/em_robot/test/test_differential_drive.py)
+- robot state / LED mode logic in [`test_robot_state_modes.py`](./src/em_robot/test/test_robot_state_modes.py)
+- transform helper compatibility in [`test_tf_transformations_compat.py`](./src/em_robot/test/test_tf_transformations_compat.py)
+- LED helper utilities in [`test_led_utils.py`](./src/em_robot/test/test_led_utils.py)
+- style/lint checks in [`test_flake8.py`](./src/em_robot/test/test_flake8.py), [`test_pep257.py`](./src/em_robot/test/test_pep257.py), and [`test_copyright.py`](./src/em_robot/test/test_copyright.py)
+
+### Still Recommended To Test Manually
+
+- `work_ubuntu_localization_test`
+  - verify `base_link`, `camera_frame`, and `map -> odom` behavior in RViz2
+  - verify marker-based corrections while fake odometry is running
+- `desktop_replay`
+  - verify the replay video still drives the localization pipeline correctly
+- `home_windows`
+  - verify the Windows Docker Desktop workflow and Foxglove connection still work
+- `real_robot`
+  - verify `picamera2`, real motors, BNO055, EKF, LEDs, and deployment on hardware
 
 ## Supported Workflows
 
@@ -138,8 +218,7 @@ Behavior:
 - fake IMU that follows `/cmd_vel.angular.z`
 - `cmd_vel` watchdog stop after `0.25 s` without new commands
 - localization enabled through an OpenCV camera source
-- RViz enabled
-- Foxglove bridge on port `8765`
+- host-side RViz2 supported
 - diagnostics on `/diagnostics`
 
 Start:
@@ -166,10 +245,13 @@ Shell:
 docker compose -f docker/compose.yaml -f docker/compose.ubuntu.yaml exec em_robot_work_ubuntu bash
 ```
 
-If RViz cannot open:
+Open RViz on the Ubuntu host:
 
 ```bash
-xhost +local:docker
+source /opt/ros/<your-distro>/setup.bash
+export ROS_DOMAIN_ID=10
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+rviz2 -d /home/edy/Documents/GitHub/EM_onrobot/src/em_robot/rviz/localization_debug.rviz
 ```
 
 If you want another camera:
@@ -179,12 +261,78 @@ export EM_ROBOT_CAMERA_DEVICE=/dev/video1
 ./scripts/start_dev.sh work_ubuntu
 ```
 
-Foxglove:
-- connect to `ws://localhost:8765`
-
 Note:
 - this is not using the Raspberry Pi camera stack
 - it expects a Linux video device such as `/dev/video0`
+
+### Ubuntu ArUco Test
+
+Use this on the laptop to validate USB camera access, ArUco detection, and single-marker map pose estimation before running the full localization stack.
+
+Behavior:
+- OpenCV USB camera input
+- marker map loaded from [`src/em_robot/config/marker_map_laptop_test.yaml`](./src/em_robot/config/marker_map_laptop_test.yaml)
+- raw detection outputs on `/aruco_test/*`
+- annotated debug image on `/aruco_test/debug_image`
+- host-side RViz2 with the ArUco test layout
+- no fake base, IMU, or EKF
+
+Start:
+
+```bash
+export EM_ROBOT_CAMERA_DEVICE=/dev/video0
+./scripts/start_dev.sh work_ubuntu_aruco_test
+```
+
+Topics to inspect:
+- `/aruco_test/debug_image`
+- `/aruco_test/marker_poses`
+- `/aruco_test/camera_pose`
+- `/aruco_test/summary`
+- `/diagnostics`
+
+Open RViz on the Ubuntu host:
+
+```bash
+source /opt/ros/<your-distro>/setup.bash
+export ROS_DOMAIN_ID=10
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+rviz2 -d /home/edy/Documents/GitHub/EM_onrobot/src/em_robot/rviz/aruco_test_debug.rviz
+```
+
+### Ubuntu Localization Test
+
+Use this on the laptop to run the same localization node as the robot, but with a USB camera and fake base/IMU.
+
+Behavior:
+- fake base controller
+- fake IMU
+- OpenCV USB camera input
+- localization enabled
+- marker map loaded from [`src/em_robot/config/marker_map_laptop_test.yaml`](./src/em_robot/config/marker_map_laptop_test.yaml)
+- calibration/config from [`src/em_robot/config/calibration_ubuntu_test.yaml`](./src/em_robot/config/calibration_ubuntu_test.yaml)
+- host-side RViz2
+
+Start:
+
+```bash
+export EM_ROBOT_CAMERA_DEVICE=/dev/video0
+./scripts/start_dev.sh work_ubuntu_localization_test
+```
+
+Open RViz on the Ubuntu host:
+
+```bash
+source /opt/ros/<your-distro>/setup.bash
+export ROS_DOMAIN_ID=10
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+rviz2 -d /home/edy/Documents/GitHub/EM_onrobot/src/em_robot/rviz/localization_debug.rviz
+```
+
+Notes:
+- the laptop test marker map assumes marker `0` is at the map origin
+- `calibration_ubuntu_test.yaml` is only a starter file; for accurate pose, recalibrate the Logitech camera
+- if your printed marker is not `38 mm`, update `marker_size` in the calibration file
 
 ### Robot
 
@@ -256,7 +404,10 @@ Default automatic modes:
 For ROS 2 discovery to work correctly:
 - the PC and robot must be on the same network
 - `ROS_DOMAIN_ID` must match on both sides
-- [`config/fastdds.xml`](./config/fastdds.xml) must be adapted to the correct network interface or robot IP setup
+- `RMW_IMPLEMENTATION` should match on host and container for desktop workflows
+
+For the current desktop workflows, [`config/fastdds.xml`](./config/fastdds.xml) is now generic and should not require a machine-specific IP edit.
+If discovery fails, check the ROS environment first before editing DDS transport config.
 
 Example:
 

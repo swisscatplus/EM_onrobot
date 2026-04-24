@@ -1,4 +1,4 @@
-profile_name: work_ubuntu
+profile_name: work_ubuntu_localization_test
 start_rviz: false
 
 movement:
@@ -22,11 +22,12 @@ localization:
   enabled: true
   camera_backend: opencv
   source: 0
+  config: calibration_ubuntu_test.yaml
   diagnostics_rate_hz: 1.0
 
 marker_map:
   enabled: true
-  config: marker_map.yaml
+  config: marker_map_laptop_test.yaml
   diagnostics_rate_hz: 1.0
 
 ekf:
