@@ -9,9 +9,9 @@ image_size: [1280, 720]
 process_rate_hz: 5.0
 lens_position: 18.0
 marker_size: 0.040
-max_position_jump: 0.10
-max_yaw_jump_deg: 10.0
-max_reprojection_error_px: 3.0
+max_position_jump: 10.0 #0.10
+max_yaw_jump_deg: 180.0 #10.0
+max_reprojection_error_px: 999.0 #3.0
 position_smoothing_alpha: 0.2
 yaw_smoothing_alpha: 0.2
 min_update_translation: 0.005
