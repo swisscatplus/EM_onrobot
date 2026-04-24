@@ -416,14 +416,26 @@ Run calibration from the repo root:
 ./scripts/run_camera_calibration.sh
 ```
 
+Validate the calibration on a real ArUco marker:
+
+```bash
+./scripts/validate_aruco_distance.sh
+```
+
 Images are stored in:
 - [`src/em_robot/CameraCalibration/calibration_images`](./src/em_robot/CameraCalibration/calibration_images)
+- validation outputs and ArUco snapshots are stored in [`src/em_robot/CameraCalibration/validation_outputs`](./src/em_robot/CameraCalibration/validation_outputs)
 
 Notes:
 - capture images at the real working distance and angles you care about
 - keep the board sharp and well lit
 - use the same focus setting for calibration and runtime
 - the calibration script updates `camera_matrix` and `dist_coeff` in `calibration.yaml` and preserves the other robot settings
+
+Validation steps:
+- reprojection error is printed by `run_camera_calibration.sh`
+- a few undistorted sample images are saved for visual inspection
+- `validate_aruco_distance.sh` lets you compare the estimated marker distance against a ruler measurement
 
 Quick calibration example:
 - temporarily set `state_manager.enabled: false` in the `real_robot` profile while testing raw colors

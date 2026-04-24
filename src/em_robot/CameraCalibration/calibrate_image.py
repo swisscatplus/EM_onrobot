@@ -20,6 +20,7 @@ objp = objp * square_size
 # Arrays to store 3D points in real-world space and 2D points in image plane.
 objpoints = []
 imgpoints = []
+successful_images = []
 
 camera_calibration_dir = Path(__file__).resolve().parent
 config_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
@@ -60,6 +61,7 @@ for fname in images:
         else:
             corners2 = refined_corners
         imgpoints.append(corners2)
+        successful_images.append(fname)
 
         cv2.drawChessboardCorners(img, chessboard_size, corners2, ret)
         cv2.imshow("Detected Corners", img)
@@ -77,10 +79,45 @@ if len(objpoints) < 1 or image_shape is None:
     sys.exit(1)
 
 # --- Calibrate the Camera ---
-ret, mtx, dist, _, _ = cv2.calibrateCamera(objpoints, imgpoints, image_shape, None, None)
+ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, image_shape, None, None)
 print("Calibration was successful:", ret)
 print("Camera matrix:\n", mtx)
 print("Distortion coefficients:\n", dist)
+
+# --- Validation 1: Reprojection Error ---
+per_image_errors = []
+total_error = 0.0
+for index, object_points in enumerate(objpoints):
+    projected_points, _ = cv2.projectPoints(
+        object_points,
+        rvecs[index],
+        tvecs[index],
+        mtx,
+        dist,
+    )
+    error = cv2.norm(imgpoints[index], projected_points, cv2.NORM_L2) / len(projected_points)
+    per_image_errors.append((successful_images[index], float(error)))
+    total_error += float(error)
+
+mean_reprojection_error = total_error / len(objpoints)
+print(f"Mean reprojection error: {mean_reprojection_error:.4f} px")
+for image_name, error in per_image_errors:
+    print(f"  {Path(image_name).name}: {error:.4f} px")
+
+# --- Validation 2: Save Undistortion Examples ---
+validation_dir = camera_calibration_dir / "validation_outputs"
+validation_dir.mkdir(exist_ok=True)
+for sample_path in successful_images[:3]:
+    original = cv2.imread(sample_path)
+    if original is None:
+        continue
+
+    undistorted = cv2.undistort(original, mtx, dist)
+    sample_name = Path(sample_path).stem
+    cv2.imwrite(str(validation_dir / f"{sample_name}_original.jpg"), original)
+    cv2.imwrite(str(validation_dir / f"{sample_name}_undistorted.jpg"), undistorted)
+
+print(f"Saved undistortion samples to {validation_dir}")
 
 # --- Save Calibration Parameters to a YAML File ---
 calibration_config["camera_matrix"] = mtx.tolist()
