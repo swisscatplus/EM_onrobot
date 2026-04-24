@@ -12,9 +12,9 @@ try:
 except ImportError:  # pragma: no cover - depends on Pi camera stack
     controls = None
 
-repo_src_dir = Path(__file__).resolve().parents[2]
-if str(repo_src_dir) not in sys.path:
-    sys.path.insert(0, str(repo_src_dir))
+package_root = Path(__file__).resolve().parents[1]
+if str(package_root) not in sys.path:
+    sys.path.insert(0, str(package_root))
 
 from em_robot.aruco_utils import build_marker_object_points, create_aruco_detector, detect_aruco_markers, estimate_marker_pose
 
