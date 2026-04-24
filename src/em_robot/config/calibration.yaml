@@ -1,13 +1,13 @@
 camera_matrix:
-  - [1008, 0.0, 780]
-  - [0.0, 1007, 424]
+  - [809.93073084, 0., 645.25883288]
+  - [ 0., 809.54365435, 349.97640886]
   - [0.0, 0.0, 1.0]
-dist_coeff: [-0.01955339, -0.00970571, -0.00145232,  0.00186774,  0.08397236]
+dist_coeff: [-0.08079841,  0.16543589, -0.00137951,  0.00290625, -0.13231464]
 
 # Camera and localization parameters
 image_size: [1280, 720]
 process_rate_hz: 5.0
-lens_position: 8.0
+lens_position: 18.0
 marker_size: 0.040
 max_position_jump: 0.10
 max_yaw_jump_deg: 10.0
