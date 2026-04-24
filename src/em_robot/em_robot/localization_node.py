@@ -2,6 +2,7 @@
 import math
 import os
 
+import cv2 as cv
 import numpy as np
 import rclpy
 import yaml
@@ -26,6 +27,7 @@ from em_robot.transform_utils import (
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
+from sensor_msgs.msg import Image
 from tf2_ros import Buffer, StaticTransformBroadcaster, TransformBroadcaster, TransformListener
 from tf_transformations import (
     concatenate_matrices,
@@ -46,6 +48,7 @@ class LocalizationNode(Node):
         self.declare_parameter("camera_source", "0")
         self.declare_parameter("camera_loop", False)
         self.declare_parameter("diagnostics_rate_hz", 1.0)
+        self.declare_parameter("debug_image_topic", "/localization/debug_image")
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -56,6 +59,7 @@ class LocalizationNode(Node):
         self.camera_source = self.get_parameter("camera_source").value
         self.camera_loop = bool(self.get_parameter("camera_loop").value)
         self.diagnostics_rate_hz = float(self.get_parameter("diagnostics_rate_hz").value)
+        self.debug_image_topic = str(self.get_parameter("debug_image_topic").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -116,6 +120,11 @@ class LocalizationNode(Node):
             SetInitialPose, "set_initial_pose", self.handle_set_initial_pose
         )
         self.diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self.debug_image_pub = (
+            self.create_publisher(Image, self.debug_image_topic, 10)
+            if self.debug_image_topic
+            else None
+        )
 
         self.last_map_to_odom = np.identity(4, dtype=np.float64)
         self.last_marker_time = None
@@ -241,12 +250,14 @@ class LocalizationNode(Node):
 
         self.last_frame_time = capture_stamp
         self.last_camera_error = ""
+        annotated_frame = frame.copy()
         detections = detect_aruco_markers(frame, detector=self.aruco_detector)
         self.last_detection_count = len(detections)
         self.last_rejected_for_gating = 0
         self.last_rejected_for_reprojection = 0
         self.last_missing_marker_tf = 0
         if not detections:
+            self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
         try:
@@ -267,8 +278,12 @@ class LocalizationNode(Node):
         missing_marker_tf = 0
 
         for detection in detections:
+            corners = detection["corners"]
+            polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
+            cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
+
             camera_to_marker, reprojection_error = estimate_marker_pose(
-                detection["corners"],
+                corners,
                 self.marker_object_points,
                 self.camera_matrix,
                 self.dist_coeffs,
@@ -276,7 +291,28 @@ class LocalizationNode(Node):
             )
             if camera_to_marker is None:
                 rejected_for_reprojection += 1
+                cv.putText(
+                    annotated_frame,
+                    f"id={detection['id']} rejected",
+                    tuple(polyline[0, 0]),
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 255),
+                    1,
+                    cv.LINE_AA,
+                )
                 continue
+
+            cv.putText(
+                annotated_frame,
+                f"id={detection['id']} err={reprojection_error:.2f}",
+                tuple(polyline[0, 0]),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+                cv.LINE_AA,
+            )
 
             try:
                 map_to_marker = self.lookup_matrix(
@@ -313,6 +349,17 @@ class LocalizationNode(Node):
         self.last_missing_marker_tf = missing_marker_tf
 
         if not candidates:
+            cv.putText(
+                annotated_frame,
+                "Markers detected, but no localization update accepted",
+                (10, 30),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 255),
+                2,
+                cv.LINE_AA,
+            )
+            self.publish_debug_image(annotated_frame, capture_stamp)
             now = self.get_clock().now()
             if (now - self.last_debug_log_time).nanoseconds > int(2e9):
                 if not self.has_map_lock:
@@ -410,6 +457,33 @@ class LocalizationNode(Node):
                 f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
             )
             self.last_update_log_time = self.last_marker_time
+
+        cv.putText(
+            annotated_frame,
+            f"x={smoothed_x:.3f}, y={smoothed_y:.3f}, yaw={smoothed_yaw:.3f}",
+            (10, 30),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 0),
+            2,
+            cv.LINE_AA,
+        )
+        self.publish_debug_image(annotated_frame, capture_stamp)
+
+    def publish_debug_image(self, frame, stamp):
+        if self.debug_image_pub is None:
+            return
+
+        msg = Image()
+        msg.header.stamp = stamp.to_msg()
+        msg.header.frame_id = "camera_frame"
+        msg.height = int(frame.shape[0])
+        msg.width = int(frame.shape[1])
+        msg.encoding = "bgr8"
+        msg.is_bigendian = 0
+        msg.step = int(frame.shape[1] * frame.shape[2])
+        msg.data = frame.tobytes()
+        self.debug_image_pub.publish(msg)
 
     def publish_diagnostics(self):
         now = self.get_clock().now()

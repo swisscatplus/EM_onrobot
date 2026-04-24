@@ -134,6 +134,11 @@ def _build_nodes(context):
                         "diagnostics_rate_hz": float(
                             localization_cfg.get("diagnostics_rate_hz", 1.0)
                         ),
+                        "debug_image_topic": str(
+                            localization_cfg.get(
+                                "debug_image_topic", "/localization/debug_image"
+                            )
+                        ),
                     }
                 ],
                 output="screen",

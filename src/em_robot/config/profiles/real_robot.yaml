@@ -33,6 +33,7 @@ localization:
   camera_backend: picamera2
   source: 0
   diagnostics_rate_hz: 1.0
+  debug_image_topic: /localization/debug_image
 
 marker_map:
   enabled: true
