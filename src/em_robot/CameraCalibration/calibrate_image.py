@@ -8,9 +8,9 @@ import yaml
 # --- Calibration Pattern Settings ---
 # Define the number of inner corners per chessboard row and column.
 # (For example, a 7x6 chessboard has 7 inner corners horizontally and 6 vertically.)
-chessboard_size = (23, 17)
+chessboard_size = (10, 7)
 # Define the size of a chessboard square in millimeters.
-square_size = 8  # Change this value to match your printed chessboard squares (in mm)
+square_size = 22  # Change this value to match your printed chessboard squares (in mm)
 
 # Prepare object points based on the real-world coordinates of the chessboard corners.
 objp = np.zeros((chessboard_size[0] * chessboard_size[1], 3), np.float32)
