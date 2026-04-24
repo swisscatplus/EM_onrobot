@@ -8,7 +8,7 @@ import yaml
 # --- Calibration Pattern Settings ---
 # Define the number of inner corners per chessboard row and column.
 # (For example, a 7x6 chessboard has 7 inner corners horizontally and 6 vertically.)
-chessboard_size = (10, 7)
+chessboard_size = (9, 6)
 # Define the size of a chessboard square in millimeters.
 square_size = 22  # Change this value to match your printed chessboard squares (in mm)
 
