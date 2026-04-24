@@ -13,20 +13,35 @@ save_dir = "calibration_images"
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
+# Calibration capture should match the real robot runtime setup as closely as possible.
+# For EM Robot we expect markers mostly around 0.3-0.4 m, so keep focus fixed.
+image_size = (1280, 720)
+lens_position = 8.0
+
 # Initialize Picamera2
 picam2 = Picamera2()
 # Configure the camera for a preview (adjust resolution if needed)
-preview_config = picam2.create_preview_configuration(main={"format": "XRGB8888", "size": (1280, 720)})
+preview_config = picam2.create_preview_configuration(
+    main={"format": "XRGB8888", "size": image_size}
+)
 picam2.configure(preview_config)
 picam2.start()
 time.sleep(1.0)
 
 camera_controls = getattr(picam2, "camera_controls", {})
-if controls is not None and "AfMode" in camera_controls:
-    picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})
-    print("Autofocus enabled. Give the camera a moment to settle before saving.")
+if controls is not None and "AfMode" in camera_controls and "LensPosition" in camera_controls:
+    picam2.set_controls(
+        {
+            "AfMode": controls.AfModeEnum.Manual,
+            "LensPosition": lens_position,
+        }
+    )
+    print(
+        f"Manual focus enabled with LensPosition={lens_position}. "
+        "Use the same focus setting during calibration and runtime."
+    )
 else:
-    print("Autofocus controls are not available on this camera; focus is likely fixed.")
+    print("Manual focus controls are not available on this camera; focus is likely fixed.")
 
 img_counter = 0
 print("Press 's' to capture an image. Capture at least 8-10 images from different angles and distances.")
