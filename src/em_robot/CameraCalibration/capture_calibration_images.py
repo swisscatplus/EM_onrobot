@@ -1,7 +1,10 @@
 import cv2
 import os
 import time
+from pathlib import Path
+
 from picamera2 import Picamera2
+import yaml
 
 try:
     from libcamera import controls
@@ -13,10 +16,14 @@ save_dir = "calibration_images"
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
+config_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
+with config_path.open("r", encoding="utf-8") as config_file:
+    calibration_config = yaml.safe_load(config_file) or {}
+
 # Calibration capture should match the real robot runtime setup as closely as possible.
 # For EM Robot we expect markers mostly around 0.3-0.4 m, so keep focus fixed.
-image_size = (1280, 720)
-lens_position = 8.0
+image_size = tuple(calibration_config.get("image_size", [1280, 720]))
+lens_position = float(calibration_config.get("lens_position", 8.0))
 
 # Initialize Picamera2
 picam2 = Picamera2()
@@ -42,6 +49,9 @@ if controls is not None and "AfMode" in camera_controls and "LensPosition" in ca
     )
 else:
     print("Manual focus controls are not available on this camera; focus is likely fixed.")
+
+print(f"Using calibration settings from {config_path}")
+print(f"Preview size: {image_size}")
 
 img_counter = 0
 print("Press 's' to capture an image. Capture at least 8-10 images from different angles and distances.")

@@ -21,6 +21,10 @@ objp = objp * square_size  # scale object points to the real square size
 objpoints = []  # 3D real-world points
 imgpoints = []  # 2D image points
 
+config_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
+with config_path.open("r", encoding="utf-8") as config_file:
+    calibration_config = yaml.safe_load(config_file) or {}
+
 # --- Load Calibration Images ---
 # Adjust the pattern if you saved your images with a different extension or folder.
 images = glob.glob('calibration_images/*.jpg')
@@ -66,13 +70,10 @@ print("Camera matrix:\n", mtx)
 print("Distortion coefficients:\n", dist)
 
 # --- Save Calibration Parameters to a YAML File ---
-calibration_data = {
-    'camera_matrix': mtx.tolist(),
-    'dist_coeff': dist.tolist()
-}
+calibration_config["camera_matrix"] = mtx.tolist()
+calibration_config["dist_coeff"] = dist.tolist()
 
-output_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
-with output_path.open("w", encoding="utf-8") as f:
-    yaml.dump(calibration_data, f)
+with config_path.open("w", encoding="utf-8") as f:
+    yaml.safe_dump(calibration_config, f, sort_keys=False)
 
-print(f"Calibration parameters saved to {output_path}.")
+print(f"Calibration parameters saved to {config_path}.")
