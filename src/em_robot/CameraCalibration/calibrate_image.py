@@ -34,6 +34,8 @@ print(f"Found {len(images)} images.")
 
 # Termination criteria for refining corner detections (maximum iterations and desired accuracy).
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+classic_flags = cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
+sb_flags = cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_EXHAUSTIVE + cv2.CALIB_CB_ACCURACY
 
 # Process each image
 for fname in images:
@@ -43,13 +45,21 @@ for fname in images:
         continue
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Find chessboard corners in the image
-    ret, corners = cv2.findChessboardCorners(gray, chessboard_size, None)
+    # Prefer the more robust SB detector when available, then fall back to the classic detector.
+    if hasattr(cv2, "findChessboardCornersSB"):
+        ret, corners = cv2.findChessboardCornersSB(gray, chessboard_size, flags=sb_flags)
+        refined_corners = corners if ret else None
+    else:
+        ret, corners = cv2.findChessboardCorners(gray, chessboard_size, flags=classic_flags)
+        refined_corners = None
 
     if ret:
         # If found, add object points and refined image points.
         objpoints.append(objp)
-        corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        if refined_corners is None:
+            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+        else:
+            corners2 = refined_corners
         imgpoints.append(corners2)
 
         # Optionally display the detected corners for verification.
@@ -57,7 +67,10 @@ for fname in images:
         cv2.imshow("Detected Corners", img)
         cv2.waitKey(500)
     else:
-        print(f"Chessboard corners not found in {fname}.")
+        print(
+            f"Chessboard corners not found in {fname}. "
+            f"Check that the printed board really has {chessboard_size[0]}x{chessboard_size[1]} inner corners."
+        )
 
 cv2.destroyAllWindows()
 
