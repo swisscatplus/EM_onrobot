@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import glob
 from pathlib import Path
+import sys
 import yaml
 
 # --- Calibration Pattern Settings ---
@@ -21,13 +22,14 @@ objp = objp * square_size  # scale object points to the real square size
 objpoints = []  # 3D real-world points
 imgpoints = []  # 2D image points
 
+camera_calibration_dir = Path(__file__).resolve().parent
 config_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
 with config_path.open("r", encoding="utf-8") as config_file:
     calibration_config = yaml.safe_load(config_file) or {}
 
 # --- Load Calibration Images ---
 # Adjust the pattern if you saved your images with a different extension or folder.
-images = glob.glob('calibration_images/*.jpg')
+images = sorted(glob.glob(str(camera_calibration_dir / "calibration_images" / "*.jpg")))
 print(f"Found {len(images)} images.")
 
 # Termination criteria for refining corner detections (maximum iterations and desired accuracy).
@@ -61,7 +63,7 @@ cv2.destroyAllWindows()
 
 if len(objpoints) < 1:
     print("Not enough valid images for calibration. Please capture more images with a visible chessboard.")
-    exit()
+    sys.exit(1)
 
 # --- Calibrate the Camera ---
 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)

@@ -384,6 +384,47 @@ LED feedback in the `real_robot` profile:
 - if the physical red/green/blue order is different, update `front_color_order` or `rear_color_order` in [`src/em_robot/config/profiles/real_robot.yaml`](./src/em_robot/config/profiles/real_robot.yaml)
 - if the LED behaves inverted, set `active_low: true` in the same profile
 
+### Robot Camera Calibration
+
+Use this when you want to recalibrate a robot camera from the repository root.
+
+Recommended runtime starting point for Raspberry Pi marker detection around `0.3-0.4 m`:
+- `image_size: [1280, 720]`
+- `lens_position: 8.0`
+- `process_rate_hz: 5.0`
+- `max_reprojection_error_px: 3.0`
+
+The calibration helpers now read robot camera settings directly from
+[`src/em_robot/config/calibration.yaml`](./src/em_robot/config/calibration.yaml), so the
+capture resolution and lens position match runtime automatically.
+
+One-time environment setup on each robot:
+
+```bash
+./scripts/setup_calibration_env.sh
+```
+
+Capture chessboard images from the repo root:
+
+```bash
+./scripts/capture_calibration_images.sh
+```
+
+Run calibration from the repo root:
+
+```bash
+./scripts/run_camera_calibration.sh
+```
+
+Images are stored in:
+- [`src/em_robot/CameraCalibration/calibration_images`](./src/em_robot/CameraCalibration/calibration_images)
+
+Notes:
+- capture images at the real working distance and angles you care about
+- keep the board sharp and well lit
+- use the same focus setting for calibration and runtime
+- the calibration script updates `camera_matrix` and `dist_coeff` in `calibration.yaml` and preserves the other robot settings
+
 Quick calibration example:
 - temporarily set `state_manager.enabled: false` in the `real_robot` profile while testing raw colors
 - publish red, green, and blue one by one, then adjust `front_color_order` or `rear_color_order` until the physical LED matches

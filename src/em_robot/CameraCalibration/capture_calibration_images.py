@@ -1,5 +1,4 @@
 import cv2
-import os
 import time
 from pathlib import Path
 
@@ -11,11 +10,9 @@ try:
 except ImportError:  # pragma: no cover - depends on Pi camera stack
     controls = None
 
-# Directory where calibration images will be saved
-save_dir = "calibration_images"
-if not os.path.exists(save_dir):
-    os.makedirs(save_dir)
-
+camera_calibration_dir = Path(__file__).resolve().parent
+save_dir = camera_calibration_dir / "calibration_images"
+save_dir.mkdir(exist_ok=True)
 config_path = Path(__file__).resolve().parent.parent / "config" / "calibration.yaml"
 with config_path.open("r", encoding="utf-8") as config_file:
     calibration_config = yaml.safe_load(config_file) or {}
@@ -52,6 +49,7 @@ else:
 
 print(f"Using calibration settings from {config_path}")
 print(f"Preview size: {image_size}")
+print(f"Saving images to {save_dir}")
 
 img_counter = 0
 print("Press 's' to capture an image. Capture at least 8-10 images from different angles and distances.")
@@ -67,8 +65,8 @@ while True:
     key = cv2.waitKey(1) & 0xFF
     if key == ord('s'):
         # Save the current frame as a calibration image.
-        img_name = os.path.join(save_dir, f"calib_{img_counter:02d}.jpg")
-        cv2.imwrite(img_name, frame)
+        img_name = save_dir / f"calib_{img_counter:02d}.jpg"
+        cv2.imwrite(str(img_name), frame)
         print(f"Saved {img_name}")
         img_counter += 1
         # Optional: pause a moment between captures
