@@ -21,6 +21,26 @@ with config_path.open("r", encoding="utf-8") as config_file:
 # For EM Robot we expect markers mostly around 0.3-0.4 m, so keep focus fixed.
 image_size = tuple(calibration_config.get("image_size", [1280, 720]))
 lens_position = float(calibration_config.get("lens_position", 8.0))
+focus_step = 0.1
+focus_min = 0.0
+focus_max = 32.0
+manual_focus_supported = False
+
+
+def apply_manual_focus(camera, position):
+    camera.set_controls(
+        {
+            "AfMode": controls.AfModeEnum.Manual,
+            "LensPosition": position,
+        }
+    )
+
+
+def save_lens_position(position):
+    calibration_config["lens_position"] = float(position)
+    with config_path.open("w", encoding="utf-8") as config_file:
+        yaml.safe_dump(calibration_config, config_file, sort_keys=False)
+    print(f"Saved lens_position={position:.2f} to {config_path}")
 
 # Initialize Picamera2
 picam2 = Picamera2()
@@ -34,12 +54,8 @@ time.sleep(1.0)
 
 camera_controls = getattr(picam2, "camera_controls", {})
 if controls is not None and "AfMode" in camera_controls and "LensPosition" in camera_controls:
-    picam2.set_controls(
-        {
-            "AfMode": controls.AfModeEnum.Manual,
-            "LensPosition": lens_position,
-        }
-    )
+    manual_focus_supported = True
+    apply_manual_focus(picam2, lens_position)
     print(
         f"Manual focus enabled with LensPosition={lens_position}. "
         "Use the same focus setting during calibration and runtime."
@@ -53,11 +69,32 @@ print(f"Saving images to {save_dir}")
 
 img_counter = 0
 print("Press 's' to capture an image. Capture at least 8-10 images from different angles and distances.")
+if manual_focus_supported:
+    print("Press 'j' and 'k' to decrease/increase focus. Press 'w' to write the current focus to calibration.yaml.")
 print("Press 'q' to quit.")
 
 while True:
     # Capture the current frame as a NumPy array
     frame = picam2.capture_array()
+
+    status_lines = [
+        f"lens_position: {lens_position:.2f}",
+        "s: save image  q: quit",
+    ]
+    if manual_focus_supported:
+        status_lines.append("j: focus-  k: focus+  w: save focus")
+
+    for index, line in enumerate(status_lines):
+        cv2.putText(
+            frame,
+            line,
+            (10, 30 + index * 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
     # Display the live feed
     cv2.imshow("Calibration Image Capture", frame)
@@ -71,6 +108,18 @@ while True:
         img_counter += 1
         # Optional: pause a moment between captures
         time.sleep(0.5)
+    elif manual_focus_supported and key == ord('j'):
+        lens_position = max(focus_min, lens_position - focus_step)
+        apply_manual_focus(picam2, lens_position)
+        print(f"LensPosition -> {lens_position:.2f}")
+        time.sleep(0.1)
+    elif manual_focus_supported and key == ord('k'):
+        lens_position = min(focus_max, lens_position + focus_step)
+        apply_manual_focus(picam2, lens_position)
+        print(f"LensPosition -> {lens_position:.2f}")
+        time.sleep(0.1)
+    elif manual_focus_supported and key == ord('w'):
+        save_lens_position(lens_position)
     elif key == ord('q'):
         break
 
