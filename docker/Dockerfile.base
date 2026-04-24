@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-example-interfaces ros-${ROS_DISTRO}-rclpy \
     python3-yaml python3-ply \
+    python3-gpiozero python3-lgpio \
     git python3-jinja2 \
     libboost-dev libgnutls28-dev openssl libtiff5-dev pybind11-dev \
     qtbase5-dev libqt5core5a libqt5gui5 libqt5widgets5 \

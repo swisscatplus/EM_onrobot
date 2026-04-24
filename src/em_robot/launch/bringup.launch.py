@@ -147,15 +147,15 @@ def _build_nodes(context):
             )
         )
 
+    expected_imu_rate = imu_cfg.get("expected_rate_hz")
+    if expected_imu_rate is None:
+        if imu_cfg.get("backend", "bno055") == "bno055":
+            expected_imu_rate = 100.0
+        else:
+            expected_imu_rate = imu_cfg.get("rate_hz", 30.0)
+
     diagnostics_cfg = profile.get("diagnostics", {})
     if diagnostics_cfg.get("enabled", True):
-        expected_imu_rate = imu_cfg.get("expected_rate_hz")
-        if expected_imu_rate is None:
-            if imu_cfg.get("backend", "bno055") == "bno055":
-                expected_imu_rate = 100.0
-            else:
-                expected_imu_rate = imu_cfg.get("rate_hz", 30.0)
-
         nodes.append(
             Node(
                 package="em_robot",
@@ -171,6 +171,89 @@ def _build_nodes(context):
                         ),
                         "localization_expected": bool(localization_cfg.get("enabled", False)),
                         "filtered_odom_expected": bool(ekf_cfg.get("enabled", False)),
+                    }
+                ],
+                output="screen",
+            )
+        )
+
+    led_cfg = profile.get("leds", {})
+    if led_cfg.get("enabled", False):
+        nodes.append(
+            Node(
+                package="em_robot",
+                executable="rgb_led_controller",
+                parameters=[
+                    {
+                        "backend": str(led_cfg.get("backend", "mock")),
+                        "active_low": bool(led_cfg.get("active_low", False)),
+                        "brightness": float(led_cfg.get("brightness", 1.0)),
+                        "diagnostics_rate_hz": float(led_cfg.get("diagnostics_rate_hz", 1.0)),
+                        "all_topic": str(led_cfg.get("all_topic", "/leds/all/color")),
+                        "front_name": str(led_cfg.get("front_name", "front")),
+                        "front_topic": str(led_cfg.get("front_topic", "/leds/front/color")),
+                        "front_pins": [int(pin) for pin in led_cfg.get("front_pins", [23, 24, 25])],
+                        "front_color_order": str(led_cfg.get("front_color_order", "rgb")),
+                        "rear_name": str(led_cfg.get("rear_name", "rear")),
+                        "rear_topic": str(led_cfg.get("rear_topic", "/leds/rear/color")),
+                        "rear_pins": [int(pin) for pin in led_cfg.get("rear_pins", [4, 17, 27])],
+                        "rear_color_order": str(led_cfg.get("rear_color_order", "rgb")),
+                    }
+                ],
+                output="screen",
+            )
+        )
+
+    state_manager_cfg = profile.get("state_manager", {})
+    if state_manager_cfg.get("enabled", False):
+        nodes.append(
+            Node(
+                package="em_robot",
+                executable="robot_state_manager",
+                parameters=[
+                    {
+                        "publish_rate_hz": float(state_manager_cfg.get("publish_rate_hz", 5.0)),
+                        "blink_period_s": float(state_manager_cfg.get("blink_period_s", 1.0)),
+                        "cmd_vel_timeout": float(movement_cfg.get("cmd_vel_timeout", 0.25)),
+                        "expected_odom_rate": float(movement_cfg.get("odom_rate", 30.0)),
+                        "expected_imu_rate": float(expected_imu_rate),
+                        "expected_filtered_odom_rate": float(
+                            state_manager_cfg.get(
+                                "expected_filtered_odom_rate",
+                                diagnostics_cfg.get("expected_filtered_odom_rate", 30.0),
+                            )
+                        ),
+                        "moving_linear_threshold": float(
+                            state_manager_cfg.get("moving_linear_threshold", 0.02)
+                        ),
+                        "moving_angular_threshold": float(
+                            state_manager_cfg.get("moving_angular_threshold", 0.1)
+                        ),
+                        "filtered_odom_expected": bool(ekf_cfg.get("enabled", False)),
+                        "cmd_vel_topic": str(state_manager_cfg.get("cmd_vel_topic", "/cmd_vel")),
+                        "odom_topic": str(state_manager_cfg.get("odom_topic", "/odomWheel")),
+                        "imu_topic": str(state_manager_cfg.get("imu_topic", "/bno055/imu")),
+                        "filtered_odom_topic": str(
+                            state_manager_cfg.get("filtered_odom_topic", "/odometry/filtered")
+                        ),
+                        "diagnostics_topic": str(
+                            state_manager_cfg.get("diagnostics_topic", "/diagnostics")
+                        ),
+                        "front_led_topic": str(
+                            state_manager_cfg.get("front_led_topic", "/leds/front/color")
+                        ),
+                        "rear_led_topic": str(
+                            state_manager_cfg.get("rear_led_topic", "/leds/rear/color")
+                        ),
+                        "mobility_state_topic": str(
+                            state_manager_cfg.get("mobility_state_topic", "/robot_state/mobility")
+                        ),
+                        "health_state_topic": str(
+                            state_manager_cfg.get("health_state_topic", "/robot_state/health")
+                        ),
+                        "overall_state_topic": str(
+                            state_manager_cfg.get("overall_state_topic", "/robot_state/overall")
+                        ),
                     }
                 ],
                 output="screen",

@@ -13,15 +13,22 @@ ROS_DOMAIN_ID_VALUE="${ROS_DOMAIN_ID_VALUE:-10}"
 RMW_IMPLEMENTATION_VALUE="${RMW_IMPLEMENTATION_VALUE:-rmw_fastrtps_cpp}"
 FASTRTPS_PROFILE_PATH="${FASTRTPS_PROFILE_PATH:-/root/.ros/fastdds.xml}"
 EM_ROBOT_PROFILE_VALUE="${EM_ROBOT_PROFILE_VALUE:-real_robot}"
+FORCE_LOCAL_BASE_BUILD="${FORCE_LOCAL_BASE_BUILD:-0}"
 
-echo "Pulling base image..."
-if docker pull "$BASE_IMAGE"; then
-  RUN_IMAGE="$BASE_IMAGE"
-else
-  echo "Registry pull failed for $BASE_IMAGE."
-  echo "Falling back to a local base image build: $LOCAL_BASE_IMAGE"
+if [ "$FORCE_LOCAL_BASE_BUILD" = "1" ]; then
+  echo "FORCE_LOCAL_BASE_BUILD=1, building local base image: $LOCAL_BASE_IMAGE"
   docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$LOCAL_BASE_IMAGE" "$WORKSPACE_DIR"
   RUN_IMAGE="$LOCAL_BASE_IMAGE"
+else
+  echo "Pulling base image..."
+  if docker pull "$BASE_IMAGE"; then
+    RUN_IMAGE="$BASE_IMAGE"
+  else
+    echo "Registry pull failed for $BASE_IMAGE."
+    echo "Falling back to a local base image build: $LOCAL_BASE_IMAGE"
+    docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$LOCAL_BASE_IMAGE" "$WORKSPACE_DIR"
+    RUN_IMAGE="$LOCAL_BASE_IMAGE"
+  fi
 fi
 
 echo "Stopping old dev container..."

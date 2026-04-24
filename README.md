@@ -195,11 +195,18 @@ Behavior:
 - real BNO055 IMU
 - localization enabled through `picamera2`
 - EKF enabled
+- two RGB status LEDs through Raspberry Pi GPIO
 
 Start the on-robot development container:
 
 ```bash
 EM_ROBOT_PROFILE_VALUE=real_robot ./scripts/deploy_dev.sh
+```
+
+If you want to rebuild the robot base image locally, for example after changing GPIO dependencies:
+
+```bash
+FORCE_LOCAL_BASE_BUILD=1 EM_ROBOT_PROFILE_VALUE=real_robot ./scripts/deploy_dev.sh
 ```
 
 The script:
@@ -220,6 +227,29 @@ Shell:
 ```bash
 docker exec -it em_robot_dev bash
 ```
+
+LED feedback in the `real_robot` profile:
+- `rgb_led_controller` drives the two RGB LEDs from GPIO
+- `robot_state_manager` publishes colors based on robot mobility and health
+- front LED defaults to `GPIO23/GPIO24/GPIO25`
+- rear LED defaults to `GPIO4/GPIO17/GPIO27`
+- if the physical red/green/blue order is different, update `front_color_order` or `rear_color_order` in [`src/em_robot/config/profiles/real_robot.yaml`](./src/em_robot/config/profiles/real_robot.yaml)
+- if the LED behaves inverted, set `active_low: true` in the same profile
+
+Quick calibration example:
+- temporarily set `state_manager.enabled: false` in the `real_robot` profile while testing raw colors
+- publish red, green, and blue one by one, then adjust `front_color_order` or `rear_color_order` until the physical LED matches
+- once the mapping is correct, re-enable `state_manager`
+
+```bash
+ros2 topic pub --once /leds/front/color std_msgs/msg/ColorRGBA "{r: 1.0, g: 0.0, b: 0.0, a: 1.0}"
+ros2 topic pub --once /leds/front/color std_msgs/msg/ColorRGBA "{r: 0.0, g: 1.0, b: 0.0, a: 1.0}"
+ros2 topic pub --once /leds/front/color std_msgs/msg/ColorRGBA "{r: 0.0, g: 0.0, b: 1.0, a: 1.0}"
+```
+
+Default automatic modes:
+- front LED: blinking white while booting, cyan when ready/idling, blue while moving, blinking amber on command timeout, blinking red when base odometry is stale
+- rear LED: blinking white while booting, green when healthy, blinking amber when localization or diagnostics degrade, blinking red on faults
 
 ## Networking
 
@@ -273,6 +303,11 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0
 | `/odomWheel` | `nav_msgs/Odometry` | Wheel odometry from the real or fake base controller |
 | `/bno055/imu` | `sensor_msgs/Imu` | IMU orientation and angular velocity |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | Runtime health for command link, sensors, filter, and localization |
+| `/leds/front/color` | `std_msgs/ColorRGBA` | Front RGB LED color command |
+| `/leds/rear/color` | `std_msgs/ColorRGBA` | Rear RGB LED color command |
+| `/robot_state/mobility` | `std_msgs/String` | Mobility state derived from `/cmd_vel` and wheel odometry |
+| `/robot_state/health` | `std_msgs/String` | Health/localization state derived from IMU, EKF, and diagnostics |
+| `/robot_state/overall` | `std_msgs/String` | High-level robot state summary |
 
 ### Services
 

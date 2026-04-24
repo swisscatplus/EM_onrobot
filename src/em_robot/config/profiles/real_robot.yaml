@@ -52,3 +52,25 @@ visualization:
 diagnostics:
   enabled: true
   publish_rate_hz: 1.0
+
+leds:
+  enabled: true
+  backend: gpiozero
+  active_low: false  # Set true for common-anode LEDs or inverted transistor drive.
+  brightness: 1.0
+  diagnostics_rate_hz: 1.0
+  front_name: front
+  front_topic: /leds/front/color
+  front_pins: [23, 24, 25]
+  front_color_order: rgb  # Change to grb/brg/etc. if calibration shows a different order.
+  rear_name: rear
+  rear_topic: /leds/rear/color
+  rear_pins: [4, 17, 27]
+  rear_color_order: rgb  # Change to grb/brg/etc. if calibration shows a different order.
+
+state_manager:
+  enabled: true  # Set false temporarily while calibrating raw LED colors by hand.
+  publish_rate_hz: 5.0
+  blink_period_s: 1.0
+  moving_linear_threshold: 0.02
+  moving_angular_threshold: 0.1
