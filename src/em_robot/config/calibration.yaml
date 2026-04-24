@@ -11,7 +11,7 @@ lens_position: 8.0
 marker_size: 0.040
 max_position_jump: 999 #0.25
 max_yaw_jump_deg: 180 #20.0
-max_reprojection_error_px: 8.0
+max_reprojection_error_px: 4.0 # 8.0
 position_smoothing_alpha: 0.5 #0.2
 yaw_smoothing_alpha: 0.5 #0.2
 min_update_translation: 0.01

@@ -9,7 +9,7 @@ import yaml
 # (For example, a 7x6 chessboard has 7 inner corners horizontally and 6 vertically.)
 chessboard_size = (23, 17)
 # Define the size of a chessboard square in millimeters.
-square_size = 19  # Change this value to match your printed chessboard squares (in mm)
+square_size = 14  # Change this value to match your printed chessboard squares (in mm)
 
 # Prepare object points based on the real-world coordinates of the chessboard corners.
 # For example, (0,0,0), (1,0,0), ... are scaled by square_size.
