@@ -139,6 +139,9 @@ def _build_nodes(context):
                                 "debug_image_topic", "/localization/debug_image"
                             )
                         ),
+                        "debug_image_scale": float(
+                            localization_cfg.get("debug_image_scale", 1.0)
+                        ),
                     }
                 ],
                 output="screen",

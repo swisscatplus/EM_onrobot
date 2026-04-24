@@ -49,6 +49,7 @@ class LocalizationNode(Node):
         self.declare_parameter("camera_loop", False)
         self.declare_parameter("diagnostics_rate_hz", 1.0)
         self.declare_parameter("debug_image_topic", "/localization/debug_image")
+        self.declare_parameter("debug_image_scale", 1.0)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -60,6 +61,7 @@ class LocalizationNode(Node):
         self.camera_loop = bool(self.get_parameter("camera_loop").value)
         self.diagnostics_rate_hz = float(self.get_parameter("diagnostics_rate_hz").value)
         self.debug_image_topic = str(self.get_parameter("debug_image_topic").value)
+        self.debug_image_scale = float(self.get_parameter("debug_image_scale").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -139,6 +141,13 @@ class LocalizationNode(Node):
         self.last_rejected_for_gating = 0
         self.last_rejected_for_reprojection = 0
         self.last_missing_marker_tf = 0
+        self.last_candidate_count = 0
+        self.last_used_tf_fallback = False
+        self.last_tf_fallback_count = 0
+        self.last_best_position_error = None
+        self.last_best_yaw_error_deg = None
+        self.last_best_reprojection_error = None
+        self.last_debug_summary = "waiting for frames"
 
         self.publish_static_transform()
         self.publish_initial_map_to_odom()
@@ -209,6 +218,8 @@ class LocalizationNode(Node):
                     "falling back to the latest available transform."
                 )
                 self.last_tf_fallback_log_time = now
+            self.last_used_tf_fallback = True
+            self.last_tf_fallback_count += 1
 
             return transform_to_matrix(latest_transform)
 
@@ -250,13 +261,19 @@ class LocalizationNode(Node):
 
         self.last_frame_time = capture_stamp
         self.last_camera_error = ""
+        self.last_used_tf_fallback = False
         annotated_frame = frame.copy()
         detections = detect_aruco_markers(frame, detector=self.aruco_detector)
         self.last_detection_count = len(detections)
         self.last_rejected_for_gating = 0
         self.last_rejected_for_reprojection = 0
         self.last_missing_marker_tf = 0
+        self.last_candidate_count = 0
+        self.last_best_position_error = None
+        self.last_best_yaw_error_deg = None
+        self.last_best_reprojection_error = None
         if not detections:
+            self.last_debug_summary = "no markers detected"
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
@@ -276,6 +293,9 @@ class LocalizationNode(Node):
         rejected_for_gating = 0
         rejected_for_reprojection = 0
         missing_marker_tf = 0
+        closest_position_error = None
+        closest_yaw_error_deg = None
+        best_reprojection_error = None
 
         for detection in detections:
             corners = detection["corners"]
@@ -329,6 +349,13 @@ class LocalizationNode(Node):
             dy = map_to_base[1, 3] - predicted_map_to_base[1, 3]
             yaw_error = wrap_angle(yaw_from_matrix(map_to_base) - yaw_from_matrix(predicted_map_to_base))
             position_error = math.hypot(dx, dy)
+            yaw_error_deg = math.degrees(yaw_error)
+
+            if closest_position_error is None or position_error < closest_position_error:
+                closest_position_error = position_error
+                closest_yaw_error_deg = yaw_error_deg
+            if best_reprojection_error is None or reprojection_error < best_reprojection_error:
+                best_reprojection_error = reprojection_error
 
             if self.has_map_lock and (
                 position_error > self.max_position_jump or abs(yaw_error) > self.max_yaw_jump
@@ -341,14 +368,24 @@ class LocalizationNode(Node):
                     "marker_id": detection["id"],
                     "map_to_base": map_to_base,
                     "reprojection_error": reprojection_error,
+                    "position_error": position_error,
+                    "yaw_error_deg": yaw_error_deg,
                 }
             )
 
         self.last_rejected_for_gating = rejected_for_gating
         self.last_rejected_for_reprojection = rejected_for_reprojection
         self.last_missing_marker_tf = missing_marker_tf
+        self.last_best_position_error = closest_position_error
+        self.last_best_yaw_error_deg = closest_yaw_error_deg
+        self.last_best_reprojection_error = best_reprojection_error
 
         if not candidates:
+            self.last_debug_summary = (
+                "markers seen, no accepted pose: "
+                f"gate={rejected_for_gating} reproj={rejected_for_reprojection} "
+                f"missing_tf={missing_marker_tf}"
+            )
             cv.putText(
                 annotated_frame,
                 "Markers detected, but no localization update accepted",
@@ -378,6 +415,7 @@ class LocalizationNode(Node):
                 self.last_debug_log_time = now
             return
 
+        self.last_candidate_count = len(candidates)
         weights = np.array(
             [1.0 / max(candidate["reprojection_error"], 1e-3) for candidate in candidates],
             dtype=np.float64,
@@ -424,6 +462,11 @@ class LocalizationNode(Node):
         fused_map_to_base = concatenate_matrices(
             translation_matrix([smoothed_x, smoothed_y, 0.0]),
             quaternion_matrix(quaternion_from_euler(0.0, 0.0, smoothed_yaw)),
+        )
+
+        self.last_debug_summary = (
+            f"accepted {len(candidates)}/{len(detections)} marker poses, "
+            f"best reproj={min(candidate['reprojection_error'] for candidate in candidates):.2f}px"
         )
 
         if self.has_map_lock:
@@ -474,15 +517,63 @@ class LocalizationNode(Node):
         if self.debug_image_pub is None:
             return
 
+        overlay_lines = [
+            f"detected={self.last_detection_count} accepted={self.last_candidate_count} "
+            f"gate={self.last_rejected_for_gating} reproj={self.last_rejected_for_reprojection} "
+            f"missing_tf={self.last_missing_marker_tf}",
+            f"tf_fallback={'yes' if self.last_used_tf_fallback else 'no'} total={self.last_tf_fallback_count}",
+        ]
+        if self.last_best_position_error is not None:
+            overlay_lines.append(
+                "best raw delta: "
+                f"{self.last_best_position_error:.3f} m, {self.last_best_yaw_error_deg:.1f} deg"
+            )
+        if self.last_best_reprojection_error is not None:
+            overlay_lines.append(f"best reprojection: {self.last_best_reprojection_error:.2f} px")
+        overlay_lines.append(self.last_debug_summary)
+
+        for index, line in enumerate(overlay_lines):
+            y = 60 + index * 24
+            cv.putText(
+                frame,
+                line,
+                (10, y),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                3,
+                cv.LINE_AA,
+            )
+            cv.putText(
+                frame,
+                line,
+                (10, y),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (30, 30, 30),
+                1,
+                cv.LINE_AA,
+            )
+
+        publish_frame = frame
+        if 0.0 < self.debug_image_scale < 1.0:
+            publish_frame = cv.resize(
+                frame,
+                None,
+                fx=self.debug_image_scale,
+                fy=self.debug_image_scale,
+                interpolation=cv.INTER_AREA,
+            )
+
         msg = Image()
         msg.header.stamp = stamp.to_msg()
         msg.header.frame_id = "camera_frame"
-        msg.height = int(frame.shape[0])
-        msg.width = int(frame.shape[1])
+        msg.height = int(publish_frame.shape[0])
+        msg.width = int(publish_frame.shape[1])
         msg.encoding = "bgr8"
         msg.is_bigendian = 0
-        msg.step = int(frame.shape[1] * frame.shape[2])
-        msg.data = frame.tobytes()
+        msg.step = int(publish_frame.shape[1] * publish_frame.shape[2])
+        msg.data = publish_frame.tobytes()
         self.debug_image_pub.publish(msg)
 
     def publish_diagnostics(self):
@@ -520,13 +611,29 @@ class LocalizationNode(Node):
                 "camera_backend": self.camera_backend,
                 "camera_source": self.camera_source,
                 "camera_loop": self.camera_loop,
+                "debug_image_scale": self.debug_image_scale,
                 "has_map_lock": self.has_map_lock,
                 "last_frame_age_s": "n/a" if frame_age is None else f"{frame_age:.3f}",
                 "last_marker_age_s": "n/a" if marker_age is None else f"{marker_age:.3f}",
                 "last_detection_count": self.last_detection_count,
+                "accepted_candidate_count": self.last_candidate_count,
                 "rejected_for_gating": self.last_rejected_for_gating,
                 "rejected_for_reprojection": self.last_rejected_for_reprojection,
                 "missing_marker_tf": self.last_missing_marker_tf,
+                "used_tf_fallback_this_frame": self.last_used_tf_fallback,
+                "total_tf_fallback_count": self.last_tf_fallback_count,
+                "best_position_error_m": (
+                    "n/a" if self.last_best_position_error is None else f"{self.last_best_position_error:.3f}"
+                ),
+                "best_yaw_error_deg": (
+                    "n/a" if self.last_best_yaw_error_deg is None else f"{self.last_best_yaw_error_deg:.1f}"
+                ),
+                "best_reprojection_error_px": (
+                    "n/a"
+                    if self.last_best_reprojection_error is None
+                    else f"{self.last_best_reprojection_error:.2f}"
+                ),
+                "debug_summary": self.last_debug_summary,
                 "camera_error": self.last_camera_error or "none",
             },
         )

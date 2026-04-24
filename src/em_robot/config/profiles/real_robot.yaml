@@ -34,6 +34,7 @@ localization:
   source: 0
   diagnostics_rate_hz: 1.0
   debug_image_topic: /localization/debug_image
+  debug_image_scale: 0.5
 
 marker_map:
   enabled: true
