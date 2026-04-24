@@ -1,7 +1,12 @@
 import cv2
 import os
-from picamera2 import Picamera2
 import time
+from picamera2 import Picamera2
+
+try:
+    from libcamera import controls
+except ImportError:  # pragma: no cover - depends on Pi camera stack
+    controls = None
 
 # Directory where calibration images will be saved
 save_dir = "calibration_images"
@@ -11,9 +16,17 @@ if not os.path.exists(save_dir):
 # Initialize Picamera2
 picam2 = Picamera2()
 # Configure the camera for a preview (adjust resolution if needed)
-preview_config = picam2.create_preview_configuration(main={"format": "XRGB8888", "size": (4608, 2592)})
+preview_config = picam2.create_preview_configuration(main={"format": "XRGB8888", "size": (1280, 720)})
 picam2.configure(preview_config)
 picam2.start()
+time.sleep(1.0)
+
+camera_controls = getattr(picam2, "camera_controls", {})
+if controls is not None and "AfMode" in camera_controls:
+    picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+    print("Autofocus enabled. Give the camera a moment to settle before saving.")
+else:
+    print("Autofocus controls are not available on this camera; focus is likely fixed.")
 
 img_counter = 0
 print("Press 's' to capture an image. Capture at least 8-10 images from different angles and distances.")
