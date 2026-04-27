@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 from em_robot.marker_map_loader import load_marker_map_config
@@ -77,3 +78,38 @@ def test_load_marker_map_rejects_duplicate_ids(tmp_path):
         assert "Duplicate marker id 1" in str(exc)
     else:
         raise AssertionError(f"Expected duplicate marker id error for {Path(config_path)}")
+
+
+def test_load_marker_map_supports_legacy_track_hierarchy_with_fixed_ceiling_orientation(tmp_path):
+    config_path = tmp_path / "marker_tracks.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "mob_rob_loca:",
+                "  ros__parameters:",
+                "    tracks:",
+                '      "18":',
+                "        t_x: 0.65",
+                "        t_y: 0.0",
+                "        yaw: -1.5708",
+                "        markers:",
+                '          "19":',
+                "            t_x: 0.177",
+                "            t_y: 0.900",
+                "            yaw: 3.1415",
+                "            t_z: 0.374",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    marker_map = load_marker_map_config(str(config_path))
+    marker = marker_map["markers"][0]
+
+    assert marker["id"] == 19
+    assert math.isclose(marker["x"], 1.55, abs_tol=1e-3)
+    assert math.isclose(marker["y"], -0.177, abs_tol=1e-3)
+    assert math.isclose(marker["z"], 0.374, abs_tol=1e-9)
+    assert math.isclose(marker["roll"], math.pi, abs_tol=1e-9)
+    assert math.isclose(marker["pitch"], 0.0, abs_tol=1e-9)
+    assert math.isclose(marker["yaw"], 1.5707, abs_tol=1e-4)

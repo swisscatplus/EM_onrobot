@@ -20,7 +20,6 @@ from em_robot.camera_sources import create_camera_source
 from em_robot.diagnostic_utils import build_diagnostic_array, build_diagnostic_status
 from em_robot.transform_utils import (
     blend_angles,
-    build_base_to_camera_transform,
     build_planar_transform,
     build_transform,
     compute_map_to_base_from_marker,
@@ -101,10 +100,21 @@ class LocalizationNode(Node):
         self.aruco_detector = create_aruco_detector()
 
         camera_offset = config.get("camera_to_base", {})
-        self.camera_frame_is_optical = bool(config.get("camera_frame_is_optical", True))
-        self.t_base_camera = build_base_to_camera_transform(
-            camera_offset,
-            optical_frame=self.camera_frame_is_optical,
+        self.t_base_camera = concatenate_matrices(
+            translation_matrix(
+                [
+                    float(camera_offset.get("x", 0.176)),
+                    float(camera_offset.get("y", 0.0)),
+                    float(camera_offset.get("z", 0.0)),
+                ]
+            ),
+            quaternion_matrix(
+                quaternion_from_euler(
+                    float(camera_offset.get("roll", 0.0)),
+                    float(camera_offset.get("pitch", 0.0)),
+                    float(camera_offset.get("yaw", math.pi)),
+                )
+            ),
         )
         self.t_camera_base = inverse_matrix(self.t_base_camera)
         self.marker_object_points = build_marker_object_points(self.marker_size)
@@ -184,8 +194,7 @@ class LocalizationNode(Node):
         )
         self.static_tf_broadcaster.sendTransform([transform])
         self.get_logger().info(
-            f"Published static transform: {self.base_frame} -> {self.camera_frame} "
-            f"(optical_frame={'yes' if self.camera_frame_is_optical else 'no'})"
+            f"Published static transform: {self.base_frame} -> {self.camera_frame}"
         )
 
     def publish_initial_map_to_odom(self):

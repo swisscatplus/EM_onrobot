@@ -17,11 +17,10 @@ yaw_smoothing_alpha: 0.6
 min_update_translation: 0.002
 min_update_yaw_deg: 0.2
 
-camera_frame_is_optical: true
 camera_to_base:
   x: 0.176
   y: 0.0
   z: 0.0
   roll: 0.0
   pitch: 0.0
-  yaw: 0.0
+  yaw: 0.0 #3.141592653589793

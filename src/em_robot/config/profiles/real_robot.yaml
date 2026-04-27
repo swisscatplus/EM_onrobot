@@ -35,7 +35,7 @@ imu:
   static_tf_xyzrpy: [0, 0, 0, 0, 0, 0]
 
 localization:
-  enabled: false
+  enabled: true
   camera_backend: picamera2
   source: 0
   diagnostics_rate_hz: 1.0
