@@ -16,6 +16,7 @@ from em_robot.aruco_utils import (
 )
 from em_robot.camera_sources import create_camera_source
 from em_robot.transform_utils import (
+    build_planar_transform,
     build_transform,
     compute_map_to_base_from_marker,
     compute_map_to_odom_from_map_to_base,
@@ -313,9 +314,25 @@ class LocalizationNode(Node):
             self.t_camera_base,
         )
 
-        # Compute map_to_odom directly (plain, no smoothing)
+        # Extract only planar components (x, y, yaw) - ignore pitch and roll
+        from tf_transformations import euler_from_quaternion, translation_from_matrix
+        translation = translation_from_matrix(map_to_base)
+        quaternion = quaternion_from_matrix(map_to_base)
+        _, _, yaw = euler_from_quaternion(quaternion)
+        
+        # Build planar transform (only x, y, yaw)
+        from em_robot.transform_utils import build_planar_transform
+        planar_map_to_base = build_planar_transform(translation[0], translation[1], yaw)
+        
+        # Also extract planar from odom_to_base
+        odom_translation = translation_from_matrix(odom_to_base)
+        odom_quaternion = quaternion_from_matrix(odom_to_base)
+        _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
+        planar_odom_to_base = build_planar_transform(odom_translation[0], odom_translation[1], odom_yaw)
+
+        # Compute map_to_odom using planar transforms only
         # map_to_odom = map_to_base @ inv(odom_to_base)
-        map_to_odom = compute_map_to_odom_from_map_to_base(map_to_base, odom_to_base)
+        map_to_odom = compute_map_to_odom_from_map_to_base(planar_map_to_base, planar_odom_to_base)
 
         # Publish map_to_odom transform
         self.tf_broadcaster.sendTransform(
@@ -337,13 +354,7 @@ class LocalizationNode(Node):
                 )
             )
 
-        # Log and visualize
-        from tf_transformations import translation_from_matrix, euler_from_quaternion
-        
-        translation = translation_from_matrix(map_to_base)
-        quaternion = quaternion_from_matrix(map_to_base)
-        _, _, yaw = euler_from_quaternion(quaternion)
-
+        # Log and visualize using planar values
         self.get_logger().info(
             f"Localization update from marker {marker_id}: "
             f"x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}°"
@@ -351,7 +362,7 @@ class LocalizationNode(Node):
 
         cv.putText(
             annotated_frame,
-            f"x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}°",
+            f"x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}° (planar)",
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
