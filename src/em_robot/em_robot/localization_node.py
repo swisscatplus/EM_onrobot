@@ -141,6 +141,12 @@ class LocalizationNode(Node):
             else None
         )
 
+        # Track state for incremental updates
+        self.has_initial_pose = False
+        self.last_map_to_base = None
+        self.last_odom_to_base = None
+        self.last_map_to_odom = None
+
         # Publish static transforms
         self.publish_static_transform()
 
@@ -330,9 +336,22 @@ class LocalizationNode(Node):
         _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
         planar_odom_to_base = build_planar_transform(odom_translation[0], odom_translation[1], odom_yaw)
 
-        # Compute map_to_odom using planar transforms only
-        # map_to_odom = map_to_base @ inv(odom_to_base)
-        map_to_odom = compute_map_to_odom_from_map_to_base(planar_map_to_base, planar_odom_to_base)
+        # Compute map_to_odom - use incremental update after initial pose
+        if not self.has_initial_pose:
+            # First frame: compute initial map_to_odom
+            map_to_odom = compute_map_to_odom_from_map_to_base(planar_map_to_base, planar_odom_to_base)
+            self.has_initial_pose = True
+            self.last_map_to_base = planar_map_to_base
+            self.last_odom_to_base = planar_odom_to_base
+            self.last_map_to_odom = map_to_odom
+            self.get_logger().info(f"Initial pose set: x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}°")
+        else:
+            # Subsequent frames: compute delta from odometry and apply to map_to_odom
+            # This prevents odometry drift from affecting the map localization
+            odom_delta = inverse_matrix(self.last_odom_to_base) @ planar_odom_to_base
+            map_to_odom = self.last_map_to_odom @ odom_delta
+            self.last_map_to_odom = map_to_odom
+            self.last_odom_to_base = planar_odom_to_base
 
         # Publish map_to_odom transform
         self.tf_broadcaster.sendTransform(
