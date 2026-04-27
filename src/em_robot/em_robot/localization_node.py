@@ -8,6 +8,7 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+from geometry_msgs.msg import PoseStamped
 from em_robot.aruco_utils import (
     build_marker_object_points,
     create_aruco_detector,
@@ -19,7 +20,10 @@ from em_robot.camera_sources import create_camera_source
 from em_robot.diagnostic_utils import build_diagnostic_array, build_diagnostic_status
 from em_robot.transform_utils import (
     blend_angles,
+    build_planar_transform,
     build_transform,
+    compute_map_to_base_from_marker,
+    compute_map_to_odom_from_map_to_base,
     transform_to_matrix,
     wrap_angle,
     yaw_from_matrix,
@@ -33,6 +37,7 @@ from tf_transformations import (
     concatenate_matrices,
     inverse_matrix,
     quaternion_from_euler,
+    quaternion_from_matrix,
     quaternion_matrix,
     translation_matrix,
 )
@@ -50,6 +55,12 @@ class LocalizationNode(Node):
         self.declare_parameter("diagnostics_rate_hz", 1.0)
         self.declare_parameter("debug_image_topic", "/localization/debug_image")
         self.declare_parameter("debug_image_scale", 1.0)
+        self.declare_parameter("map_frame", "map")
+        self.declare_parameter("odom_frame", "odom")
+        self.declare_parameter("base_frame", "base_link")
+        self.declare_parameter("camera_frame", "camera_frame")
+        self.declare_parameter("vision_base_pose_topic", "/localization/vision_base_pose")
+        self.declare_parameter("vision_camera_pose_topic", "/localization/vision_camera_pose")
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -62,6 +73,12 @@ class LocalizationNode(Node):
         self.diagnostics_rate_hz = float(self.get_parameter("diagnostics_rate_hz").value)
         self.debug_image_topic = str(self.get_parameter("debug_image_topic").value)
         self.debug_image_scale = float(self.get_parameter("debug_image_scale").value)
+        self.map_frame = str(self.get_parameter("map_frame").value)
+        self.odom_frame = str(self.get_parameter("odom_frame").value)
+        self.base_frame = str(self.get_parameter("base_frame").value)
+        self.camera_frame = str(self.get_parameter("camera_frame").value)
+        self.vision_base_pose_topic = str(self.get_parameter("vision_base_pose_topic").value)
+        self.vision_camera_pose_topic = str(self.get_parameter("vision_camera_pose_topic").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -127,6 +144,16 @@ class LocalizationNode(Node):
             if self.debug_image_topic
             else None
         )
+        self.vision_base_pose_pub = (
+            self.create_publisher(PoseStamped, self.vision_base_pose_topic, 10)
+            if self.vision_base_pose_topic
+            else None
+        )
+        self.vision_camera_pose_pub = (
+            self.create_publisher(PoseStamped, self.vision_camera_pose_topic, 10)
+            if self.vision_camera_pose_topic
+            else None
+        )
 
         self.last_map_to_odom = np.identity(4, dtype=np.float64)
         self.last_marker_time = None
@@ -160,26 +187,56 @@ class LocalizationNode(Node):
 
     def publish_static_transform(self):
         transform = build_transform(
-            "base_link",
-            "camera_frame",
+            self.base_frame,
+            self.camera_frame,
             self.t_base_camera,
             self.get_clock().now().to_msg(),
         )
         self.static_tf_broadcaster.sendTransform([transform])
-        self.get_logger().info("Published static transform: base_link -> camera_frame")
+        self.get_logger().info(
+            f"Published static transform: {self.base_frame} -> {self.camera_frame}"
+        )
 
     def publish_initial_map_to_odom(self):
         initial_transform = np.identity(4, dtype=np.float64)
         self.last_map_to_odom = initial_transform
         self.tf_broadcaster.sendTransform(
-            build_transform("map", "odom", initial_transform, self.get_clock().now().to_msg())
+            build_transform(
+                self.map_frame,
+                self.odom_frame,
+                initial_transform,
+                self.get_clock().now().to_msg(),
+            )
         )
-        self.get_logger().info("Initialized map -> odom to identity.")
+        self.get_logger().info(
+            f"Initialized {self.map_frame} -> {self.odom_frame} to identity."
+        )
 
     def broadcast_last_map_to_odom(self):
         self.tf_broadcaster.sendTransform(
-            build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
+            build_transform(
+                self.map_frame,
+                self.odom_frame,
+                self.last_map_to_odom,
+                self.get_clock().now().to_msg(),
+            )
         )
+
+    def build_pose_stamped(self, frame_id, transform_matrix, stamp):
+        translation = transform_matrix[:3, 3]
+        quaternion = quaternion_from_matrix(transform_matrix)
+
+        msg = PoseStamped()
+        msg.header.stamp = stamp
+        msg.header.frame_id = frame_id
+        msg.pose.position.x = float(translation[0])
+        msg.pose.position.y = float(translation[1])
+        msg.pose.position.z = float(translation[2])
+        msg.pose.orientation.x = float(quaternion[0])
+        msg.pose.orientation.y = float(quaternion[1])
+        msg.pose.orientation.z = float(quaternion[2])
+        msg.pose.orientation.w = float(quaternion[3])
+        return msg
 
     def lookup_matrix(
         self,
@@ -225,25 +282,30 @@ class LocalizationNode(Node):
 
     def handle_set_initial_pose(self, request, response):
         try:
-            odom_to_base = self.lookup_matrix("odom", "base_link", Time())
+            odom_to_base = self.lookup_matrix(self.odom_frame, self.base_frame, Time())
         except Exception as exc:
-            self.get_logger().warn(f"No odom -> base_link available for initial pose: {exc}")
+            self.get_logger().warn(
+                f"No {self.odom_frame} -> {self.base_frame} available for initial pose: {exc}"
+            )
             response.success = False
             return response
 
-        map_to_base = concatenate_matrices(
-            translation_matrix([request.x, request.y, 0.0]),
-            quaternion_matrix(quaternion_from_euler(0.0, 0.0, request.yaw)),
-        )
+        map_to_base = build_planar_transform(request.x, request.y, request.yaw)
 
-        self.last_map_to_odom = map_to_base @ inverse_matrix(odom_to_base)
+        self.last_map_to_odom = compute_map_to_odom_from_map_to_base(map_to_base, odom_to_base)
         self.has_map_lock = True
         self.tf_broadcaster.sendTransform(
-            build_transform("map", "odom", self.last_map_to_odom, self.get_clock().now().to_msg())
+            build_transform(
+                self.map_frame,
+                self.odom_frame,
+                self.last_map_to_odom,
+                self.get_clock().now().to_msg(),
+            )
         )
 
         self.get_logger().info(
-            f"Updated map -> odom from service: x={request.x:.3f}, y={request.y:.3f}, yaw={request.yaw:.3f}"
+            f"Updated {self.map_frame} -> {self.odom_frame} from service: "
+            f"x={request.x:.3f}, y={request.y:.3f}, yaw={request.yaw:.3f}"
         )
         response.success = True
         return response
@@ -279,13 +341,15 @@ class LocalizationNode(Node):
 
         try:
             odom_to_base = self.lookup_matrix(
-                "odom",
-                "base_link",
+                self.odom_frame,
+                self.base_frame,
                 capture_stamp,
                 allow_latest_fallback=True,
             )
         except Exception as exc:
-            self.get_logger().warn(f"Skipping vision update, no odom -> base_link transform: {exc}")
+            self.get_logger().warn(
+                f"Skipping vision update, no {self.odom_frame} -> {self.base_frame} transform: {exc}"
+            )
             return
 
         predicted_map_to_base = self.last_map_to_odom @ odom_to_base
@@ -336,14 +400,20 @@ class LocalizationNode(Node):
 
             try:
                 map_to_marker = self.lookup_matrix(
-                    "map", f"aruco_{detection['id']}", Time(), timeout_sec=0.5
+                    self.map_frame,
+                    f"aruco_{detection['id']}",
+                    Time(),
+                    timeout_sec=0.5,
                 )
             except Exception:
                 missing_marker_tf += 1
                 continue
 
-            map_to_camera = map_to_marker @ inverse_matrix(camera_to_marker)
-            map_to_base = map_to_camera @ self.t_camera_base
+            map_to_base = compute_map_to_base_from_marker(
+                map_to_marker,
+                camera_to_marker,
+                self.t_camera_base,
+            )
 
             dx = map_to_base[0, 3] - predicted_map_to_base[0, 3]
             dy = map_to_base[1, 3] - predicted_map_to_base[1, 3]
@@ -434,10 +504,7 @@ class LocalizationNode(Node):
             float(np.sum([weight * math.cos(yaw) for weight, yaw in zip(weights, yaw_values)])),
         )
 
-        measured_map_to_base = concatenate_matrices(
-            translation_matrix([x, y, 0.0]),
-            quaternion_matrix(quaternion_from_euler(0.0, 0.0, mean_yaw)),
-        )
+        measured_map_to_base = build_planar_transform(x, y, mean_yaw)
 
         if self.has_map_lock:
             previous_map_to_base = self.last_map_to_odom @ odom_to_base
@@ -459,10 +526,7 @@ class LocalizationNode(Node):
             smoothed_y = y
             smoothed_yaw = mean_yaw
 
-        fused_map_to_base = concatenate_matrices(
-            translation_matrix([smoothed_x, smoothed_y, 0.0]),
-            quaternion_matrix(quaternion_from_euler(0.0, 0.0, smoothed_yaw)),
-        )
+        fused_map_to_base = build_planar_transform(smoothed_x, smoothed_y, smoothed_yaw)
 
         self.last_debug_summary = (
             f"accepted {len(candidates)}/{len(detections)} marker poses, "
@@ -483,19 +547,45 @@ class LocalizationNode(Node):
             ):
                 return
 
-        self.last_map_to_odom = fused_map_to_base @ inverse_matrix(odom_to_base)
+        self.last_map_to_odom = compute_map_to_odom_from_map_to_base(
+            fused_map_to_base,
+            odom_to_base,
+        )
         self.has_map_lock = True
         self.last_marker_time = self.get_clock().now()
 
+        if self.vision_base_pose_pub is not None:
+            self.vision_base_pose_pub.publish(
+                self.build_pose_stamped(
+                    self.map_frame,
+                    fused_map_to_base,
+                    self.last_marker_time.to_msg(),
+                )
+            )
+        if self.vision_camera_pose_pub is not None:
+            fused_map_to_camera = fused_map_to_base @ self.t_base_camera
+            self.vision_camera_pose_pub.publish(
+                self.build_pose_stamped(
+                    self.map_frame,
+                    fused_map_to_camera,
+                    self.last_marker_time.to_msg(),
+                )
+            )
+
         self.tf_broadcaster.sendTransform(
-            build_transform("map", "odom", self.last_map_to_odom, self.last_marker_time.to_msg())
+            build_transform(
+                self.map_frame,
+                self.odom_frame,
+                self.last_map_to_odom,
+                self.last_marker_time.to_msg(),
+            )
         )
 
         if (self.last_marker_time - self.last_update_log_time).nanoseconds > int(2e9):
             marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
             measured_yaw = yaw_from_matrix(measured_map_to_base)
             self.get_logger().info(
-                f"Updated map -> odom using markers [{marker_ids}] at "
+                f"Updated {self.map_frame} -> {self.odom_frame} using markers [{marker_ids}] at "
                 f"x={smoothed_x:.3f}, y={smoothed_y:.3f}, yaw={smoothed_yaw:.3f} "
                 f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
             )
@@ -567,7 +657,7 @@ class LocalizationNode(Node):
 
         msg = Image()
         msg.header.stamp = stamp.to_msg()
-        msg.header.frame_id = "camera_frame"
+        msg.header.frame_id = self.camera_frame
         msg.height = int(publish_frame.shape[0])
         msg.width = int(publish_frame.shape[1])
         msg.encoding = "bgr8"
@@ -611,6 +701,10 @@ class LocalizationNode(Node):
                 "camera_backend": self.camera_backend,
                 "camera_source": self.camera_source,
                 "camera_loop": self.camera_loop,
+                "map_frame": self.map_frame,
+                "odom_frame": self.odom_frame,
+                "base_frame": self.base_frame,
+                "camera_frame": self.camera_frame,
                 "debug_image_scale": self.debug_image_scale,
                 "has_map_lock": self.has_map_lock,
                 "last_frame_age_s": "n/a" if frame_age is None else f"{frame_age:.3f}",

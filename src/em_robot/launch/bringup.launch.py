@@ -134,6 +134,12 @@ def _build_nodes(context):
                         "diagnostics_rate_hz": float(
                             localization_cfg.get("diagnostics_rate_hz", 1.0)
                         ),
+                        "map_frame": str(localization_cfg.get("map_frame", "map")),
+                        "odom_frame": str(localization_cfg.get("odom_frame", "odom")),
+                        "base_frame": str(localization_cfg.get("base_frame", "base_link")),
+                        "camera_frame": str(
+                            localization_cfg.get("camera_frame", "camera_frame")
+                        ),
                         "debug_image_topic": str(
                             localization_cfg.get(
                                 "debug_image_topic", "/localization/debug_image"
@@ -141,6 +147,17 @@ def _build_nodes(context):
                         ),
                         "debug_image_scale": float(
                             localization_cfg.get("debug_image_scale", 1.0)
+                        ),
+                        "vision_base_pose_topic": str(
+                            localization_cfg.get(
+                                "vision_base_pose_topic", "/localization/vision_base_pose"
+                            )
+                        ),
+                        "vision_camera_pose_topic": str(
+                            localization_cfg.get(
+                                "vision_camera_pose_topic",
+                                "/localization/vision_camera_pose",
+                            )
                         ),
                     }
                 ],

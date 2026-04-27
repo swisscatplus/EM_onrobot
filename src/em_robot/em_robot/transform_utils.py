@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import math
 
-from geometry_msgs.msg import TransformStamped
 from tf_transformations import (
     concatenate_matrices,
     euler_from_quaternion,
+    inverse_matrix,
+    quaternion_from_euler,
     quaternion_from_matrix,
     quaternion_matrix,
     translation_from_matrix,
@@ -33,6 +34,8 @@ def transform_to_matrix(transform):
 
 
 def build_transform(parent_frame, child_frame, transform_matrix, stamp):
+    from geometry_msgs.msg import TransformStamped
+
     translation = translation_from_matrix(transform_matrix)
     quaternion = quaternion_from_matrix(transform_matrix)
 
@@ -48,6 +51,21 @@ def build_transform(parent_frame, child_frame, transform_matrix, stamp):
     transform.transform.rotation.z = float(quaternion[2])
     transform.transform.rotation.w = float(quaternion[3])
     return transform
+
+
+def build_planar_transform(x, y, yaw):
+    return concatenate_matrices(
+        translation_matrix([x, y, 0.0]),
+        quaternion_matrix(quaternion_from_euler(0.0, 0.0, yaw)),
+    )
+
+
+def compute_map_to_base_from_marker(map_to_marker, camera_to_marker, camera_to_base):
+    return map_to_marker @ inverse_matrix(camera_to_marker) @ camera_to_base
+
+
+def compute_map_to_odom_from_map_to_base(map_to_base, odom_to_base):
+    return map_to_base @ inverse_matrix(odom_to_base)
 
 
 def wrap_angle(angle):
