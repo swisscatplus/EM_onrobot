@@ -124,6 +124,9 @@ class LocalizationNode(Node):
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        
+        # Track if odom frame is available
+        self.odom_frame_available = False
 
         # Initialize publishers
         self.debug_image_pub = (
@@ -180,6 +183,22 @@ class LocalizationNode(Node):
         """Main processing loop: detect marker and update localization."""
         capture_stamp = self.get_clock().now()
         
+        # Check if odom frame is available
+        if not self.odom_frame_available:
+            try:
+                # Try to get the latest transform to check if odom exists
+                self.tf_buffer.lookup_transform(
+                    self.odom_frame,
+                    self.base_frame,
+                    Time(),
+                    timeout=Duration(seconds=0.1),
+                )
+                self.odom_frame_available = True
+                self.get_logger().info(f"{self.odom_frame} frame is now available")
+            except Exception:
+                # odom frame not available yet, skip this frame
+                return
+        
         # Capture frame
         try:
             frame = self.camera.capture()
@@ -217,6 +236,8 @@ class LocalizationNode(Node):
             self.get_logger().warn(
                 f"Cannot get {self.odom_frame} -> {self.base_frame}: {exc}"
             )
+            # Mark odom as unavailable if lookup fails
+            self.odom_frame_available = False
             return
 
         # Process first detected marker (for now, just pick the first one)
@@ -341,15 +362,42 @@ class LocalizationNode(Node):
 
         self.publish_debug_image(annotated_frame, capture_stamp)
 
-    def lookup_matrix(self, target_frame, source_frame, stamp, timeout_sec=0.5):
-        """Look up a transform and return as a 4x4 matrix."""
-        transform = self.tf_buffer.lookup_transform(
-            target_frame,
-            source_frame,
-            stamp,
-            timeout=rclpy.duration.Duration(seconds=timeout_sec),
-        )
-        return transform_to_matrix(transform)
+    def lookup_matrix(self, target_frame, source_frame, stamp, timeout_sec=0.5, allow_latest_fallback=True):
+        """Look up a transform and return as a 4x4 matrix.
+        
+        If allow_latest_fallback is True and the exact timestamp is not available,
+        falls back to the latest available transform.
+        """
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                target_frame,
+                source_frame,
+                stamp,
+                timeout=rclpy.duration.Duration(seconds=timeout_sec),
+            )
+            return transform_to_matrix(transform)
+        except Exception as exc:
+            if not allow_latest_fallback:
+                raise exc
+            
+            # Check if it's a time extrapolation error
+            if "extrapolation" not in str(exc).lower():
+                raise exc
+            
+            # Fall back to latest available transform
+            try:
+                latest_transform = self.tf_buffer.lookup_transform(
+                    target_frame,
+                    source_frame,
+                    Time(),
+                    timeout=rclpy.duration.Duration(seconds=timeout_sec),
+                )
+                self.get_logger().debug(
+                    f"Using latest {target_frame} -> {source_frame} transform (exact time not available)"
+                )
+                return transform_to_matrix(latest_transform)
+            except Exception:
+                raise exc
 
     def publish_debug_image(self, frame, stamp):
         """Publish annotated frame for debugging."""
