@@ -19,7 +19,6 @@ from em_robot.transform_utils import (
     build_planar_transform,
     build_transform,
     compute_map_to_base_from_marker,
-    compute_map_to_odom_from_map_to_base,
     transform_to_matrix,
 )
 from rclpy.duration import Duration
@@ -29,11 +28,11 @@ from sensor_msgs.msg import Image
 from tf2_ros import Buffer, StaticTransformBroadcaster, TransformBroadcaster, TransformListener
 from tf_transformations import (
     concatenate_matrices,
+    inverse_matrix,
     quaternion_from_euler,
     quaternion_from_matrix,
     quaternion_matrix,
     translation_matrix,
-    inverse_matrix,
 )
 
 
@@ -127,7 +126,10 @@ class LocalizationNode(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # Important: spin_thread=True lets the TF listener keep receiving /tf and /tf_static
+        # while this node is inside timer callbacks.
+        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         self.odom_frame_available = False
         self.last_map_to_odom = None
@@ -275,6 +277,7 @@ class LocalizationNode(Node):
 
         detection = detections[0]
         marker_id = detection["id"]
+        marker_frame = f"aruco_{marker_id}"
         corners = detection["corners"]
 
         polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
@@ -322,16 +325,20 @@ class LocalizationNode(Node):
         try:
             map_to_marker = self.lookup_matrix(
                 self.map_frame,
-                f"aruco_{marker_id}",
+                marker_frame,
                 Time(),
-                timeout_sec=0.5,
+                timeout_sec=1.0,
+                allow_latest_fallback=False,
             )
         except Exception as exc:
-            self.get_logger().warn(f"Cannot find marker {marker_id} in map: {exc}")
+            self.get_logger().warn(
+                f"Cannot find marker {marker_id} in TF as "
+                f"{self.map_frame} -> {marker_frame}: {exc}"
+            )
 
             cv.putText(
                 annotated_frame,
-                f"Marker {marker_id} not found in map frame",
+                f"{marker_frame} not found in TF",
                 (10, 30),
                 cv.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -343,6 +350,8 @@ class LocalizationNode(Node):
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
+        # map -> base_link from vision:
+        # map -> marker @ marker -> camera @ camera -> base
         map_to_base = compute_map_to_base_from_marker(
             map_to_marker,
             camera_to_marker,
@@ -369,9 +378,29 @@ class LocalizationNode(Node):
             odom_yaw,
         )
 
-        map_to_odom = compute_map_to_odom_from_map_to_base(
+        # Important:
+        # map -> odom = map -> base_link @ inverse(odom -> base_link)
+        # This replaces the helper so there is no ambiguity.
+        map_to_odom = concatenate_matrices(
             planar_map_to_base,
-            planar_odom_to_base,
+            inverse_matrix(planar_odom_to_base),
+        )
+
+        map_odom_translation = translation_from_matrix(map_to_odom)
+        map_odom_quaternion = quaternion_from_matrix(map_to_odom)
+        _, _, map_odom_yaw = euler_from_quaternion(map_odom_quaternion)
+
+        self.get_logger().info(
+            f"Localization update from marker {marker_id}: "
+            f"map->base x={translation[0]:.3f}, "
+            f"y={translation[1]:.3f}, "
+            f"yaw={math.degrees(yaw):.1f} deg | "
+            f"odom->base x={odom_translation[0]:.3f}, "
+            f"y={odom_translation[1]:.3f}, "
+            f"yaw={math.degrees(odom_yaw):.1f} deg | "
+            f"map->odom x={map_odom_translation[0]:.3f}, "
+            f"y={map_odom_translation[1]:.3f}, "
+            f"yaw={math.degrees(map_odom_yaw):.1f} deg"
         )
 
         t_map_to_odom = build_transform(
@@ -393,21 +422,28 @@ class LocalizationNode(Node):
                 )
             )
 
-        self.get_logger().info(
-            f"Localization update from marker {marker_id}: "
-            f"x={translation[0]:.3f}, "
-            f"y={translation[1]:.3f}, "
-            f"yaw={math.degrees(yaw):.1f} deg"
-        )
-
         cv.putText(
             annotated_frame,
+            f"marker {marker_id} map->base "
             f"x={translation[0]:.3f}, y={translation[1]:.3f}, "
             f"yaw={math.degrees(yaw):.1f} deg",
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
             (0, 255, 0),
+            2,
+            cv.LINE_AA,
+        )
+
+        cv.putText(
+            annotated_frame,
+            f"map->odom x={map_odom_translation[0]:.3f}, "
+            f"y={map_odom_translation[1]:.3f}, "
+            f"yaw={math.degrees(map_odom_yaw):.1f} deg",
+            (10, 60),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
             2,
             cv.LINE_AA,
         )
@@ -438,22 +474,18 @@ class LocalizationNode(Node):
             if "extrapolation" not in str(exc).lower():
                 raise exc
 
-            try:
-                latest_transform = self.tf_buffer.lookup_transform(
-                    target_frame,
-                    source_frame,
-                    Time(),
-                    timeout=Duration(seconds=timeout_sec),
-                )
+            latest_transform = self.tf_buffer.lookup_transform(
+                target_frame,
+                source_frame,
+                Time(),
+                timeout=Duration(seconds=timeout_sec),
+            )
 
-                self.get_logger().debug(
-                    f"Using latest {target_frame} -> {source_frame} transform"
-                )
+            self.get_logger().debug(
+                f"Using latest {target_frame} -> {source_frame} transform"
+            )
 
-                return transform_to_matrix(latest_transform)
-
-            except Exception:
-                raise exc
+            return transform_to_matrix(latest_transform)
 
     def publish_debug_image(self, frame, stamp):
         if self.debug_image_pub is None:
