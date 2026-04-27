@@ -29,11 +29,11 @@ from sensor_msgs.msg import Image
 from tf2_ros import Buffer, StaticTransformBroadcaster, TransformBroadcaster, TransformListener
 from tf_transformations import (
     concatenate_matrices,
-    inverse_matrix,
     quaternion_from_euler,
     quaternion_from_matrix,
     quaternion_matrix,
     translation_matrix,
+    inverse_matrix,
 )
 
 
@@ -42,7 +42,6 @@ class LocalizationNode(Node):
         super().__init__("localization")
         self.get_logger().info("Starting localization node...")
 
-        # Declare parameters
         self.declare_parameter("config_file", "")
         self.declare_parameter("camera_backend", "picamera2")
         self.declare_parameter("camera_source", "0")
@@ -55,13 +54,14 @@ class LocalizationNode(Node):
         self.declare_parameter("camera_frame", "camera_frame")
         self.declare_parameter("vision_base_pose_topic", "/localization/vision_base_pose")
         self.declare_parameter("process_rate_hz", 5.0)
+        self.declare_parameter("map_odom_publish_rate_hz", 20.0)
 
-        # Get parameters
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
             "config",
             "calibration.yaml",
         )
+
         self.camera_backend = self.get_parameter("camera_backend").value
         self.camera_source = self.get_parameter("camera_source").value
         self.camera_loop = bool(self.get_parameter("camera_loop").value)
@@ -73,8 +73,10 @@ class LocalizationNode(Node):
         self.camera_frame = str(self.get_parameter("camera_frame").value)
         self.vision_base_pose_topic = str(self.get_parameter("vision_base_pose_topic").value)
         self.process_rate_hz = float(self.get_parameter("process_rate_hz").value)
+        self.map_odom_publish_rate_hz = float(
+            self.get_parameter("map_odom_publish_rate_hz").value
+        )
 
-        # Load calibration
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
             config = yaml.safe_load(config_file)
@@ -85,11 +87,12 @@ class LocalizationNode(Node):
         self.image_size = tuple(config.get("image_size", [1536, 864]))
         self.lens_position = float(config.get("lens_position", 8.0))
         self.max_reprojection_error = float(config.get("max_reprojection_error_px", 8.0))
+
         self.marker_object_points = build_marker_object_points(self.marker_size)
         self.aruco_detector = create_aruco_detector()
 
-        # Build camera to base transform
         camera_offset = config.get("camera_to_base", {})
+
         self.t_base_camera = concatenate_matrices(
             translation_matrix(
                 [
@@ -106,9 +109,9 @@ class LocalizationNode(Node):
                 )
             ),
         )
+
         self.t_camera_base = inverse_matrix(self.t_base_camera)
 
-        # Initialize camera
         self.camera = create_camera_source(
             camera_backend=self.camera_backend,
             source=self.camera_source,
@@ -116,53 +119,86 @@ class LocalizationNode(Node):
             lens_position=self.lens_position,
             loop=self.camera_loop,
         )
+
         self.get_logger().info(
             f"Camera backend '{self.camera_backend}' initialized with source '{self.camera_source}'"
         )
 
-        # Initialize TF
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        
-        # Track if odom frame is available
-        self.odom_frame_available = False
 
-        # Initialize publishers
+        self.odom_frame_available = False
+        self.last_map_to_odom = None
+
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
             if self.debug_image_topic
             else None
         )
+
         self.vision_base_pose_pub = (
             self.create_publisher(PoseStamped, self.vision_base_pose_topic, 10)
             if self.vision_base_pose_topic
             else None
         )
 
-        # Publish static transforms
         self.publish_static_transform()
+        self.publish_initial_map_to_odom()
 
-        # Start processing timer
-        timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
-        self.timer = self.create_timer(timer_period, self.process_frame)
+        process_timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
+        self.timer = self.create_timer(process_timer_period, self.process_frame)
+
+        map_odom_timer_period = (
+            1.0 / self.map_odom_publish_rate_hz
+            if self.map_odom_publish_rate_hz > 0.0
+            else 0.05
+        )
+        self.map_odom_timer = self.create_timer(
+            map_odom_timer_period,
+            self.broadcast_last_map_to_odom,
+        )
 
     def publish_static_transform(self):
-        """Publish the static camera to base transform."""
         transform = build_transform(
             self.base_frame,
             self.camera_frame,
             self.t_base_camera,
             self.get_clock().now().to_msg(),
         )
+
         self.static_tf_broadcaster.sendTransform([transform])
+
         self.get_logger().info(
             f"Published static transform: {self.base_frame} -> {self.camera_frame}"
         )
 
+    def publish_initial_map_to_odom(self):
+        map_to_odom = build_planar_transform(0.0, 0.0, 0.0)
+
+        transform = build_transform(
+            self.map_frame,
+            self.odom_frame,
+            map_to_odom,
+            self.get_clock().now().to_msg(),
+        )
+
+        self.last_map_to_odom = transform
+        self.tf_broadcaster.sendTransform(transform)
+
+        self.get_logger().info(
+            f"Published initial transform: {self.map_frame} -> {self.odom_frame}"
+        )
+
+    def broadcast_last_map_to_odom(self):
+        if self.last_map_to_odom is None:
+            return
+
+        self.last_map_to_odom.header.stamp = self.get_clock().now().to_msg()
+        self.tf_broadcaster.sendTransform(self.last_map_to_odom)
+
     def build_pose_stamped(self, frame_id, transform_matrix, stamp):
-        """Build a PoseStamped message from a transform matrix."""
         from tf_transformations import translation_from_matrix
 
         translation = translation_from_matrix(transform_matrix)
@@ -178,16 +214,16 @@ class LocalizationNode(Node):
         msg.pose.orientation.y = float(quaternion[1])
         msg.pose.orientation.z = float(quaternion[2])
         msg.pose.orientation.w = float(quaternion[3])
+
         return msg
 
     def process_frame(self):
-        """Main processing loop: detect marker and update localization."""
+        from tf_transformations import euler_from_quaternion, translation_from_matrix
+
         capture_stamp = self.get_clock().now()
-        
-        # Check if odom frame is available
+
         if not self.odom_frame_available:
             try:
-                # Try to get the latest transform to check if odom exists
                 self.tf_buffer.lookup_transform(
                     self.odom_frame,
                     self.base_frame,
@@ -197,10 +233,8 @@ class LocalizationNode(Node):
                 self.odom_frame_available = True
                 self.get_logger().info(f"{self.odom_frame} frame is now available")
             except Exception:
-                # odom frame not available yet, skip this frame
                 return
-        
-        # Capture frame
+
         try:
             frame = self.camera.capture()
         except Exception as exc:
@@ -209,8 +243,8 @@ class LocalizationNode(Node):
 
         annotated_frame = frame.copy()
 
-        # Detect markers
         detections = detect_aruco_markers(frame, detector=self.aruco_detector)
+
         if not detections:
             if self.debug_image_pub:
                 cv.putText(
@@ -226,29 +260,26 @@ class LocalizationNode(Node):
                 self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
-        # Get odometry transform (current estimate)
         try:
             odom_to_base = self.lookup_matrix(
                 self.odom_frame,
                 self.base_frame,
-                capture_stamp,
+                Time(),
             )
         except Exception as exc:
             self.get_logger().warn(
                 f"Cannot get {self.odom_frame} -> {self.base_frame}: {exc}"
             )
-            # Mark odom as unavailable if lookup fails
             self.odom_frame_available = False
             return
 
-        # Process first detected marker (for now, just pick the first one)
         detection = detections[0]
         marker_id = detection["id"]
         corners = detection["corners"]
+
         polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
         cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
 
-        # Estimate marker pose in camera frame
         camera_to_marker, reprojection_error = estimate_marker_pose(
             corners,
             self.marker_object_points,
@@ -258,7 +289,11 @@ class LocalizationNode(Node):
         )
 
         if camera_to_marker is None:
-            self.get_logger().warn(f"Marker {marker_id} reprojection error too high: {reprojection_error:.2f}px")
+            self.get_logger().warn(
+                f"Marker {marker_id} reprojection error too high: "
+                f"{reprojection_error:.2f}px"
+            )
+
             cv.putText(
                 annotated_frame,
                 f"Marker {marker_id}: pose estimation failed",
@@ -269,6 +304,7 @@ class LocalizationNode(Node):
                 2,
                 cv.LINE_AA,
             )
+
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
@@ -283,7 +319,6 @@ class LocalizationNode(Node):
             cv.LINE_AA,
         )
 
-        # Look up marker position in map
         try:
             map_to_marker = self.lookup_matrix(
                 self.map_frame,
@@ -293,6 +328,7 @@ class LocalizationNode(Node):
             )
         except Exception as exc:
             self.get_logger().warn(f"Cannot find marker {marker_id} in map: {exc}")
+
             cv.putText(
                 annotated_frame,
                 f"Marker {marker_id} not found in map frame",
@@ -303,66 +339,71 @@ class LocalizationNode(Node):
                 2,
                 cv.LINE_AA,
             )
+
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
-        # Compute map_to_base from camera observation
-        # map_to_base = map_to_marker @ inv(camera_to_marker) @ camera_to_base
         map_to_base = compute_map_to_base_from_marker(
             map_to_marker,
             camera_to_marker,
             self.t_camera_base,
         )
 
-        # Extract only planar components (x, y, yaw) - ignore pitch and roll
-        from tf_transformations import euler_from_quaternion, translation_from_matrix
         translation = translation_from_matrix(map_to_base)
         quaternion = quaternion_from_matrix(map_to_base)
         _, _, yaw = euler_from_quaternion(quaternion)
-        
-        # Build planar transform (only x, y, yaw)
-        from em_robot.transform_utils import build_planar_transform
-        planar_map_to_base = build_planar_transform(translation[0], translation[1], yaw)
-        
-        # Also extract planar from odom_to_base
+
+        planar_map_to_base = build_planar_transform(
+            translation[0],
+            translation[1],
+            yaw,
+        )
+
         odom_translation = translation_from_matrix(odom_to_base)
         odom_quaternion = quaternion_from_matrix(odom_to_base)
         _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
-        planar_odom_to_base = build_planar_transform(odom_translation[0], odom_translation[1], odom_yaw)
 
-        # Compute map_to_odom using planar transforms only
-        # map_to_odom = map_to_base @ inv(odom_to_base)
-        map_to_odom = compute_map_to_odom_from_map_to_base(planar_map_to_base, planar_odom_to_base)
-
-        # Publish map_to_odom transform
-        self.tf_broadcaster.sendTransform(
-            build_transform(
-                self.map_frame,
-                self.odom_frame,
-                map_to_odom,
-                capture_stamp.to_msg(),
-            )
+        planar_odom_to_base = build_planar_transform(
+            odom_translation[0],
+            odom_translation[1],
+            odom_yaw,
         )
 
-        # Publish vision-based pose
+        map_to_odom = compute_map_to_odom_from_map_to_base(
+            planar_map_to_base,
+            planar_odom_to_base,
+        )
+
+        t_map_to_odom = build_transform(
+            self.map_frame,
+            self.odom_frame,
+            map_to_odom,
+            self.get_clock().now().to_msg(),
+        )
+
+        self.last_map_to_odom = t_map_to_odom
+        self.tf_broadcaster.sendTransform(t_map_to_odom)
+
         if self.vision_base_pose_pub is not None:
             self.vision_base_pose_pub.publish(
                 self.build_pose_stamped(
                     self.map_frame,
-                    map_to_base,
-                    capture_stamp.to_msg(),
+                    planar_map_to_base,
+                    self.get_clock().now().to_msg(),
                 )
             )
 
-        # Log and visualize using planar values
         self.get_logger().info(
             f"Localization update from marker {marker_id}: "
-            f"x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}°"
+            f"x={translation[0]:.3f}, "
+            f"y={translation[1]:.3f}, "
+            f"yaw={math.degrees(yaw):.1f} deg"
         )
 
         cv.putText(
             annotated_frame,
-            f"x={translation[0]:.3f}, y={translation[1]:.3f}, yaw={math.degrees(yaw):.1f}° (planar)",
+            f"x={translation[0]:.3f}, y={translation[1]:.3f}, "
+            f"yaw={math.degrees(yaw):.1f} deg",
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -373,49 +414,53 @@ class LocalizationNode(Node):
 
         self.publish_debug_image(annotated_frame, capture_stamp)
 
-    def lookup_matrix(self, target_frame, source_frame, stamp, timeout_sec=0.5, allow_latest_fallback=True):
-        """Look up a transform and return as a 4x4 matrix.
-        
-        If allow_latest_fallback is True and the exact timestamp is not available,
-        falls back to the latest available transform.
-        """
+    def lookup_matrix(
+        self,
+        target_frame,
+        source_frame,
+        stamp,
+        timeout_sec=0.5,
+        allow_latest_fallback=True,
+    ):
         try:
             transform = self.tf_buffer.lookup_transform(
                 target_frame,
                 source_frame,
                 stamp,
-                timeout=rclpy.duration.Duration(seconds=timeout_sec),
+                timeout=Duration(seconds=timeout_sec),
             )
             return transform_to_matrix(transform)
+
         except Exception as exc:
             if not allow_latest_fallback:
                 raise exc
-            
-            # Check if it's a time extrapolation error
+
             if "extrapolation" not in str(exc).lower():
                 raise exc
-            
-            # Fall back to latest available transform
+
             try:
                 latest_transform = self.tf_buffer.lookup_transform(
                     target_frame,
                     source_frame,
                     Time(),
-                    timeout=rclpy.duration.Duration(seconds=timeout_sec),
+                    timeout=Duration(seconds=timeout_sec),
                 )
+
                 self.get_logger().debug(
-                    f"Using latest {target_frame} -> {source_frame} transform (exact time not available)"
+                    f"Using latest {target_frame} -> {source_frame} transform"
                 )
+
                 return transform_to_matrix(latest_transform)
+
             except Exception:
                 raise exc
 
     def publish_debug_image(self, frame, stamp):
-        """Publish annotated frame for debugging."""
         if self.debug_image_pub is None:
             return
 
         publish_frame = frame
+
         if 0.0 < self.debug_image_scale < 1.0:
             publish_frame = cv.resize(
                 frame,
@@ -434,17 +479,21 @@ class LocalizationNode(Node):
         msg.is_bigendian = 0
         msg.step = int(publish_frame.shape[1] * publish_frame.shape[2])
         msg.data = publish_frame.tobytes()
+
         self.debug_image_pub.publish(msg)
 
     def destroy_node(self):
         if hasattr(self, "camera") and self.camera is not None:
             self.camera.close()
+
         super().destroy_node()
 
 
 def main(args=None):
     rclpy.init(args=args)
+
     node = LocalizationNode()
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
