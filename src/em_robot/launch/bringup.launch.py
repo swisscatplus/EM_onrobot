@@ -29,6 +29,14 @@ def _resolve_config_path(config_dir, value):
     return os.path.join(config_dir, value)
 
 
+def _resolve_package_config_path(package_name, config_subdir, value):
+    if not value:
+        return ""
+    if os.path.isabs(value):
+        return value
+    return os.path.join(get_package_share_directory(package_name), config_subdir, value)
+
+
 def _build_nodes(context):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile_path = LaunchConfiguration("profile_path").perform(context)
@@ -72,10 +80,10 @@ def _build_nodes(context):
         )
 
         if backend == "bno055":
-            config_imu = os.path.join(
-                get_package_share_directory("bno055"),
+            config_imu = _resolve_package_config_path(
+                "bno055",
                 "config",
-                "bno055_params_i2c.yaml",
+                imu_cfg.get("params_file", "bno055_params_i2c.yaml"),
             )
             nodes.append(
                 Node(
