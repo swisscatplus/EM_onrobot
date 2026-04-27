@@ -61,7 +61,6 @@ class LocalizationNode(Node):
         self.declare_parameter("camera_frame", "camera_frame")
         self.declare_parameter("vision_base_pose_topic", "/localization/vision_base_pose")
         self.declare_parameter("vision_camera_pose_topic", "/localization/vision_camera_pose")
-        self.declare_parameter("turn_detection_threshold_deg", 5.0)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -80,7 +79,6 @@ class LocalizationNode(Node):
         self.camera_frame = str(self.get_parameter("camera_frame").value)
         self.vision_base_pose_topic = str(self.get_parameter("vision_base_pose_topic").value)
         self.vision_camera_pose_topic = str(self.get_parameter("vision_camera_pose_topic").value)
-        self.turn_detection_threshold = math.radians(float(self.get_parameter("turn_detection_threshold_deg").value))
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -510,22 +508,6 @@ class LocalizationNode(Node):
 
         if self.has_map_lock:
             previous_map_to_base = self.last_map_to_odom @ odom_to_base
-            measured_yaw = yaw_from_matrix(measured_map_to_base)
-            previous_yaw = yaw_from_matrix(previous_map_to_base)
-            yaw_change = wrap_angle(measured_yaw - previous_yaw)
-            
-            # If large yaw change detected, use measurement with minimal smoothing
-            # This prevents turns from being dampened by the smoothing filter
-            if abs(yaw_change) > self.turn_detection_threshold:  # configurable threshold
-                self.get_logger().debug(
-                    f"Large turn detected ({math.degrees(yaw_change):.1f}°), "
-                    f"reducing smoothing to preserve turn"
-                )
-                # Use higher vision confidence for turns
-                effective_alpha = min(1.0, self.yaw_smoothing_alpha * 1.5)
-            else:
-                effective_alpha = self.yaw_smoothing_alpha
-            
             smoothed_x = (
                 (1.0 - self.position_smoothing_alpha) * previous_map_to_base[0, 3]
                 + self.position_smoothing_alpha * x
@@ -535,9 +517,9 @@ class LocalizationNode(Node):
                 + self.position_smoothing_alpha * y
             )
             smoothed_yaw = blend_angles(
-                previous_yaw,
-                measured_yaw,
-                effective_alpha,
+                yaw_from_matrix(previous_map_to_base),
+                mean_yaw,
+                self.yaw_smoothing_alpha,
             )
         else:
             smoothed_x = x
@@ -559,23 +541,10 @@ class LocalizationNode(Node):
             smoothed_yaw_delta = abs(
                 wrap_angle(yaw_from_matrix(fused_map_to_base) - yaw_from_matrix(previous_map_to_base))
             )
-            
-            # DEBUG: Log yaw fusion details
-            self.get_logger().debug(
-                f"YAW FUSION: prev={math.degrees(previous_yaw):.1f}° → "
-                f"meas={math.degrees(measured_yaw):.1f}° → "
-                f"smooth={math.degrees(smoothed_yaw):.1f}° (alpha={effective_alpha:.2f}) "
-                f"delta={math.degrees(smoothed_yaw_delta):.1f}° (min_update={math.degrees(self.min_update_yaw):.1f}°)"
-            )
-            
             if (
                 smoothed_translation_delta < self.min_update_translation
                 and smoothed_yaw_delta < self.min_update_yaw
             ):
-                self.get_logger().debug(
-                    f"Update rejected: too small (trans_delta={smoothed_translation_delta:.3f}m, "
-                    f"yaw_delta={math.degrees(smoothed_yaw_delta):.1f}°)"
-                )
                 return
 
         self.last_map_to_odom = compute_map_to_odom_from_map_to_base(
@@ -614,10 +583,11 @@ class LocalizationNode(Node):
 
         if (self.last_marker_time - self.last_update_log_time).nanoseconds > int(2e9):
             marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
+            measured_yaw = yaw_from_matrix(measured_map_to_base)
             self.get_logger().info(
                 f"Updated {self.map_frame} -> {self.odom_frame} using markers [{marker_ids}] at "
-                f"x={smoothed_x:.3f}, y={smoothed_y:.3f}, yaw={math.degrees(smoothed_yaw):.1f}° "
-                f"(raw x={x:.3f}, y={y:.3f}, yaw={math.degrees(measured_yaw):.1f}°)"
+                f"x={smoothed_x:.3f}, y={smoothed_y:.3f}, yaw={smoothed_yaw:.3f} "
+                f"(raw x={x:.3f}, y={y:.3f}, yaw={measured_yaw:.3f})"
             )
             self.last_update_log_time = self.last_marker_time
 
