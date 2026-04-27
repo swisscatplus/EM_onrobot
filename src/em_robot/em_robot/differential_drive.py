@@ -8,7 +8,6 @@ WHEEL_BASE = 0.131
 ENCODER_RESOLUTION = 4096
 MAX_GOAL_VELOCITY_TICKS = 410
 GOAL_VELOCITY_RPM_PER_TICK = 0.229
-MOTOR_RPM_TO_TICKS_FACTOR = 60 / (0.229 * WHEEL_RADIUS * 2 * math.pi)
 
 
 @dataclass
@@ -33,39 +32,61 @@ def clamp(value, lower, upper):
     return max(min(value, upper), lower)
 
 
-def cmd_vel_to_motor_speeds(linear_x, angular_z, max_speed):
+def motor_rpm_to_ticks_factor(wheel_radius):
+    return 60 / (GOAL_VELOCITY_RPM_PER_TICK * wheel_radius * 2 * math.pi)
+
+
+def cmd_vel_to_motor_speeds(linear_x, angular_z, max_speed, wheel_base=WHEEL_BASE, wheel_radius=WHEEL_RADIUS):
     linear_x = clamp(linear_x, -max_speed, max_speed)
-    motor_speed_r = int((linear_x + (angular_z * WHEEL_BASE / 2.0)) * MOTOR_RPM_TO_TICKS_FACTOR)
-    motor_speed_l = int((linear_x - (angular_z * WHEEL_BASE / 2.0)) * MOTOR_RPM_TO_TICKS_FACTOR)
+    ticks_factor = motor_rpm_to_ticks_factor(wheel_radius)
+    motor_speed_r = int((linear_x + (angular_z * wheel_base / 2.0)) * ticks_factor)
+    motor_speed_l = int((linear_x - (angular_z * wheel_base / 2.0)) * ticks_factor)
     return clamp(motor_speed_r, -410, 410), clamp(motor_speed_l, -410, 410)
 
 
-def normalize_encoder_delta(delta):
-    if delta > ENCODER_RESOLUTION / 2:
-        return delta - ENCODER_RESOLUTION
-    if delta < -ENCODER_RESOLUTION / 2:
-        return delta + ENCODER_RESOLUTION
+def normalize_encoder_delta(delta, encoder_resolution=ENCODER_RESOLUTION):
+    if delta > encoder_resolution / 2:
+        return delta - encoder_resolution
+    if delta < -encoder_resolution / 2:
+        return delta + encoder_resolution
     return delta
 
 
-def encoder_delta_limit(dt, safety_factor=3.0, minimum_ticks=64.0):
+def encoder_delta_limit(
+    dt,
+    safety_factor=3.0,
+    minimum_ticks=64.0,
+    encoder_resolution=ENCODER_RESOLUTION,
+    max_goal_velocity_ticks=MAX_GOAL_VELOCITY_TICKS,
+):
     safe_dt = max(dt, 1e-6)
-    max_wheel_rps = (MAX_GOAL_VELOCITY_TICKS * GOAL_VELOCITY_RPM_PER_TICK) / 60.0
-    max_ticks = max_wheel_rps * ENCODER_RESOLUTION * safe_dt * safety_factor
+    max_wheel_rps = (max_goal_velocity_ticks * GOAL_VELOCITY_RPM_PER_TICK) / 60.0
+    max_ticks = max_wheel_rps * encoder_resolution * safe_dt * safety_factor
     return max(minimum_ticks, max_ticks)
 
 
-def compute_wheel_odometry_delta(delta_r_ticks, delta_l_ticks, dt, max_speed, max_pos_step):
-    delta_r_ticks = normalize_encoder_delta(delta_r_ticks)
-    delta_l_ticks = normalize_encoder_delta(delta_l_ticks)
+def compute_wheel_odometry_delta(
+    delta_r_ticks,
+    delta_l_ticks,
+    dt,
+    max_speed,
+    max_pos_step,
+    wheel_radius=WHEEL_RADIUS,
+    wheel_base=WHEEL_BASE,
+    encoder_resolution=ENCODER_RESOLUTION,
+    right_wheel_odom_scale=1.0,
+    left_wheel_odom_scale=1.0,
+):
+    delta_r_ticks = normalize_encoder_delta(delta_r_ticks, encoder_resolution=encoder_resolution)
+    delta_l_ticks = normalize_encoder_delta(delta_l_ticks, encoder_resolution=encoder_resolution)
 
-    rad_r = delta_r_ticks * (2.0 * math.pi / ENCODER_RESOLUTION)
-    rad_l = delta_l_ticks * (2.0 * math.pi / ENCODER_RESOLUTION)
+    rad_r = delta_r_ticks * (2.0 * math.pi / encoder_resolution)
+    rad_l = delta_l_ticks * (2.0 * math.pi / encoder_resolution)
 
-    d_r = rad_r * WHEEL_RADIUS
-    d_l = rad_l * WHEEL_RADIUS
+    d_r = rad_r * wheel_radius * right_wheel_odom_scale
+    d_l = rad_l * wheel_radius * left_wheel_odom_scale
     d = (d_r + d_l) / 2.0
-    dtheta = (d_r - d_l) / WHEEL_BASE
+    dtheta = (d_r - d_l) / wheel_base
 
     safe_dt = max(dt, 1e-6)
     vx = d / safe_dt
@@ -90,13 +111,30 @@ def apply_pose_delta(pose_state, d, dtheta):
     pose_state.theta += dtheta
 
 
-def integrate_wheel_odometry(delta_r_ticks, delta_l_ticks, dt, pose_state, max_speed, max_pos_step):
+def integrate_wheel_odometry(
+    delta_r_ticks,
+    delta_l_ticks,
+    dt,
+    pose_state,
+    max_speed,
+    max_pos_step,
+    wheel_radius=WHEEL_RADIUS,
+    wheel_base=WHEEL_BASE,
+    encoder_resolution=ENCODER_RESOLUTION,
+    right_wheel_odom_scale=1.0,
+    left_wheel_odom_scale=1.0,
+):
     odom_delta = compute_wheel_odometry_delta(
         delta_r_ticks=delta_r_ticks,
         delta_l_ticks=delta_l_ticks,
         dt=dt,
         max_speed=max_speed,
         max_pos_step=max_pos_step,
+        wheel_radius=wheel_radius,
+        wheel_base=wheel_base,
+        encoder_resolution=encoder_resolution,
+        right_wheel_odom_scale=right_wheel_odom_scale,
+        left_wheel_odom_scale=left_wheel_odom_scale,
     )
     apply_pose_delta(pose_state, odom_delta["d"], odom_delta["dtheta"])
 

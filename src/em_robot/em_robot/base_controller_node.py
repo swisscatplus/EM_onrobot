@@ -48,6 +48,11 @@ class BaseControllerNode(Node):
         self.declare_parameter("baudrate", 57600)
         self.declare_parameter("right_motor_id", 2)
         self.declare_parameter("left_motor_id", 1)
+        self.declare_parameter("wheel_radius", 0.035)
+        self.declare_parameter("wheel_base", 0.131)
+        self.declare_parameter("encoder_resolution", 4096)
+        self.declare_parameter("right_wheel_odom_scale", 1.0)
+        self.declare_parameter("left_wheel_odom_scale", 1.0)
         self.declare_parameter("imu_topic", "/bno055/imu")
         self.declare_parameter("startup_motion_gate_enabled", False)
         self.declare_parameter("startup_motion_gate_confirmation_time", 0.2)
@@ -65,6 +70,15 @@ class BaseControllerNode(Node):
         self.baudrate = int(self.get_parameter("baudrate").value)
         self.right_motor_id = int(self.get_parameter("right_motor_id").value)
         self.left_motor_id = int(self.get_parameter("left_motor_id").value)
+        self.wheel_radius = float(self.get_parameter("wheel_radius").value)
+        self.wheel_base = float(self.get_parameter("wheel_base").value)
+        self.encoder_resolution = int(self.get_parameter("encoder_resolution").value)
+        self.right_wheel_odom_scale = float(
+            self.get_parameter("right_wheel_odom_scale").value
+        )
+        self.left_wheel_odom_scale = float(
+            self.get_parameter("left_wheel_odom_scale").value
+        )
         self.imu_topic = self.get_parameter("imu_topic").value
         self.startup_motion_gate_enabled = bool(
             self.get_parameter("startup_motion_gate_enabled").value
@@ -190,6 +204,8 @@ class BaseControllerNode(Node):
             linear_x=self.last_cmd_linear,
             angular_z=self.last_cmd_angular,
             max_speed=self.max_speed,
+            wheel_base=self.wheel_base,
+            wheel_radius=self.wheel_radius,
         )
 
         self.packet_handler.write4ByteTxRx(
@@ -308,9 +324,18 @@ class BaseControllerNode(Node):
 
         delta_r_ticks = current_position_r - self.prev_position_r
         delta_l_ticks = current_position_l - self.prev_position_l
-        normalized_delta_r = normalize_encoder_delta(delta_r_ticks)
-        normalized_delta_l = normalize_encoder_delta(delta_l_ticks)
-        delta_limit_ticks = encoder_delta_limit(dt)
+        normalized_delta_r = normalize_encoder_delta(
+            delta_r_ticks,
+            encoder_resolution=self.encoder_resolution,
+        )
+        normalized_delta_l = normalize_encoder_delta(
+            delta_l_ticks,
+            encoder_resolution=self.encoder_resolution,
+        )
+        delta_limit_ticks = encoder_delta_limit(
+            dt,
+            encoder_resolution=self.encoder_resolution,
+        )
 
         if abs(normalized_delta_r) > delta_limit_ticks or abs(normalized_delta_l) > delta_limit_ticks:
             self.encoder_glitch_count += 1
@@ -329,6 +354,11 @@ class BaseControllerNode(Node):
             dt=dt,
             max_speed=self.max_speed,
             max_pos_step=self.max_pos_step,
+            wheel_radius=self.wheel_radius,
+            wheel_base=self.wheel_base,
+            encoder_resolution=self.encoder_resolution,
+            right_wheel_odom_scale=self.right_wheel_odom_scale,
+            left_wheel_odom_scale=self.left_wheel_odom_scale,
         )
 
         self.prev_position_r = current_position_r

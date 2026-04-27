@@ -72,6 +72,46 @@ def test_compute_wheel_odometry_delta_matches_applied_pose_update():
     assert math.isclose(pose_state.y, 0.0, abs_tol=1e-9)
 
 
+def test_compute_wheel_odometry_delta_accepts_calibrated_geometry():
+    odom_delta = compute_wheel_odometry_delta(
+        delta_r_ticks=256,
+        delta_l_ticks=128,
+        dt=0.1,
+        max_speed=10.0,
+        max_pos_step=10.0,
+        wheel_radius=0.04,
+        wheel_base=0.16,
+        encoder_resolution=2048,
+    )
+
+    expected_d_r = 256 * (2.0 * math.pi / 2048.0) * 0.04
+    expected_d_l = 128 * (2.0 * math.pi / 2048.0) * 0.04
+    assert math.isclose(odom_delta["d"], (expected_d_r + expected_d_l) / 2.0, rel_tol=1e-6)
+    assert math.isclose(odom_delta["dtheta"], (expected_d_r - expected_d_l) / 0.16, rel_tol=1e-6)
+
+
+def test_compute_wheel_odometry_delta_accepts_per_wheel_scales():
+    baseline = compute_wheel_odometry_delta(
+        delta_r_ticks=256,
+        delta_l_ticks=256,
+        dt=0.1,
+        max_speed=10.0,
+        max_pos_step=10.0,
+    )
+    scaled = compute_wheel_odometry_delta(
+        delta_r_ticks=256,
+        delta_l_ticks=256,
+        dt=0.1,
+        max_speed=10.0,
+        max_pos_step=10.0,
+        right_wheel_odom_scale=1.02,
+        left_wheel_odom_scale=0.98,
+    )
+
+    assert scaled["dtheta"] > baseline["dtheta"]
+    assert math.isclose(scaled["d"], baseline["d"], rel_tol=0.03)
+
+
 def test_imu_motion_detected_accepts_linear_acceleration_or_yaw_rate():
     assert imu_motion_detected(0.3, 0.0, 0.0, accel_threshold=0.2, gyro_threshold=0.15)
     assert imu_motion_detected(0.0, 0.0, 0.2, accel_threshold=0.2, gyro_threshold=0.15)

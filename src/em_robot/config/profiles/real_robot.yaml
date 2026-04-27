@@ -11,6 +11,11 @@ movement:
   baudrate: 57600
   right_motor_id: 2
   left_motor_id: 1
+  wheel_radius: 0.035
+  wheel_base: 0.131
+  encoder_resolution: 4096
+  right_wheel_odom_scale: 1.0
+  left_wheel_odom_scale: 1.0
   imu_topic: /bno055/imu
   startup_motion_gate_enabled: true
   startup_motion_gate_confirmation_time: 0.2
