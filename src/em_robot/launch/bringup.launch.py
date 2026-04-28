@@ -37,6 +37,53 @@ def _resolve_package_config_path(package_name, config_subdir, value):
     return os.path.join(get_package_share_directory(package_name), config_subdir, value)
 
 
+def _find_repo_root(start_path):
+    current = os.path.abspath(start_path)
+    while current and current != os.path.dirname(current):
+        if os.path.isdir(os.path.join(current, "CAD")) and os.path.isdir(
+            os.path.join(current, "src")
+        ):
+            return current
+        current = os.path.dirname(current)
+    return None
+
+
+def _load_robot_description(profile):
+    robot_model_cfg = profile.get("robot_model", {})
+    if not robot_model_cfg.get("enabled", True):
+        return None
+
+    pkg_share = get_package_share_directory("em_robot")
+    repo_root = _find_repo_root(pkg_share)
+    if repo_root is None:
+        raise FileNotFoundError(
+            f"Could not locate the workspace root from package share path {pkg_share}"
+        )
+
+    default_urdf = os.path.join(
+        repo_root,
+        "CAD",
+        "EdyMobile_URDF_screencast_ROS",
+        "URDF_screencast_ROS",
+        "urdf",
+        "URDF_screencast.urdf",
+    )
+    urdf_path = str(robot_model_cfg.get("urdf", default_urdf))
+    if not os.path.isabs(urdf_path):
+        urdf_path = os.path.join(repo_root, urdf_path)
+
+    meshes_dir = os.path.join(os.path.dirname(os.path.dirname(urdf_path)), "meshes")
+    mesh_uri_prefix = f"file://{meshes_dir}/"
+
+    with open(urdf_path, "r", encoding="utf-8") as urdf_file:
+        robot_description = urdf_file.read()
+
+    return robot_description.replace(
+        "package://URDF_screencast/meshes/",
+        mesh_uri_prefix,
+    )
+
+
 def _build_nodes(context):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile_path = LaunchConfiguration("profile_path").perform(context)
@@ -55,6 +102,33 @@ def _build_nodes(context):
     )
     config_dir = os.path.join(pkg_share, "config")
     nodes = []
+
+    robot_description = _load_robot_description(profile)
+    if robot_description is not None:
+        robot_model_cfg = profile.get("robot_model", {})
+        nodes.append(
+            Node(
+                package="robot_state_publisher",
+                executable="robot_state_publisher",
+                parameters=[{"robot_description": robot_description}],
+                output="screen",
+            )
+        )
+
+        if robot_model_cfg.get("publish_joint_states", True):
+            nodes.append(
+                Node(
+                    package="joint_state_publisher",
+                    executable="joint_state_publisher",
+                    parameters=[
+                        {
+                            "source_list": [],
+                            "rate": float(robot_model_cfg.get("joint_state_rate_hz", 10.0)),
+                        }
+                    ],
+                    output="screen",
+                )
+            )
 
     movement_cfg = profile.get("movement", {})
     if movement_cfg.get("enabled", True):

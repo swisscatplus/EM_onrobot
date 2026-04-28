@@ -22,6 +22,8 @@
   <build_depend>std_msgs</build_depend>
   <build_depend>std_srvs</build_depend>
   <build_depend>tf2_ros</build_depend>
+  <build_depend>robot_state_publisher</build_depend>
+  <build_depend>joint_state_publisher</build_depend>
   <build_depend>robot_localization</build_depend>
   <depend>em_robot_srv</depend>
   <depend>python3-transforms3d</depend>
@@ -35,6 +37,8 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
   <exec_depend>robot_localization</exec_depend>
 
   <export>

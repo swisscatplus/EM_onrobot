@@ -1,6 +1,11 @@
 profile_name: real_robot_camera_only
 start_rviz: true
 
+robot_model:
+  enabled: true
+  publish_joint_states: true
+  joint_state_rate_hz: 10.0
+
 movement:
   enabled: false
 
