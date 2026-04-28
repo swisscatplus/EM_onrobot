@@ -103,6 +103,30 @@ class LocalizationNode(Node):
         self.yaw_smoothing_alpha = float(config.get("yaw_smoothing_alpha", 0.2))
         self.min_update_translation = float(config.get("min_update_translation", 0.01))
         self.min_update_yaw = math.radians(float(config.get("min_update_yaw_deg", 1.0)))
+        self.stationary_linear_speed_threshold = float(
+            config.get("stationary_linear_speed_threshold", 0.01)
+        )
+        self.stationary_angular_speed_threshold = math.radians(
+            float(config.get("stationary_angular_speed_threshold_deg", 1.0))
+        )
+        self.stationary_position_smoothing_alpha = float(
+            config.get("stationary_position_smoothing_alpha", 0.05)
+        )
+        self.stationary_yaw_smoothing_alpha = float(
+            config.get("stationary_yaw_smoothing_alpha", 0.05)
+        )
+        self.stationary_min_update_translation = float(
+            config.get("stationary_min_update_translation", 0.03)
+        )
+        self.stationary_min_update_yaw = math.radians(
+            float(config.get("stationary_min_update_yaw_deg", 2.0))
+        )
+        self.stationary_large_correction_translation = float(
+            config.get("stationary_large_correction_translation", 0.10)
+        )
+        self.stationary_large_correction_yaw = math.radians(
+            float(config.get("stationary_large_correction_yaw_deg", 8.0))
+        )
 
         self.marker_object_points = build_marker_object_points(self.marker_size)
         self.aruco_detector = create_aruco_detector()
@@ -152,6 +176,8 @@ class LocalizationNode(Node):
         self.last_localization_transform = None
         self.last_map_to_odom = np.identity(4, dtype=np.float64)
         self.has_map_lock = False
+        self.last_odom_motion_matrix = None
+        self.last_odom_motion_time = None
         self.last_camera_to_marker_by_id = {}
 
         self.debug_image_pub = (
@@ -238,6 +264,33 @@ class LocalizationNode(Node):
 
         return msg
 
+    def update_odom_motion_state(self, odom_to_base, stamp):
+        is_stationary = False
+
+        if self.last_odom_motion_matrix is not None and self.last_odom_motion_time is not None:
+            dt = (stamp - self.last_odom_motion_time).nanoseconds / 1e9
+            if dt > 0.0:
+                dx = float(odom_to_base[0, 3] - self.last_odom_motion_matrix[0, 3])
+                dy = float(odom_to_base[1, 3] - self.last_odom_motion_matrix[1, 3])
+                linear_speed = math.hypot(dx, dy) / dt
+                yaw_speed = (
+                    abs(
+                        wrap_angle(
+                            yaw_from_matrix(odom_to_base)
+                            - yaw_from_matrix(self.last_odom_motion_matrix)
+                        )
+                    )
+                    / dt
+                )
+                is_stationary = (
+                    linear_speed <= self.stationary_linear_speed_threshold
+                    and yaw_speed <= self.stationary_angular_speed_threshold
+                )
+
+        self.last_odom_motion_matrix = odom_to_base.copy()
+        self.last_odom_motion_time = stamp
+        return is_stationary
+
     def process_frame(self):
         from tf_transformations import translation_from_matrix
 
@@ -295,6 +348,9 @@ class LocalizationNode(Node):
                 )
                 self.odom_frame_available = False
                 return
+            odom_stationary = self.update_odom_motion_state(odom_to_base, capture_stamp)
+        else:
+            odom_stationary = False
 
         candidates = []
         rejected_for_gating = 0
@@ -521,19 +577,34 @@ class LocalizationNode(Node):
                     self.publish_debug_image(annotated_frame, capture_stamp)
                     return
 
+                large_stationary_correction = odom_stationary and (
+                    correction_delta >= self.stationary_large_correction_translation
+                    or correction_yaw_delta >= self.stationary_large_correction_yaw
+                )
+                if odom_stationary and not large_stationary_correction:
+                    position_alpha = self.stationary_position_smoothing_alpha
+                    yaw_alpha = self.stationary_yaw_smoothing_alpha
+                    min_update_translation = self.stationary_min_update_translation
+                    min_update_yaw = self.stationary_min_update_yaw
+                else:
+                    position_alpha = self.position_smoothing_alpha
+                    yaw_alpha = self.yaw_smoothing_alpha
+                    min_update_translation = self.min_update_translation
+                    min_update_yaw = self.min_update_yaw
+
                 last_translation = translation_from_matrix(self.last_map_to_odom)
                 fused_odom_x = (
-                    (1.0 - self.position_smoothing_alpha) * last_translation[0]
-                    + self.position_smoothing_alpha * target_translation[0]
+                    (1.0 - position_alpha) * last_translation[0]
+                    + position_alpha * target_translation[0]
                 )
                 fused_odom_y = (
-                    (1.0 - self.position_smoothing_alpha) * last_translation[1]
-                    + self.position_smoothing_alpha * target_translation[1]
+                    (1.0 - position_alpha) * last_translation[1]
+                    + position_alpha * target_translation[1]
                 )
                 fused_odom_yaw = blend_angles(
                     yaw_from_matrix(self.last_map_to_odom),
                     target_yaw,
-                    self.yaw_smoothing_alpha,
+                    yaw_alpha,
                 )
 
                 correction_step = math.hypot(
@@ -546,8 +617,8 @@ class LocalizationNode(Node):
                     )
                 )
                 if (
-                    correction_step < self.min_update_translation
-                    and correction_yaw_step < self.min_update_yaw
+                    correction_step < min_update_translation
+                    and correction_yaw_step < min_update_yaw
                 ):
                     self.publish_debug_image(annotated_frame, capture_stamp)
                     return
@@ -559,6 +630,8 @@ class LocalizationNode(Node):
                 )
             else:
                 map_to_odom = target_map_to_odom
+                position_alpha = 1.0
+                yaw_alpha = 1.0
 
             self.last_map_to_odom = map_to_odom
             planar_map_to_base = map_to_odom @ odom_to_base
@@ -579,7 +652,9 @@ class LocalizationNode(Node):
                 f"yaw={math.degrees(map_odom_yaw):.1f} deg | "
                 f"accepted={len(candidates)}/{len(detections)} "
                 f"gate={rejected_for_gating} reproj={rejected_for_reprojection} "
-                f"missing_tf={missing_marker_tf}"
+                f"missing_tf={missing_marker_tf} "
+                f"stationary={odom_stationary} "
+                f"alpha={position_alpha:.2f}/{yaw_alpha:.2f}"
             )
 
             localization_transform = build_transform(
