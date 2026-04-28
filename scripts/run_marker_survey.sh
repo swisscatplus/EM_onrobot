@@ -159,7 +159,7 @@ if [[ "$PROFILE" == "real_robot" ]]; then
       source install/setup.bash &&
       ros2 run em_robot marker_survey --ros-args \
         -p camera_backend:=$CAMERA_BACKEND \
-        -p camera_source:=$CAMERA_SOURCE \
+        -p camera_source:='$CAMERA_SOURCE' \
         -p config_file:=$CALIBRATION_FILE \
         -p marker_map_file:=$MARKER_MAP_FILE \
         -p survey_mode:=$SURVEY_MODE \
@@ -175,7 +175,7 @@ else
     source install/setup.bash &&
     ros2 run em_robot marker_survey --ros-args \
       -p camera_backend:=$CAMERA_BACKEND \
-      -p camera_source:=$CAMERA_SOURCE \
+      -p camera_source:='$CAMERA_SOURCE' \
       -p config_file:=$CALIBRATION_FILE \
       -p marker_map_file:=$MARKER_MAP_FILE \
       -p survey_mode:=$SURVEY_MODE \

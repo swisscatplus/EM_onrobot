@@ -122,7 +122,6 @@ def _build_nodes(context):
                     executable="joint_state_publisher",
                     parameters=[
                         {
-                            "source_list": [],
                             "rate": float(robot_model_cfg.get("joint_state_rate_hz", 10.0)),
                         }
                     ],

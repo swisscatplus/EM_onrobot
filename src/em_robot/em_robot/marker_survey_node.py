@@ -11,6 +11,7 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
@@ -53,7 +54,11 @@ class MarkerSurveyNode(Node):
         self.declare_parameter("config_file", "")
         self.declare_parameter("marker_map_file", "")
         self.declare_parameter("camera_backend", "picamera2")
-        self.declare_parameter("camera_source", "0")
+        self.declare_parameter(
+            "camera_source",
+            "0",
+            ParameterDescriptor(dynamic_typing=True),
+        )
         self.declare_parameter("camera_loop", False)
         self.declare_parameter("camera_frame", "camera_frame")
         self.declare_parameter("base_frame", "base_link")
