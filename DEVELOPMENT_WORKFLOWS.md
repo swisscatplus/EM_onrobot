@@ -333,6 +333,7 @@ These files decide which backends are used:
 - IMU backend
 - camera backend
 - RViz on/off
+- robot model publishing on/off
 - EKF on/off
 - watchdog and diagnostics settings
 - marker map configuration

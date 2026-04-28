@@ -2,7 +2,7 @@ profile_name: real_robot
 start_rviz: false
 
 robot_model:
-  enabled: false
+  enabled: true
 
 movement:
   enabled: true

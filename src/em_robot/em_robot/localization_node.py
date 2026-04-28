@@ -102,7 +102,7 @@ class LocalizationNode(Node):
         self.t_base_camera = concatenate_matrices(
             translation_matrix(
                 [
-                    float(camera_offset.get("x", 0.176)),
+                    float(camera_offset.get("x", 0.174.46)),
                     float(camera_offset.get("y", 0.0)),
                     float(camera_offset.get("z", 0.0)),
                 ]
