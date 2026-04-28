@@ -17,10 +17,14 @@ from em_robot.aruco_utils import (
 )
 from em_robot.camera_sources import create_camera_source
 from em_robot.transform_utils import (
+    blend_angles,
     build_planar_transform,
     build_transform,
     compute_map_to_base_from_marker,
+    compute_map_to_odom_from_map_to_base,
     transform_to_matrix,
+    wrap_angle,
+    yaw_from_matrix,
 )
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -93,6 +97,12 @@ class LocalizationNode(Node):
         self.image_size = tuple(config.get("image_size", [1536, 864]))
         self.lens_position = float(config.get("lens_position", 8.0))
         self.max_reprojection_error = float(config.get("max_reprojection_error_px", 8.0))
+        self.max_position_jump = float(config.get("max_position_jump", 0.25))
+        self.max_yaw_jump = math.radians(float(config.get("max_yaw_jump_deg", 20.0)))
+        self.position_smoothing_alpha = float(config.get("position_smoothing_alpha", 0.2))
+        self.yaw_smoothing_alpha = float(config.get("yaw_smoothing_alpha", 0.2))
+        self.min_update_translation = float(config.get("min_update_translation", 0.01))
+        self.min_update_yaw = math.radians(float(config.get("min_update_yaw_deg", 1.0)))
 
         self.marker_object_points = build_marker_object_points(self.marker_size)
         self.aruco_detector = create_aruco_detector()
@@ -140,6 +150,8 @@ class LocalizationNode(Node):
 
         self.odom_frame_available = False
         self.last_localization_transform = None
+        self.last_map_to_odom = np.identity(4, dtype=np.float64)
+        self.has_map_lock = False
         self.last_camera_to_marker_by_id = {}
 
         self.debug_image_pub = (
@@ -227,7 +239,7 @@ class LocalizationNode(Node):
         return msg
 
     def process_frame(self):
-        from tf_transformations import euler_from_quaternion, translation_from_matrix
+        from tf_transformations import translation_from_matrix
 
         capture_stamp = self.get_clock().now()
 
@@ -269,15 +281,13 @@ class LocalizationNode(Node):
                 self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
-        odom_to_base = None
-        odom_translation = None
-        odom_yaw = None
         if not self.publish_map_to_base:
             try:
                 odom_to_base = self.lookup_matrix(
                     self.odom_frame,
                     self.base_frame,
-                    Time(),
+                    capture_stamp,
+                    timeout_sec=0.2,
                 )
             except Exception as exc:
                 self.get_logger().warn(
@@ -286,149 +296,245 @@ class LocalizationNode(Node):
                 self.odom_frame_available = False
                 return
 
-        detection = detections[0]
-        marker_id = detection["id"]
-        marker_frame = f"aruco_{marker_id}"
-        corners = detection["corners"]
-
-        polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
-        cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
-
-        camera_to_marker, reprojection_error = estimate_marker_pose(
-            corners,
-            self.marker_object_points,
-            self.camera_matrix,
-            self.dist_coeffs,
-            self.max_reprojection_error,
-            reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
-        )
-
-        if camera_to_marker is None:
-            self.get_logger().warn(
-                f"Marker {marker_id} reprojection error too high: "
-                f"{reprojection_error:.2f}px"
-            )
-
-            cv.putText(
-                annotated_frame,
-                f"Marker {marker_id}: pose estimation failed",
-                (10, 30),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2,
-                cv.LINE_AA,
-            )
-
-            self.publish_debug_image(annotated_frame, capture_stamp)
-            return
-
-        self.last_camera_to_marker_by_id[marker_id] = camera_to_marker
-
-        cv.putText(
-            annotated_frame,
-            f"Marker {marker_id}: reproj_err={reprojection_error:.2f}px",
-            tuple(polyline[0, 0]),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            1,
-            cv.LINE_AA,
-        )
-
-        try:
-            map_to_marker = self.lookup_matrix(
-                self.map_frame,
-                marker_frame,
-                Time(),
-                timeout_sec=1.0,
-                allow_latest_fallback=False,
-            )
-        except Exception as exc:
-            self.get_logger().warn(
-                f"Cannot find marker {marker_id} in TF as "
-                f"{self.map_frame} -> {marker_frame}: {exc}"
-            )
-
-            cv.putText(
-                annotated_frame,
-                f"{marker_frame} not found in TF",
-                (10, 30),
-                cv.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2,
-                cv.LINE_AA,
-            )
-
-            self.publish_debug_image(annotated_frame, capture_stamp)
-            return
-
-        # map -> base_link from vision:
-        # map -> marker @ marker -> camera @ camera -> base
-        map_to_base = compute_map_to_base_from_marker(
-            map_to_marker,
-            camera_to_marker,
-            self.t_camera_base,
-        )
-
-        translation = translation_from_matrix(map_to_base)
-        quaternion = quaternion_from_matrix(map_to_base)
-        _, _, yaw = euler_from_quaternion(quaternion)
-
-        planar_map_to_base = build_planar_transform(
-            translation[0],
-            translation[1],
-            yaw,
-        )
+        candidates = []
+        rejected_for_gating = 0
+        rejected_for_reprojection = 0
+        missing_marker_tf = 0
 
         if self.publish_map_to_base:
+            previous_map_to_base = (
+                self.last_map_to_base if self.has_map_lock else None
+            )
+        else:
+            previous_map_to_base = self.last_map_to_odom @ odom_to_base
+
+        for detection in detections:
+            marker_id = detection["id"]
+            marker_frame = f"aruco_{marker_id}"
+            corners = detection["corners"]
+
+            polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
+            cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
+
+            camera_to_marker, reprojection_error = estimate_marker_pose(
+                corners,
+                self.marker_object_points,
+                self.camera_matrix,
+                self.dist_coeffs,
+                self.max_reprojection_error,
+                reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
+            )
+
+            if camera_to_marker is None:
+                rejected_for_reprojection += 1
+                continue
+
+            self.last_camera_to_marker_by_id[marker_id] = camera_to_marker
+
+            cv.putText(
+                annotated_frame,
+                f"id={marker_id} err={reprojection_error:.2f}",
+                tuple(polyline[0, 0]),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+                cv.LINE_AA,
+            )
+
+            try:
+                map_to_marker = self.lookup_matrix(
+                    self.map_frame,
+                    marker_frame,
+                    Time(),
+                    timeout_sec=1.0,
+                    allow_latest_fallback=False,
+                )
+            except Exception:
+                missing_marker_tf += 1
+                continue
+
+            # map -> base_link from vision:
+            # map -> marker @ marker -> camera @ camera -> base
+            map_to_base = compute_map_to_base_from_marker(
+                map_to_marker,
+                camera_to_marker,
+                self.t_camera_base,
+            )
+            measured_yaw = yaw_from_matrix(map_to_base)
+            planar_map_to_base = build_planar_transform(
+                map_to_base[0, 3],
+                map_to_base[1, 3],
+                measured_yaw,
+            )
+
+            if self.has_map_lock and previous_map_to_base is not None:
+                position_error = math.hypot(
+                    planar_map_to_base[0, 3] - previous_map_to_base[0, 3],
+                    planar_map_to_base[1, 3] - previous_map_to_base[1, 3],
+                )
+                yaw_error = wrap_angle(
+                    measured_yaw - yaw_from_matrix(previous_map_to_base)
+                )
+                if (
+                    position_error > self.max_position_jump
+                    or abs(yaw_error) > self.max_yaw_jump
+                ):
+                    rejected_for_gating += 1
+                    continue
+
+            candidates.append(
+                {
+                    "marker_id": marker_id,
+                    "map_to_base": planar_map_to_base,
+                    "reprojection_error": reprojection_error,
+                }
+            )
+
+        if not candidates:
+            cv.putText(
+                annotated_frame,
+                "Markers detected, but no localization update accepted",
+                (10, 30),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 255),
+                2,
+                cv.LINE_AA,
+            )
+            cv.putText(
+                annotated_frame,
+                (
+                    f"gate={rejected_for_gating} "
+                    f"reproj={rejected_for_reprojection} "
+                    f"missing_tf={missing_marker_tf}"
+                ),
+                (10, 60),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 255),
+                2,
+                cv.LINE_AA,
+            )
+            self.publish_debug_image(annotated_frame, capture_stamp)
+            return
+
+        weights = np.array(
+            [1.0 / max(candidate["reprojection_error"], 1e-3) for candidate in candidates],
+            dtype=np.float64,
+        )
+        weights /= np.sum(weights)
+
+        measured_x = float(
+            np.sum(
+                [
+                    weight * candidate["map_to_base"][0, 3]
+                    for weight, candidate in zip(weights, candidates)
+                ]
+            )
+        )
+        measured_y = float(
+            np.sum(
+                [
+                    weight * candidate["map_to_base"][1, 3]
+                    for weight, candidate in zip(weights, candidates)
+                ]
+            )
+        )
+        measured_yaw = math.atan2(
+            float(
+                np.sum(
+                    [
+                        weight * math.sin(yaw_from_matrix(candidate["map_to_base"]))
+                        for weight, candidate in zip(weights, candidates)
+                    ]
+                )
+            ),
+            float(
+                np.sum(
+                    [
+                        weight * math.cos(yaw_from_matrix(candidate["map_to_base"]))
+                        for weight, candidate in zip(weights, candidates)
+                    ]
+                )
+            ),
+        )
+
+        if self.has_map_lock and previous_map_to_base is not None:
+            fused_x = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[0, 3]
+                + self.position_smoothing_alpha * measured_x
+            )
+            fused_y = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[1, 3]
+                + self.position_smoothing_alpha * measured_y
+            )
+            fused_yaw = blend_angles(
+                yaw_from_matrix(previous_map_to_base),
+                measured_yaw,
+                self.yaw_smoothing_alpha,
+            )
+        else:
+            fused_x = measured_x
+            fused_y = measured_y
+            fused_yaw = measured_yaw
+
+        planar_map_to_base = build_planar_transform(fused_x, fused_y, fused_yaw)
+
+        if self.has_map_lock and previous_map_to_base is not None:
+            update_translation = math.hypot(
+                planar_map_to_base[0, 3] - previous_map_to_base[0, 3],
+                planar_map_to_base[1, 3] - previous_map_to_base[1, 3],
+            )
+            update_yaw = abs(
+                wrap_angle(fused_yaw - yaw_from_matrix(previous_map_to_base))
+            )
+            if (
+                update_translation < self.min_update_translation
+                and update_yaw < self.min_update_yaw
+            ):
+                self.publish_debug_image(annotated_frame, capture_stamp)
+                return
+
+        marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
+
+        if self.publish_map_to_base:
+            self.last_map_to_base = planar_map_to_base
             localization_transform = build_transform(
                 self.map_frame,
                 self.base_frame,
                 planar_map_to_base,
                 self.get_clock().now().to_msg(),
             )
+            map_odom_translation = None
+            map_odom_yaw = None
             self.get_logger().info(
-                f"Camera-only localization update from marker {marker_id}: "
-                f"map->{self.base_frame} x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg"
+                f"Camera-only localization update from markers [{marker_ids}]: "
+                f"map->{self.base_frame} x={fused_x:.3f}, "
+                f"y={fused_y:.3f}, "
+                f"yaw={math.degrees(fused_yaw):.1f} deg"
             )
         else:
-            odom_translation = translation_from_matrix(odom_to_base)
-            odom_quaternion = quaternion_from_matrix(odom_to_base)
-            _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
-
-            planar_odom_to_base = build_planar_transform(
-                odom_translation[0],
-                odom_translation[1],
-                odom_yaw,
-            )
-
-            # Important:
-            # map -> odom = map -> base_link @ inverse(odom -> base_link)
-            # This replaces the helper so there is no ambiguity.
-            map_to_odom = concatenate_matrices(
+            map_to_odom = compute_map_to_odom_from_map_to_base(
                 planar_map_to_base,
-                inverse_matrix(planar_odom_to_base),
+                odom_to_base,
             )
+            self.last_map_to_odom = map_to_odom
 
             map_odom_translation = translation_from_matrix(map_to_odom)
-            map_odom_quaternion = quaternion_from_matrix(map_to_odom)
-            _, _, map_odom_yaw = euler_from_quaternion(map_odom_quaternion)
+            map_odom_yaw = yaw_from_matrix(map_to_odom)
 
             self.get_logger().info(
-                f"Localization update from marker {marker_id}: "
-                f"map->base x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg | "
-                f"odom->base x={odom_translation[0]:.3f}, "
-                f"y={odom_translation[1]:.3f}, "
-                f"yaw={math.degrees(odom_yaw):.1f} deg | "
+                f"Localization update from markers [{marker_ids}]: "
+                f"map->base x={fused_x:.3f}, "
+                f"y={fused_y:.3f}, "
+                f"yaw={math.degrees(fused_yaw):.1f} deg | "
                 f"map->odom x={map_odom_translation[0]:.3f}, "
                 f"y={map_odom_translation[1]:.3f}, "
-                f"yaw={math.degrees(map_odom_yaw):.1f} deg"
+                f"yaw={math.degrees(map_odom_yaw):.1f} deg | "
+                f"accepted={len(candidates)}/{len(detections)} "
+                f"gate={rejected_for_gating} reproj={rejected_for_reprojection} "
+                f"missing_tf={missing_marker_tf}"
             )
 
             localization_transform = build_transform(
@@ -438,6 +544,7 @@ class LocalizationNode(Node):
                 self.get_clock().now().to_msg(),
             )
 
+        self.has_map_lock = True
         self.last_localization_transform = localization_transform
         self.tf_broadcaster.sendTransform(localization_transform)
 
@@ -452,9 +559,9 @@ class LocalizationNode(Node):
 
         cv.putText(
             annotated_frame,
-            f"marker {marker_id} map->base "
-            f"x={translation[0]:.3f}, y={translation[1]:.3f}, "
-            f"yaw={math.degrees(yaw):.1f} deg",
+            f"markers [{marker_ids}] map->base "
+            f"x={fused_x:.3f}, y={fused_y:.3f}, "
+            f"yaw={math.degrees(fused_yaw):.1f} deg",
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -466,9 +573,9 @@ class LocalizationNode(Node):
         cv.putText(
             annotated_frame,
             (
-                f"map->{self.base_frame} x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg"
+                f"map->{self.base_frame} x={fused_x:.3f}, "
+                f"y={fused_y:.3f}, "
+                f"yaw={math.degrees(fused_yaw):.1f} deg"
                 if self.publish_map_to_base
                 else (
                     f"map->odom x={map_odom_translation[0]:.3f}, "
