@@ -148,6 +148,15 @@ def _build_nodes(context):
                         "camera_frame": str(
                             localization_cfg.get("camera_frame", "camera_frame")
                         ),
+                        "process_rate_hz": float(
+                            localization_cfg.get("process_rate_hz", 5.0)
+                        ),
+                        "map_odom_publish_rate_hz": float(
+                            localization_cfg.get("map_odom_publish_rate_hz", 20.0)
+                        ),
+                        "publish_map_to_base": bool(
+                            localization_cfg.get("publish_map_to_base", False)
+                        ),
                         "debug_image_topic": str(
                             localization_cfg.get(
                                 "debug_image_topic", "/localization/debug_image"

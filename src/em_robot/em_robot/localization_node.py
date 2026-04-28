@@ -54,6 +54,7 @@ class LocalizationNode(Node):
         self.declare_parameter("vision_base_pose_topic", "/localization/vision_base_pose")
         self.declare_parameter("process_rate_hz", 5.0)
         self.declare_parameter("map_odom_publish_rate_hz", 20.0)
+        self.declare_parameter("publish_map_to_base", False)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -75,6 +76,7 @@ class LocalizationNode(Node):
         self.map_odom_publish_rate_hz = float(
             self.get_parameter("map_odom_publish_rate_hz").value
         )
+        self.publish_map_to_base = bool(self.get_parameter("publish_map_to_base").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -132,7 +134,7 @@ class LocalizationNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         self.odom_frame_available = False
-        self.last_map_to_odom = None
+        self.last_localization_transform = None
 
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
@@ -147,7 +149,7 @@ class LocalizationNode(Node):
         )
 
         self.publish_static_transform()
-        self.publish_initial_map_to_odom()
+        self.publish_initial_localization_transform()
 
         process_timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
         self.timer = self.create_timer(process_timer_period, self.process_frame)
@@ -159,7 +161,7 @@ class LocalizationNode(Node):
         )
         self.map_odom_timer = self.create_timer(
             map_odom_timer_period,
-            self.broadcast_last_map_to_odom,
+            self.broadcast_last_localization_transform,
         )
 
     def publish_static_transform(self):
@@ -176,29 +178,28 @@ class LocalizationNode(Node):
             f"Published static transform: {self.base_frame} -> {self.camera_frame}"
         )
 
-    def publish_initial_map_to_odom(self):
-        map_to_odom = build_planar_transform(0.0, 0.0, 0.0)
-
-        transform = build_transform(
+    def publish_initial_localization_transform(self):
+        child_frame = self.base_frame if self.publish_map_to_base else self.odom_frame
+        initial_transform = build_transform(
             self.map_frame,
-            self.odom_frame,
-            map_to_odom,
+            child_frame,
+            build_planar_transform(0.0, 0.0, 0.0),
             self.get_clock().now().to_msg(),
         )
 
-        self.last_map_to_odom = transform
-        self.tf_broadcaster.sendTransform(transform)
+        self.last_localization_transform = initial_transform
+        self.tf_broadcaster.sendTransform(initial_transform)
 
         self.get_logger().info(
-            f"Published initial transform: {self.map_frame} -> {self.odom_frame}"
+            f"Published initial transform: {self.map_frame} -> {child_frame}"
         )
 
-    def broadcast_last_map_to_odom(self):
-        if self.last_map_to_odom is None:
+    def broadcast_last_localization_transform(self):
+        if self.last_localization_transform is None:
             return
 
-        self.last_map_to_odom.header.stamp = self.get_clock().now().to_msg()
-        self.tf_broadcaster.sendTransform(self.last_map_to_odom)
+        self.last_localization_transform.header.stamp = self.get_clock().now().to_msg()
+        self.tf_broadcaster.sendTransform(self.last_localization_transform)
 
     def build_pose_stamped(self, frame_id, transform_matrix, stamp):
         from tf_transformations import translation_from_matrix
@@ -224,7 +225,7 @@ class LocalizationNode(Node):
 
         capture_stamp = self.get_clock().now()
 
-        if not self.odom_frame_available:
+        if not self.publish_map_to_base and not self.odom_frame_available:
             try:
                 self.tf_buffer.lookup_transform(
                     self.odom_frame,
@@ -262,18 +263,22 @@ class LocalizationNode(Node):
                 self.publish_debug_image(annotated_frame, capture_stamp)
             return
 
-        try:
-            odom_to_base = self.lookup_matrix(
-                self.odom_frame,
-                self.base_frame,
-                Time(),
-            )
-        except Exception as exc:
-            self.get_logger().warn(
-                f"Cannot get {self.odom_frame} -> {self.base_frame}: {exc}"
-            )
-            self.odom_frame_available = False
-            return
+        odom_to_base = None
+        odom_translation = None
+        odom_yaw = None
+        if not self.publish_map_to_base:
+            try:
+                odom_to_base = self.lookup_matrix(
+                    self.odom_frame,
+                    self.base_frame,
+                    Time(),
+                )
+            except Exception as exc:
+                self.get_logger().warn(
+                    f"Cannot get {self.odom_frame} -> {self.base_frame}: {exc}"
+                )
+                self.odom_frame_available = False
+                return
 
         detection = detections[0]
         marker_id = detection["id"]
@@ -368,50 +373,64 @@ class LocalizationNode(Node):
             yaw,
         )
 
-        odom_translation = translation_from_matrix(odom_to_base)
-        odom_quaternion = quaternion_from_matrix(odom_to_base)
-        _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
+        if self.publish_map_to_base:
+            localization_transform = build_transform(
+                self.map_frame,
+                self.base_frame,
+                planar_map_to_base,
+                self.get_clock().now().to_msg(),
+            )
+            self.get_logger().info(
+                f"Camera-only localization update from marker {marker_id}: "
+                f"map->{self.base_frame} x={translation[0]:.3f}, "
+                f"y={translation[1]:.3f}, "
+                f"yaw={math.degrees(yaw):.1f} deg"
+            )
+        else:
+            odom_translation = translation_from_matrix(odom_to_base)
+            odom_quaternion = quaternion_from_matrix(odom_to_base)
+            _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
 
-        planar_odom_to_base = build_planar_transform(
-            odom_translation[0],
-            odom_translation[1],
-            odom_yaw,
-        )
+            planar_odom_to_base = build_planar_transform(
+                odom_translation[0],
+                odom_translation[1],
+                odom_yaw,
+            )
 
-        # Important:
-        # map -> odom = map -> base_link @ inverse(odom -> base_link)
-        # This replaces the helper so there is no ambiguity.
-        map_to_odom = concatenate_matrices(
-            planar_map_to_base,
-            inverse_matrix(planar_odom_to_base),
-        )
+            # Important:
+            # map -> odom = map -> base_link @ inverse(odom -> base_link)
+            # This replaces the helper so there is no ambiguity.
+            map_to_odom = concatenate_matrices(
+                planar_map_to_base,
+                inverse_matrix(planar_odom_to_base),
+            )
 
-        map_odom_translation = translation_from_matrix(map_to_odom)
-        map_odom_quaternion = quaternion_from_matrix(map_to_odom)
-        _, _, map_odom_yaw = euler_from_quaternion(map_odom_quaternion)
+            map_odom_translation = translation_from_matrix(map_to_odom)
+            map_odom_quaternion = quaternion_from_matrix(map_to_odom)
+            _, _, map_odom_yaw = euler_from_quaternion(map_odom_quaternion)
 
-        self.get_logger().info(
-            f"Localization update from marker {marker_id}: "
-            f"map->base x={translation[0]:.3f}, "
-            f"y={translation[1]:.3f}, "
-            f"yaw={math.degrees(yaw):.1f} deg | "
-            f"odom->base x={odom_translation[0]:.3f}, "
-            f"y={odom_translation[1]:.3f}, "
-            f"yaw={math.degrees(odom_yaw):.1f} deg | "
-            f"map->odom x={map_odom_translation[0]:.3f}, "
-            f"y={map_odom_translation[1]:.3f}, "
-            f"yaw={math.degrees(map_odom_yaw):.1f} deg"
-        )
+            self.get_logger().info(
+                f"Localization update from marker {marker_id}: "
+                f"map->base x={translation[0]:.3f}, "
+                f"y={translation[1]:.3f}, "
+                f"yaw={math.degrees(yaw):.1f} deg | "
+                f"odom->base x={odom_translation[0]:.3f}, "
+                f"y={odom_translation[1]:.3f}, "
+                f"yaw={math.degrees(odom_yaw):.1f} deg | "
+                f"map->odom x={map_odom_translation[0]:.3f}, "
+                f"y={map_odom_translation[1]:.3f}, "
+                f"yaw={math.degrees(map_odom_yaw):.1f} deg"
+            )
 
-        t_map_to_odom = build_transform(
-            self.map_frame,
-            self.odom_frame,
-            map_to_odom,
-            self.get_clock().now().to_msg(),
-        )
+            localization_transform = build_transform(
+                self.map_frame,
+                self.odom_frame,
+                map_to_odom,
+                self.get_clock().now().to_msg(),
+            )
 
-        self.last_map_to_odom = t_map_to_odom
-        self.tf_broadcaster.sendTransform(t_map_to_odom)
+        self.last_localization_transform = localization_transform
+        self.tf_broadcaster.sendTransform(localization_transform)
 
         if self.vision_base_pose_pub is not None:
             self.vision_base_pose_pub.publish(
@@ -437,9 +456,17 @@ class LocalizationNode(Node):
 
         cv.putText(
             annotated_frame,
-            f"map->odom x={map_odom_translation[0]:.3f}, "
-            f"y={map_odom_translation[1]:.3f}, "
-            f"yaw={math.degrees(map_odom_yaw):.1f} deg",
+            (
+                f"map->{self.base_frame} x={translation[0]:.3f}, "
+                f"y={translation[1]:.3f}, "
+                f"yaw={math.degrees(yaw):.1f} deg"
+                if self.publish_map_to_base
+                else (
+                    f"map->odom x={map_odom_translation[0]:.3f}, "
+                    f"y={map_odom_translation[1]:.3f}, "
+                    f"yaw={math.degrees(map_odom_yaw):.1f} deg"
+                )
+            ),
             (10, 60),
             cv.FONT_HERSHEY_SIMPLEX,
             0.7,

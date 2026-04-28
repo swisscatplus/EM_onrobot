@@ -3,7 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
@@ -23,6 +23,8 @@ def generate_launch_description():
     start_rviz = LaunchConfiguration("start_rviz")
     camera_backend = LaunchConfiguration("camera_backend")
     camera_source = LaunchConfiguration("camera_source")
+    process_rate_hz = LaunchConfiguration("process_rate_hz")
+    publish_map_to_base = LaunchConfiguration("publish_map_to_base")
     marker_frame = PythonExpression(["'aruco_' + str(", marker_id, ")"])
 
     odom_to_base = Node(
@@ -30,6 +32,7 @@ def generate_launch_description():
         executable="static_transform_publisher",
         name="localization_debug_odom_to_base",
         arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"],
+        condition=UnlessCondition(publish_map_to_base),
         output="screen",
     )
 
@@ -57,6 +60,8 @@ def generate_launch_description():
             {
                 "camera_backend": camera_backend,
                 "camera_source": camera_source,
+                "process_rate_hz": process_rate_hz,
+                "publish_map_to_base": publish_map_to_base,
             }
         ],
         output="screen",
@@ -97,6 +102,18 @@ def generate_launch_description():
                 "marker_yaw",
                 default_value="0.0",
                 description="Marker yaw in radians in the map frame.",
+            ),
+            DeclareLaunchArgument(
+                "process_rate_hz",
+                default_value="30.0",
+                description="Camera processing rate in Hz.",
+            ),
+            DeclareLaunchArgument(
+                "publish_map_to_base",
+                default_value="true",
+                description=(
+                    "Publish map -> base_link directly for camera-only testing."
+                ),
             ),
             DeclareLaunchArgument(
                 "start_rviz",
