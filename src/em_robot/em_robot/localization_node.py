@@ -89,9 +89,9 @@ class LocalizationNode(Node):
 
         self.camera_matrix = np.array(config.get("camera_matrix", []), dtype=np.float32)
         self.dist_coeffs = np.array(config.get("dist_coeff", []), dtype=np.float32)
-        self.marker_size = float(config.get("marker_size", 0.038))
-        self.image_size = tuple(config.get("image_size", [1536, 864]))
-        self.lens_position = float(config.get("lens_position", 8.0))
+        self.marker_size = float(config.get("marker_size", 0.040))
+        self.image_size = tuple(config.get("image_size", [1280, 720]))
+        self.lens_position = float(config.get("lens_position", 18.0))
         self.max_reprojection_error = float(config.get("max_reprojection_error_px", 8.0))
 
         self.marker_object_points = build_marker_object_points(self.marker_size)
