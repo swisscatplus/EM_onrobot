@@ -62,32 +62,65 @@ def estimate_marker_pose(
     camera_matrix,
     dist_coeffs,
     max_reprojection_error_px: float,
+    reference_transform=None,
 ):
-    success, rvec, tvec = cv.solvePnP(
+    result = cv.solvePnPGeneric(
         marker_object_points,
         corners,
         camera_matrix,
         dist_coeffs,
         flags=cv.SOLVEPNP_IPPE_SQUARE,
     )
-    if not success:
+    if not result or len(result) < 3:
         return None, None
 
-    projected_points, _ = cv.projectPoints(
-        marker_object_points,
-        rvec,
-        tvec,
-        camera_matrix,
-        dist_coeffs,
-    )
-    reprojection_error = float(
-        np.mean(np.linalg.norm(projected_points.reshape(-1, 2) - corners, axis=1))
-    )
-    if reprojection_error > max_reprojection_error_px:
-        return None, reprojection_error
+    success = bool(result[0])
+    rvecs = result[1]
+    tvecs = result[2]
+    if not success or len(rvecs) == 0 or len(tvecs) == 0:
+        return None, None
 
-    rotation_matrix, _ = cv.Rodrigues(rvec)
-    camera_to_marker = np.eye(4, dtype=np.float64)
-    camera_to_marker[:3, :3] = rotation_matrix
-    camera_to_marker[:3, 3] = tvec.reshape(3)
+    candidates = []
+    lowest_reprojection_error = None
+
+    for rvec, tvec in zip(rvecs, tvecs):
+        projected_points, _ = cv.projectPoints(
+            marker_object_points,
+            rvec,
+            tvec,
+            camera_matrix,
+            dist_coeffs,
+        )
+        reprojection_error = float(
+            np.mean(np.linalg.norm(projected_points.reshape(-1, 2) - corners, axis=1))
+        )
+        if lowest_reprojection_error is None:
+            lowest_reprojection_error = reprojection_error
+        else:
+            lowest_reprojection_error = min(lowest_reprojection_error, reprojection_error)
+
+        if reprojection_error > max_reprojection_error_px:
+            continue
+
+        rotation_matrix, _ = cv.Rodrigues(rvec)
+        camera_to_marker = np.eye(4, dtype=np.float64)
+        camera_to_marker[:3, :3] = rotation_matrix
+        camera_to_marker[:3, 3] = tvec.reshape(3)
+
+        score = reprojection_error
+        if reference_transform is not None:
+            translation_delta = float(
+                np.linalg.norm(camera_to_marker[:3, 3] - reference_transform[:3, 3])
+            )
+            rotation_delta = float(
+                np.linalg.norm(camera_to_marker[:3, :3] - reference_transform[:3, :3])
+            )
+            score += 5.0 * translation_delta + 0.5 * rotation_delta
+
+        candidates.append((score, reprojection_error, camera_to_marker))
+
+    if not candidates:
+        return None, lowest_reprojection_error
+
+    _, reprojection_error, camera_to_marker = min(candidates, key=lambda item: item[0])
     return camera_to_marker, reprojection_error

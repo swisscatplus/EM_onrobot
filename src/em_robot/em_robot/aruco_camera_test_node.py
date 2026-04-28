@@ -122,6 +122,7 @@ class ArucoCameraTestNode(Node):
         self.last_detected_ids = []
         self.last_pose_marker_id = None
         self.has_map_pose = False
+        self.last_camera_to_marker_by_id = {}
 
         timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.2
         self.timer = self.create_timer(timer_period, self.process_frame)
@@ -195,6 +196,7 @@ class ArucoCameraTestNode(Node):
                 self.camera_matrix,
                 self.dist_coeffs,
                 self.max_reprojection_error,
+                reference_transform=self.last_camera_to_marker_by_id.get(detection["id"]),
             )
             if camera_to_marker is None:
                 cv.putText(
@@ -208,6 +210,8 @@ class ArucoCameraTestNode(Node):
                     cv.LINE_AA,
                 )
                 continue
+
+            self.last_camera_to_marker_by_id[detection["id"]] = camera_to_marker
 
             pose_array.poses.append(self._pose_from_matrix(camera_to_marker))
             marker_transforms.append(

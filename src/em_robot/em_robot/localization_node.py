@@ -135,6 +135,7 @@ class LocalizationNode(Node):
 
         self.odom_frame_available = False
         self.last_localization_transform = None
+        self.last_camera_to_marker_by_id = {}
 
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
@@ -294,6 +295,7 @@ class LocalizationNode(Node):
             self.camera_matrix,
             self.dist_coeffs,
             self.max_reprojection_error,
+            reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
         )
 
         if camera_to_marker is None:
@@ -315,6 +317,8 @@ class LocalizationNode(Node):
 
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
+
+        self.last_camera_to_marker_by_id[marker_id] = camera_to_marker
 
         cv.putText(
             annotated_frame,
