@@ -70,6 +70,8 @@ class MarkerSurveyNode(Node):
         self.declare_parameter("known_robot_x", 0.0)
         self.declare_parameter("known_robot_y", 0.0)
         self.declare_parameter("known_robot_yaw", 0.0)
+        self.declare_parameter("survey_mode", "manual")
+        self.declare_parameter("single_shot_min_stable_markers", 1)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -103,6 +105,14 @@ class MarkerSurveyNode(Node):
         self.overwrite_existing_markers = bool(
             self.get_parameter("overwrite_existing_markers").value
         )
+        self.survey_mode = str(self.get_parameter("survey_mode").value).strip().lower()
+        self.single_shot_min_stable_markers = max(
+            1, int(self.get_parameter("single_shot_min_stable_markers").value)
+        )
+        if self.survey_mode not in {"manual", "single-shot"}:
+            raise ValueError(
+                "survey_mode must be either 'manual' or 'single-shot'"
+            )
 
         self.get_logger().info(f"Loading marker survey calibration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -178,12 +188,15 @@ class MarkerSurveyNode(Node):
         self.observations_by_marker_id: dict[int, deque] = {}
         self.last_detection_summary = "waiting for detections"
         self.last_camera_to_marker_by_id = {}
+        self.shutdown_requested = False
+        self.auto_save_completed = False
 
         timer_period = 1.0 / self.process_rate_hz if self.process_rate_hz > 0.0 else 0.1
         self.timer = self.create_timer(timer_period, self.process_frame)
 
         self.get_logger().info(
             f"Marker survey ready. Output map file: {self.marker_map_file}. "
+            f"Mode: {self.survey_mode}. "
             "Use /set_known_robot_pose then call /save_visible_markers when observations are stable."
         )
         if self.marker_map_file == default_marker_map_path:
@@ -423,6 +436,22 @@ class MarkerSurveyNode(Node):
         )
         self._publish_summary(summary)
 
+        if (
+            self.survey_mode == "single-shot"
+            and not self.auto_save_completed
+            and len(stable_marker_ids) >= self.single_shot_min_stable_markers
+        ):
+            success, message, stable_markers = self.save_stable_markers()
+            if success:
+                self.auto_save_completed = True
+                self.shutdown_requested = True
+                saved_ids = [marker["id"] for marker in stable_markers]
+                self.get_logger().info(
+                    f"Single-shot survey completed with stable marker ids {saved_ids}. Exiting."
+                )
+            else:
+                self.get_logger().warn(f"Single-shot save attempt failed: {message}")
+
         cv.putText(
             annotated_frame,
             f"known pose: x={self.current_robot_pose[0, 3]:.3f}, "
@@ -449,6 +478,12 @@ class MarkerSurveyNode(Node):
     def handle_save_visible_markers(self, request, response):
         del request
 
+        success, message, _ = self.save_stable_markers()
+        response.success = success
+        response.message = message
+        return response
+
+    def save_stable_markers(self):
         stable_markers = []
         for marker_id in sorted(self.observations_by_marker_id):
             estimate = self._history_to_stable_estimate(marker_id)
@@ -456,12 +491,12 @@ class MarkerSurveyNode(Node):
                 stable_markers.append(estimate)
 
         if not stable_markers:
-            response.success = False
-            response.message = (
+            return (
+                False,
                 "No stable marker observations available yet. "
-                "Move the robot to a known pose, wait for detections to stabilize, then try again."
+                "Move the robot to a known pose, wait for detections to stabilize, then try again.",
+                [],
             )
-            return response
 
         if self.raw_marker_map:
             existing_markers = load_marker_map_config(self.marker_map_file)["markers"]
@@ -505,13 +540,12 @@ class MarkerSurveyNode(Node):
             )
             for marker in stable_markers
         )
-        response.success = True
-        response.message = (
+        message = (
             f"Saved {len(stable_markers)} stable marker(s) to {self.marker_map_file}: "
             f"{marker_summaries}"
         )
-        self.get_logger().info(response.message)
-        return response
+        self.get_logger().info(message)
+        return True, message, stable_markers
 
     def destroy_node(self):
         if hasattr(self, "camera") and self.camera is not None:
@@ -523,12 +557,14 @@ def main(args=None):
     rclpy.init(args=args)
     node = MarkerSurveyNode()
     try:
-        rclpy.spin(node)
+        while rclpy.ok() and not node.shutdown_requested:
+            rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         node.get_logger().info("Shutting down marker survey node...")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
