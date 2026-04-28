@@ -1,4 +1,5 @@
 import os
+import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -84,6 +85,35 @@ def _load_robot_description(profile):
     )
 
 
+def _robot_model_static_tf_nodes(robot_description):
+    root = ET.fromstring(robot_description)
+    nodes = []
+
+    for joint in root.findall("joint"):
+        joint_type = joint.attrib.get("type", "")
+        if joint_type == "fixed":
+            continue
+
+        origin = joint.find("origin")
+        parent = joint.find("parent")
+        child = joint.find("child")
+        if origin is None or parent is None or child is None:
+            continue
+
+        xyz = origin.attrib.get("xyz", "0 0 0").split()
+        rpy = origin.attrib.get("rpy", "0 0 0").split()
+        nodes.append(
+            _static_tf_node(
+                name=f"robot_model_{joint.attrib.get('name', child.attrib['link'])}",
+                parent_frame=parent.attrib["link"],
+                child_frame=child.attrib["link"],
+                xyzrpy=xyz + rpy,
+            )
+        )
+
+    return nodes
+
+
 def _build_nodes(context):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile_path = LaunchConfiguration("profile_path").perform(context)
@@ -105,7 +135,6 @@ def _build_nodes(context):
 
     robot_description = _load_robot_description(profile)
     if robot_description is not None:
-        robot_model_cfg = profile.get("robot_model", {})
         nodes.append(
             Node(
                 package="robot_state_publisher",
@@ -114,20 +143,7 @@ def _build_nodes(context):
                 output="screen",
             )
         )
-
-        if robot_model_cfg.get("publish_joint_states", True):
-            nodes.append(
-                Node(
-                    package="joint_state_publisher",
-                    executable="joint_state_publisher",
-                    parameters=[
-                        {
-                            "rate": float(robot_model_cfg.get("joint_state_rate_hz", 10.0)),
-                        }
-                    ],
-                    output="screen",
-                )
-            )
+        nodes.extend(_robot_model_static_tf_nodes(robot_description))
 
     movement_cfg = profile.get("movement", {})
     if movement_cfg.get("enabled", True):
