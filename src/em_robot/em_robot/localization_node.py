@@ -301,6 +301,13 @@ class LocalizationNode(Node):
         rejected_for_reprojection = 0
         missing_marker_tf = 0
 
+        if self.publish_map_to_base:
+            previous_map_to_base = (
+                self.last_map_to_base if self.has_map_lock else None
+            )
+        else:
+            previous_map_to_base = self.last_map_to_odom @ odom_to_base
+
         for detection in detections:
             marker_id = detection["id"]
             marker_frame = f"aruco_{marker_id}"
@@ -360,6 +367,21 @@ class LocalizationNode(Node):
                 map_to_base[1, 3],
                 measured_yaw,
             )
+
+            if self.has_map_lock and previous_map_to_base is not None:
+                position_error = math.hypot(
+                    planar_map_to_base[0, 3] - previous_map_to_base[0, 3],
+                    planar_map_to_base[1, 3] - previous_map_to_base[1, 3],
+                )
+                yaw_error = wrap_angle(
+                    measured_yaw - yaw_from_matrix(previous_map_to_base)
+                )
+                if (
+                    position_error > self.max_position_jump
+                    or abs(yaw_error) > self.max_yaw_jump
+                ):
+                    rejected_for_gating += 1
+                    continue
 
             candidates.append(
                 {
@@ -438,50 +460,45 @@ class LocalizationNode(Node):
             ),
         )
 
-        measured_map_to_base = build_planar_transform(
-            measured_x,
-            measured_y,
-            measured_yaw,
-        )
+        if self.has_map_lock and previous_map_to_base is not None:
+            fused_x = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[0, 3]
+                + self.position_smoothing_alpha * measured_x
+            )
+            fused_y = (
+                (1.0 - self.position_smoothing_alpha) * previous_map_to_base[1, 3]
+                + self.position_smoothing_alpha * measured_y
+            )
+            fused_yaw = blend_angles(
+                yaw_from_matrix(previous_map_to_base),
+                measured_yaw,
+                self.yaw_smoothing_alpha,
+            )
+        else:
+            fused_x = measured_x
+            fused_y = measured_y
+            fused_yaw = measured_yaw
+
+        planar_map_to_base = build_planar_transform(fused_x, fused_y, fused_yaw)
+
+        if self.has_map_lock and previous_map_to_base is not None:
+            update_translation = math.hypot(
+                planar_map_to_base[0, 3] - previous_map_to_base[0, 3],
+                planar_map_to_base[1, 3] - previous_map_to_base[1, 3],
+            )
+            update_yaw = abs(
+                wrap_angle(fused_yaw - yaw_from_matrix(previous_map_to_base))
+            )
+            if (
+                update_translation < self.min_update_translation
+                and update_yaw < self.min_update_yaw
+            ):
+                self.publish_debug_image(annotated_frame, capture_stamp)
+                return
 
         marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
 
         if self.publish_map_to_base:
-            if self.has_map_lock:
-                target_delta = math.hypot(
-                    measured_map_to_base[0, 3] - self.last_map_to_base[0, 3],
-                    measured_map_to_base[1, 3] - self.last_map_to_base[1, 3],
-                )
-                target_yaw_delta = abs(
-                    wrap_angle(measured_yaw - yaw_from_matrix(self.last_map_to_base))
-                )
-                if (
-                    target_delta > self.max_position_jump
-                    or target_yaw_delta > self.max_yaw_jump
-                ):
-                    self.publish_debug_image(annotated_frame, capture_stamp)
-                    return
-
-                fused_x = (
-                    (1.0 - self.position_smoothing_alpha) * self.last_map_to_base[0, 3]
-                    + self.position_smoothing_alpha * measured_x
-                )
-                fused_y = (
-                    (1.0 - self.position_smoothing_alpha) * self.last_map_to_base[1, 3]
-                    + self.position_smoothing_alpha * measured_y
-                )
-                fused_yaw = blend_angles(
-                    yaw_from_matrix(self.last_map_to_base),
-                    measured_yaw,
-                    self.yaw_smoothing_alpha,
-                )
-                planar_map_to_base = build_planar_transform(fused_x, fused_y, fused_yaw)
-            else:
-                planar_map_to_base = measured_map_to_base
-                fused_x = measured_x
-                fused_y = measured_y
-                fused_yaw = measured_yaw
-
             self.last_map_to_base = planar_map_to_base
             localization_transform = build_transform(
                 self.map_frame,
@@ -498,73 +515,11 @@ class LocalizationNode(Node):
                 f"yaw={math.degrees(fused_yaw):.1f} deg"
             )
         else:
-            target_map_to_odom = compute_map_to_odom_from_map_to_base(
-                measured_map_to_base,
+            map_to_odom = compute_map_to_odom_from_map_to_base(
+                planar_map_to_base,
                 odom_to_base,
             )
-            target_translation = translation_from_matrix(target_map_to_odom)
-            target_yaw = yaw_from_matrix(target_map_to_odom)
-
-            if self.has_map_lock:
-                correction_delta = math.hypot(
-                    target_translation[0] - self.last_map_to_odom[0, 3],
-                    target_translation[1] - self.last_map_to_odom[1, 3],
-                )
-                correction_yaw_delta = abs(
-                    wrap_angle(target_yaw - yaw_from_matrix(self.last_map_to_odom))
-                )
-                if (
-                    correction_delta > self.max_position_jump
-                    or correction_yaw_delta > self.max_yaw_jump
-                ):
-                    rejected_for_gating = len(candidates)
-                    self.publish_debug_image(annotated_frame, capture_stamp)
-                    return
-
-                last_translation = translation_from_matrix(self.last_map_to_odom)
-                fused_odom_x = (
-                    (1.0 - self.position_smoothing_alpha) * last_translation[0]
-                    + self.position_smoothing_alpha * target_translation[0]
-                )
-                fused_odom_y = (
-                    (1.0 - self.position_smoothing_alpha) * last_translation[1]
-                    + self.position_smoothing_alpha * target_translation[1]
-                )
-                fused_odom_yaw = blend_angles(
-                    yaw_from_matrix(self.last_map_to_odom),
-                    target_yaw,
-                    self.yaw_smoothing_alpha,
-                )
-
-                correction_step = math.hypot(
-                    fused_odom_x - last_translation[0],
-                    fused_odom_y - last_translation[1],
-                )
-                correction_yaw_step = abs(
-                    wrap_angle(
-                        fused_odom_yaw - yaw_from_matrix(self.last_map_to_odom)
-                    )
-                )
-                if (
-                    correction_step < self.min_update_translation
-                    and correction_yaw_step < self.min_update_yaw
-                ):
-                    self.publish_debug_image(annotated_frame, capture_stamp)
-                    return
-
-                map_to_odom = build_planar_transform(
-                    fused_odom_x,
-                    fused_odom_y,
-                    fused_odom_yaw,
-                )
-            else:
-                map_to_odom = target_map_to_odom
-
             self.last_map_to_odom = map_to_odom
-            planar_map_to_base = map_to_odom @ odom_to_base
-            fused_x = planar_map_to_base[0, 3]
-            fused_y = planar_map_to_base[1, 3]
-            fused_yaw = yaw_from_matrix(planar_map_to_base)
 
             map_odom_translation = translation_from_matrix(map_to_odom)
             map_odom_yaw = yaw_from_matrix(map_to_odom)
