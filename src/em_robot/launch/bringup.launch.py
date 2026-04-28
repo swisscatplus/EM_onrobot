@@ -11,6 +11,15 @@ from launch_ros.actions import Node
 from em_robot.profile_loader import load_profile
 
 
+PRIMITIVE_LINK_GEOMETRY = {
+    "base_link": ("box", {"size": "0.24 0.18 0.10"}),
+    "wheel_left_link": ("cylinder", {"radius": "0.035", "length": "0.025"}),
+    "wheel_right_link": ("cylinder", {"radius": "0.035", "length": "0.025"}),
+    "depth_camera_link": ("box", {"size": "0.035 0.090 0.030"}),
+    "pi_camera_link": ("box", {"size": "0.025 0.025 0.010"}),
+}
+
+
 def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
     values = [str(value) for value in xyzrpy]
     return Node(
@@ -38,6 +47,31 @@ def _resolve_package_config_path(package_name, config_subdir, value):
     return os.path.join(get_package_share_directory(package_name), config_subdir, value)
 
 
+def _replace_meshes_with_primitives(robot_description):
+    root = ET.fromstring(robot_description)
+
+    for link in root.findall("link"):
+        primitive = PRIMITIVE_LINK_GEOMETRY.get(link.attrib.get("name", ""))
+        if primitive is None:
+            continue
+
+        tag_name, attributes = primitive
+        for element_name in ("visual", "collision"):
+            element = link.find(element_name)
+            if element is None:
+                continue
+            geometry = link.find(f"{element_name}/geometry")
+            if geometry is None:
+                continue
+            origin = element.find("origin")
+            if tag_name == "cylinder" and origin is not None:
+                origin.set("rpy", "0 1.5708 0")
+            geometry.clear()
+            ET.SubElement(geometry, tag_name, attributes)
+
+    return ET.tostring(root, encoding="unicode")
+
+
 def _load_robot_description(profile):
     robot_model_cfg = profile.get("robot_model", {})
     if not robot_model_cfg.get("enabled", True):
@@ -51,10 +85,16 @@ def _load_robot_description(profile):
     with open(urdf_path, "r", encoding="utf-8") as urdf_file:
         robot_description = urdf_file.read()
 
-    return robot_description.replace(
+    robot_description = robot_description.replace(
         "package://URDF_screencast/meshes/",
         "package://em_robot/robot_model/meshes/",
     )
+
+    geometry_mode = str(robot_model_cfg.get("geometry", "meshes")).lower()
+    if geometry_mode in ("primitive", "primitives", "meshless", "simple"):
+        return _replace_meshes_with_primitives(robot_description)
+
+    return robot_description
 
 
 def _robot_model_static_tf_nodes(robot_description):

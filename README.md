@@ -378,7 +378,8 @@ docker exec -it em_robot_dev bash
 
 For visualization on the real robot:
 - keep `start_rviz: false` on the Raspberry Pi unless you explicitly want to test local rendering there
-- if you enable `robot_model.enabled: true`, open RViz on the Ubuntu host instead of the Pi so the robot does not spend CPU/GPU budget on rendering
+- if `robot_model.enabled: true`, keep `geometry: primitives` for a mesh-free model that RViz can render without local STL files
+- open RViz on the Ubuntu host instead of the Pi so the robot does not spend CPU/GPU budget on rendering
 - the host RViz layout is [`src/em_robot/rviz/localization_debug.rviz`](./src/em_robot/rviz/localization_debug.rviz)
 
 LED feedback in the `real_robot` profile:
