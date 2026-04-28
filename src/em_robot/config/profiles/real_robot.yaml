@@ -65,7 +65,7 @@ diagnostics:
   publish_rate_hz: 1.0
 
 leds:
-  enabled: true
+  enabled: false
   backend: gpiozero
   active_low: false  # Set true for common-anode LEDs or inverted transistor drive.
   brightness: 1.0
@@ -80,7 +80,7 @@ leds:
   rear_color_order: rgb  # Change to grb/brg/etc. if calibration shows a different order.
 
 state_manager:
-  enabled: true  # Set false temporarily while calibrating raw LED colors by hand.
+  enabled: false # Set false temporarily while calibrating raw LED colors by hand.
   publish_rate_hz: 5.0
   blink_period_s: 1.0
   moving_linear_threshold: 0.02
