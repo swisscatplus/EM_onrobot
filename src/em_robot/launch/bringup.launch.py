@@ -1,5 +1,4 @@
 import os
-import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -9,15 +8,6 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 from em_robot.profile_loader import load_profile
-
-
-PRIMITIVE_LINK_GEOMETRY = {
-    "base_link": ("box", {"size": "0.24 0.18 0.10"}),
-    "wheel_left_link": ("cylinder", {"radius": "0.035", "length": "0.025"}),
-    "wheel_right_link": ("cylinder", {"radius": "0.035", "length": "0.025"}),
-    "depth_camera_link": ("box", {"size": "0.035 0.090 0.030"}),
-    "pi_camera_link": ("box", {"size": "0.025 0.025 0.010"}),
-}
 
 
 def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
@@ -47,29 +37,15 @@ def _resolve_package_config_path(package_name, config_subdir, value):
     return os.path.join(get_package_share_directory(package_name), config_subdir, value)
 
 
-def _replace_meshes_with_primitives(robot_description):
-    root = ET.fromstring(robot_description)
-
-    for link in root.findall("link"):
-        primitive = PRIMITIVE_LINK_GEOMETRY.get(link.attrib.get("name", ""))
-        if primitive is None:
-            continue
-
-        tag_name, attributes = primitive
-        for element_name in ("visual", "collision"):
-            element = link.find(element_name)
-            if element is None:
-                continue
-            geometry = link.find(f"{element_name}/geometry")
-            if geometry is None:
-                continue
-            origin = element.find("origin")
-            if tag_name == "cylinder" and origin is not None:
-                origin.set("rpy", "0 1.5708 0")
-            geometry.clear()
-            ET.SubElement(geometry, tag_name, attributes)
-
-    return ET.tostring(root, encoding="unicode")
+def _find_repo_root(start_path):
+    current = os.path.abspath(start_path)
+    while current and current != os.path.dirname(current):
+        if os.path.isdir(os.path.join(current, "CAD")) and os.path.isdir(
+            os.path.join(current, "src")
+        ):
+            return current
+        current = os.path.dirname(current)
+    return None
 
 
 def _load_robot_description(profile):
@@ -78,52 +54,26 @@ def _load_robot_description(profile):
         return None
 
     pkg_share = get_package_share_directory("em_robot")
-    installed_model_dir = os.path.join(pkg_share, "robot_model")
-    default_urdf = os.path.join(installed_model_dir, "urdf", "URDF_screencast.urdf")
-    urdf_path = str(robot_model_cfg.get("urdf", default_urdf))
-
-    with open(urdf_path, "r", encoding="utf-8") as urdf_file:
-        robot_description = urdf_file.read()
-
-    robot_description = robot_description.replace(
-        "package://URDF_screencast/meshes/",
-        "package://em_robot/robot_model/meshes/",
-    )
-
-    geometry_mode = str(robot_model_cfg.get("geometry", "meshes")).lower()
-    if geometry_mode in ("primitive", "primitives", "meshless", "simple"):
-        return _replace_meshes_with_primitives(robot_description)
-
-    return robot_description
-
-
-def _robot_model_static_tf_nodes(robot_description):
-    root = ET.fromstring(robot_description)
-    nodes = []
-
-    for joint in root.findall("joint"):
-        joint_type = joint.attrib.get("type", "")
-        if joint_type == "fixed":
-            continue
-
-        origin = joint.find("origin")
-        parent = joint.find("parent")
-        child = joint.find("child")
-        if origin is None or parent is None or child is None:
-            continue
-
-        xyz = origin.attrib.get("xyz", "0 0 0").split()
-        rpy = origin.attrib.get("rpy", "0 0 0").split()
-        nodes.append(
-            _static_tf_node(
-                name=f"robot_model_{joint.attrib.get('name', child.attrib['link'])}",
-                parent_frame=parent.attrib["link"],
-                child_frame=child.attrib["link"],
-                xyzrpy=xyz + rpy,
-            )
+    repo_root = _find_repo_root(pkg_share)
+    if repo_root is None:
+        raise FileNotFoundError(
+            f"Could not locate the workspace root from package share path {pkg_share}"
         )
 
-    return nodes
+    default_urdf = os.path.join(
+        repo_root,
+        "CAD",
+        "EdyMobile_URDF_screencast_ROS",
+        "URDF_screencast_ROS",
+        "urdf",
+        "simple_box_robot.urdf",
+    )
+    urdf_path = str(robot_model_cfg.get("urdf", default_urdf))
+    if not os.path.isabs(urdf_path):
+        urdf_path = os.path.join(repo_root, urdf_path)
+
+    with open(urdf_path, "r", encoding="utf-8") as urdf_file:
+        return urdf_file.read()
 
 
 def _build_nodes(context):
@@ -155,7 +105,6 @@ def _build_nodes(context):
                 output="screen",
             )
         )
-        nodes.extend(_robot_model_static_tf_nodes(robot_description))
 
     movement_cfg = profile.get("movement", {})
     if movement_cfg.get("enabled", True):

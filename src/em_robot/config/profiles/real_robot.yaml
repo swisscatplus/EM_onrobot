@@ -3,7 +3,6 @@ start_rviz: false
 
 robot_model:
   enabled: true
-  geometry: primitives
 
 movement:
   enabled: true

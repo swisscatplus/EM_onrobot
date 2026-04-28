@@ -17,14 +17,6 @@ setup(
         (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*.yaml'))),
         (os.path.join('share', package_name, 'config', 'profiles'), glob(os.path.join('config', 'profiles', '*.yaml'))),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*')),
-        (
-            os.path.join('share', package_name, 'robot_model', 'urdf'),
-            glob(os.path.join('..', '..', 'CAD', 'EdyMobile_URDF_screencast_ROS', 'URDF_screencast_ROS', 'urdf', '*.urdf')),
-        ),
-        (
-            os.path.join('share', package_name, 'robot_model', 'meshes'),
-            glob(os.path.join('..', '..', 'CAD', 'EdyMobile_URDF_screencast_ROS', 'URDF_screencast_ROS', 'meshes', '*.STL')),
-        ),
     ],
     install_requires=[
         'setuptools',
