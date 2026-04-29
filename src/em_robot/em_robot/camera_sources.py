@@ -20,6 +20,11 @@ def normalize_to_bgr8(frame):
 class CapturedFrame:
     frame: object
     timestamp_ns: int
+    timestamp_source: str = "host_capture_time"
+
+
+def monotonic_to_system_time_ns(monotonic_ns: int) -> int:
+    return int(time.time_ns() - time.monotonic_ns() + int(monotonic_ns))
 
 
 class PicameraSource:
@@ -43,8 +48,28 @@ class PicameraSource:
         return self.capture_with_timestamp().frame
 
     def capture_with_timestamp(self):
-        frame = normalize_to_bgr8(self._camera.capture_array())
-        return CapturedFrame(frame=frame, timestamp_ns=time.time_ns())
+        try:
+            request = self._camera.capture_request(flush=True)
+        except TypeError:  # pragma: no cover - older Picamera2 without flush
+            request = self._camera.capture_request()
+
+        try:
+            frame = normalize_to_bgr8(request.make_array("main"))
+            metadata = request.get_metadata()
+        finally:
+            request.release()
+
+        sensor_timestamp_ns = metadata.get("SensorTimestamp")
+        if sensor_timestamp_ns is None:
+            return CapturedFrame(frame=frame, timestamp_ns=time.time_ns())
+
+        exposure_time_us = int(metadata.get("ExposureTime", 0) or 0)
+        exposure_midpoint_ns = int(sensor_timestamp_ns) - (exposure_time_us * 1000 // 2)
+        return CapturedFrame(
+            frame=frame,
+            timestamp_ns=monotonic_to_system_time_ns(exposure_midpoint_ns),
+            timestamp_source="picamera2_sensor_mid_exposure",
+        )
 
     def close(self):
         self._camera.stop()

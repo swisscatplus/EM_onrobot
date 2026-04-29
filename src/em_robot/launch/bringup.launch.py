@@ -213,6 +213,33 @@ def _build_nodes(context):
                         "processing_scale": float(
                             localization_cfg.get("processing_scale", 1.0)
                         ),
+                        "transform_tolerance_sec": float(
+                            localization_cfg.get("transform_tolerance_sec", 0.2)
+                        ),
+                        "odom_lookup_timeout_sec": float(
+                            localization_cfg.get("odom_lookup_timeout_sec", 0.3)
+                        ),
+                        "max_capture_age_sec": float(
+                            localization_cfg.get("max_capture_age_sec", 1.0)
+                        ),
+                        "max_position_jump": float(
+                            localization_cfg.get("max_position_jump", 0.45)
+                        ),
+                        "max_yaw_jump_deg": float(
+                            localization_cfg.get("max_yaw_jump_deg", 35.0)
+                        ),
+                        "position_smoothing_alpha": float(
+                            localization_cfg.get("position_smoothing_alpha", 0.35)
+                        ),
+                        "yaw_smoothing_alpha": float(
+                            localization_cfg.get("yaw_smoothing_alpha", 0.35)
+                        ),
+                        "min_update_translation": float(
+                            localization_cfg.get("min_update_translation", 0.005)
+                        ),
+                        "min_update_yaw_deg": float(
+                            localization_cfg.get("min_update_yaw_deg", 0.5)
+                        ),
                         "debug_image_topic": str(
                             localization_cfg.get(
                                 "debug_image_topic", "/localization/debug_image"

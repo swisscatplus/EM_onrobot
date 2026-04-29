@@ -18,10 +18,14 @@ from em_robot.aruco_utils import (
 )
 from em_robot.camera_sources import create_camera_source, normalize_to_bgr8
 from em_robot.transform_utils import (
+    blend_angles,
     build_planar_transform,
     build_transform,
     compute_map_to_base_from_marker,
+    compute_map_to_odom_from_map_to_base,
     transform_to_matrix,
+    wrap_angle,
+    yaw_from_matrix,
 )
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -59,10 +63,20 @@ class LocalizationNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("camera_frame", "camera_frame")
         self.declare_parameter("vision_base_pose_topic", "/localization/vision_base_pose")
+        self.declare_parameter("vision_camera_pose_topic", "/localization/vision_camera_pose")
         self.declare_parameter("process_rate_hz", 5.0)
         self.declare_parameter("map_odom_publish_rate_hz", 20.0)
         self.declare_parameter("publish_map_to_base", False)
         self.declare_parameter("processing_scale", 1.0)
+        self.declare_parameter("transform_tolerance_sec", 0.2)
+        self.declare_parameter("odom_lookup_timeout_sec", 0.3)
+        self.declare_parameter("max_capture_age_sec", 1.0)
+        self.declare_parameter("max_position_jump", 0.45)
+        self.declare_parameter("max_yaw_jump_deg", 35.0)
+        self.declare_parameter("position_smoothing_alpha", 0.35)
+        self.declare_parameter("yaw_smoothing_alpha", 0.35)
+        self.declare_parameter("min_update_translation", 0.005)
+        self.declare_parameter("min_update_yaw_deg", 0.5)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -81,12 +95,36 @@ class LocalizationNode(Node):
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.camera_frame = str(self.get_parameter("camera_frame").value)
         self.vision_base_pose_topic = str(self.get_parameter("vision_base_pose_topic").value)
+        self.vision_camera_pose_topic = str(
+            self.get_parameter("vision_camera_pose_topic").value
+        )
         self.process_rate_hz = float(self.get_parameter("process_rate_hz").value)
         self.map_odom_publish_rate_hz = float(
             self.get_parameter("map_odom_publish_rate_hz").value
         )
         self.publish_map_to_base = bool(self.get_parameter("publish_map_to_base").value)
         self.processing_scale = float(self.get_parameter("processing_scale").value)
+        self.transform_tolerance_sec = float(
+            self.get_parameter("transform_tolerance_sec").value
+        )
+        self.odom_lookup_timeout_sec = float(
+            self.get_parameter("odom_lookup_timeout_sec").value
+        )
+        self.max_capture_age_sec = float(self.get_parameter("max_capture_age_sec").value)
+        self.max_position_jump = float(self.get_parameter("max_position_jump").value)
+        self.max_yaw_jump = math.radians(
+            float(self.get_parameter("max_yaw_jump_deg").value)
+        )
+        self.position_smoothing_alpha = float(
+            self.get_parameter("position_smoothing_alpha").value
+        )
+        self.yaw_smoothing_alpha = float(self.get_parameter("yaw_smoothing_alpha").value)
+        self.min_update_translation = float(
+            self.get_parameter("min_update_translation").value
+        )
+        self.min_update_yaw = math.radians(
+            float(self.get_parameter("min_update_yaw_deg").value)
+        )
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -104,6 +142,10 @@ class LocalizationNode(Node):
         self.processing_camera_matrix = self.camera_matrix.copy()
         if self.processing_scale <= 0.0 or self.processing_scale > 1.0:
             raise ValueError("processing_scale must be in the range (0.0, 1.0].")
+        if not 0.0 <= self.position_smoothing_alpha <= 1.0:
+            raise ValueError("position_smoothing_alpha must be in the range [0.0, 1.0].")
+        if not 0.0 <= self.yaw_smoothing_alpha <= 1.0:
+            raise ValueError("yaw_smoothing_alpha must be in the range [0.0, 1.0].")
         if self.processing_scale != 1.0:
             self.processing_camera_matrix[0, 0] *= self.processing_scale
             self.processing_camera_matrix[1, 1] *= self.processing_scale
@@ -140,7 +182,8 @@ class LocalizationNode(Node):
         )
 
         self.get_logger().info(
-            f"Camera backend '{self.camera_backend}' initialized with source '{self.camera_source}'"
+            f"Camera backend '{self.camera_backend}' initialized with source "
+            f"'{self.camera_source}'"
         )
         if self.processing_scale != 1.0:
             self.get_logger().info(
@@ -157,11 +200,13 @@ class LocalizationNode(Node):
 
         self.odom_frame_available = False
         self.last_localization_matrix = None
+        self.has_localization_lock = False
         self.localization_child_frame = (
             self.base_frame if self.publish_map_to_base else self.odom_frame
         )
         self.last_camera_to_marker_by_id = {}
         self.last_debug_image_publish_time = None
+        self.last_update_log_time = self.get_clock().now()
 
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
@@ -172,6 +217,11 @@ class LocalizationNode(Node):
         self.vision_base_pose_pub = (
             self.create_publisher(PoseStamped, self.vision_base_pose_topic, 10)
             if self.vision_base_pose_topic
+            else None
+        )
+        self.vision_camera_pose_pub = (
+            self.create_publisher(PoseStamped, self.vision_camera_pose_topic, 10)
+            if self.vision_camera_pose_topic
             else None
         )
 
@@ -205,6 +255,12 @@ class LocalizationNode(Node):
             f"Published static transform: {self.base_frame} -> {self.camera_frame}"
         )
 
+    def current_transform_stamp(self):
+        stamp = self.get_clock().now()
+        if self.transform_tolerance_sec > 0.0:
+            stamp = stamp + Duration(seconds=self.transform_tolerance_sec)
+        return stamp.to_msg()
+
     def publish_initial_localization_transform(self):
         initial_matrix = build_planar_transform(0.0, 0.0, 0.0)
         self.last_localization_matrix = initial_matrix
@@ -213,7 +269,7 @@ class LocalizationNode(Node):
                 self.map_frame,
                 self.localization_child_frame,
                 initial_matrix,
-                self.get_clock().now().to_msg(),
+                self.current_transform_stamp(),
             )
         )
 
@@ -230,7 +286,7 @@ class LocalizationNode(Node):
                 self.map_frame,
                 self.localization_child_frame,
                 self.last_localization_matrix,
-                self.get_clock().now().to_msg(),
+                self.current_transform_stamp(),
             )
         )
 
@@ -253,9 +309,78 @@ class LocalizationNode(Node):
 
         return msg
 
-    def process_frame(self):
-        from tf_transformations import euler_from_quaternion, translation_from_matrix
+    def planarize_transform(self, transform_matrix):
+        return build_planar_transform(
+            float(transform_matrix[0, 3]),
+            float(transform_matrix[1, 3]),
+            yaw_from_matrix(transform_matrix),
+        )
 
+    def pose_delta(self, first_transform, second_transform):
+        position_delta = math.hypot(
+            float(first_transform[0, 3] - second_transform[0, 3]),
+            float(first_transform[1, 3] - second_transform[1, 3]),
+        )
+        yaw_delta = wrap_angle(
+            yaw_from_matrix(first_transform) - yaw_from_matrix(second_transform)
+        )
+        return position_delta, yaw_delta
+
+    def fuse_candidate_map_to_base(self, candidates):
+        weights = np.array(
+            [1.0 / max(candidate["reprojection_error"], 1e-3) for candidate in candidates],
+            dtype=np.float64,
+        )
+        weights /= np.sum(weights)
+
+        x = float(
+            np.sum(
+                [
+                    weight * candidate["map_to_base"][0, 3]
+                    for weight, candidate in zip(weights, candidates)
+                ]
+            )
+        )
+        y = float(
+            np.sum(
+                [
+                    weight * candidate["map_to_base"][1, 3]
+                    for weight, candidate in zip(weights, candidates)
+                ]
+            )
+        )
+        yaw_values = [yaw_from_matrix(candidate["map_to_base"]) for candidate in candidates]
+        yaw = math.atan2(
+            float(
+                np.sum(
+                    [weight * math.sin(value) for weight, value in zip(weights, yaw_values)]
+                )
+            ),
+            float(
+                np.sum(
+                    [weight * math.cos(value) for weight, value in zip(weights, yaw_values)]
+                )
+            ),
+        )
+        return build_planar_transform(x, y, yaw)
+
+    def smooth_map_to_base(self, previous_map_to_base, measured_map_to_base):
+        smoothed_x = (
+            (1.0 - self.position_smoothing_alpha) * previous_map_to_base[0, 3]
+            + self.position_smoothing_alpha * measured_map_to_base[0, 3]
+        )
+        smoothed_y = (
+            (1.0 - self.position_smoothing_alpha) * previous_map_to_base[1, 3]
+            + self.position_smoothing_alpha * measured_map_to_base[1, 3]
+        )
+        smoothed_yaw = blend_angles(
+            yaw_from_matrix(previous_map_to_base),
+            yaw_from_matrix(measured_map_to_base),
+            self.yaw_smoothing_alpha,
+        )
+        return build_planar_transform(smoothed_x, smoothed_y, smoothed_yaw)
+
+    def process_frame(self):
         if not self.publish_map_to_base and not self.odom_frame_available:
             try:
                 self.tf_buffer.lookup_transform(
@@ -279,15 +404,33 @@ class LocalizationNode(Node):
                 frame = self.camera.capture()
                 capture_timestamp_ns = time.time_ns()
                 capture_stamp = self.get_clock().now()
+                timestamp_source = "node_capture_time"
             else:
                 frame = captured_frame.frame
                 capture_timestamp_ns = int(captured_frame.timestamp_ns)
+                timestamp_source = getattr(
+                    captured_frame,
+                    "timestamp_source",
+                    "camera_capture_time",
+                )
                 capture_stamp = Time(
                     nanoseconds=capture_timestamp_ns,
                     clock_type=self.get_clock().clock_type,
                 )
         except Exception as exc:
             self.get_logger().warn(f"Camera capture failed: {exc}")
+            return
+
+        now = self.get_clock().now()
+        capture_age_sec = max(0.0, (now - capture_stamp).nanoseconds / 1e9)
+        if (
+            self.max_capture_age_sec > 0.0
+            and capture_age_sec > self.max_capture_age_sec
+        ):
+            self.get_logger().warn(
+                f"Skipping stale camera frame: age={capture_age_sec:.3f}s "
+                f"source={timestamp_source}"
+            )
             return
 
         processing_frame = frame
@@ -320,173 +463,188 @@ class LocalizationNode(Node):
             return
 
         odom_to_base = None
-        odom_translation = None
-        odom_yaw = None
+        planar_odom_to_base = None
+        predicted_map_to_base = None
         if not self.publish_map_to_base:
             try:
                 odom_to_base = self.lookup_matrix(
                     self.odom_frame,
                     self.base_frame,
                     capture_stamp,
+                    timeout_sec=self.odom_lookup_timeout_sec,
+                    allow_latest_fallback=False,
                 )
             except Exception as exc:
                 self.get_logger().warn(
-                    f"Cannot get {self.odom_frame} -> {self.base_frame}: {exc}"
+                    f"Skipping vision update: no exact-enough {self.odom_frame} -> "
+                    f"{self.base_frame} transform at camera stamp "
+                    f"{capture_stamp.nanoseconds}: {exc}"
                 )
                 self.odom_frame_available = False
                 return
 
-        detection = detections[0]
-        marker_id = detection["id"]
-        marker_frame = f"aruco_{marker_id}"
-        corners = detection["corners"]
+            planar_odom_to_base = self.planarize_transform(odom_to_base)
+            if self.has_localization_lock:
+                predicted_map_to_base = self.last_localization_matrix @ planar_odom_to_base
+        elif self.has_localization_lock:
+            predicted_map_to_base = self.last_localization_matrix
 
-        polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
-        cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
+        candidates = []
+        rejected_for_gating = 0
+        rejected_for_reprojection = 0
+        missing_marker_tf = 0
 
-        camera_to_marker, reprojection_error = estimate_marker_pose(
-            corners,
-            self.marker_object_points,
-            self.processing_camera_matrix,
-            self.dist_coeffs,
-            self.max_reprojection_error,
-            reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
-        )
+        for detection in detections:
+            marker_id = detection["id"]
+            marker_frame = f"aruco_{marker_id}"
+            corners = detection["corners"]
+            polyline = corners.reshape((-1, 1, 2)).astype(np.int32)
+            cv.polylines(annotated_frame, [polyline], True, (0, 255, 0), 2)
 
-        if camera_to_marker is None:
-            self.get_logger().warn(
-                f"Marker {marker_id} reprojection error too high: "
-                f"{reprojection_error:.2f}px"
+            camera_to_marker, reprojection_error = estimate_marker_pose(
+                corners,
+                self.marker_object_points,
+                self.processing_camera_matrix,
+                self.dist_coeffs,
+                self.max_reprojection_error,
+                reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
             )
+
+            if camera_to_marker is None:
+                rejected_for_reprojection += 1
+                error_text = "n/a" if reprojection_error is None else f"{reprojection_error:.2f}"
+                cv.putText(
+                    annotated_frame,
+                    f"id={marker_id} rejected err={error_text}",
+                    tuple(polyline[0, 0]),
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 255),
+                    1,
+                    cv.LINE_AA,
+                )
+                continue
+
+            self.last_camera_to_marker_by_id[marker_id] = camera_to_marker
 
             cv.putText(
                 annotated_frame,
-                f"Marker {marker_id}: pose estimation failed",
-                (10, 30),
+                f"id={marker_id} err={reprojection_error:.2f}",
+                tuple(polyline[0, 0]),
                 cv.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2,
+                0.5,
+                (0, 255, 0),
+                1,
                 cv.LINE_AA,
             )
 
-            self.publish_debug_image(annotated_frame, capture_stamp)
-            return
+            try:
+                map_to_marker = self.lookup_matrix(
+                    self.map_frame,
+                    marker_frame,
+                    capture_stamp,
+                    timeout_sec=0.0,
+                    allow_latest_fallback=True,
+                )
+            except Exception:
+                missing_marker_tf += 1
+                cv.putText(
+                    annotated_frame,
+                    f"{marker_frame} missing TF",
+                    tuple(polyline[0, 0] + np.array([0, 18])),
+                    cv.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 255, 255),
+                    1,
+                    cv.LINE_AA,
+                )
+                continue
 
-        self.last_camera_to_marker_by_id[marker_id] = camera_to_marker
-
-        cv.putText(
-            annotated_frame,
-            f"Marker {marker_id}: reproj_err={reprojection_error:.2f}px",
-            tuple(polyline[0, 0]),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            1,
-            cv.LINE_AA,
-        )
-
-        try:
-            map_to_marker = self.lookup_matrix(
-                self.map_frame,
-                marker_frame,
-                capture_stamp,
-                timeout_sec=0.0,
-                allow_latest_fallback=True,
+            map_to_base = self.planarize_transform(
+                compute_map_to_base_from_marker(
+                    map_to_marker,
+                    camera_to_marker,
+                    self.t_camera_base,
+                )
             )
-        except Exception as exc:
-            self.get_logger().warn(
-                f"Cannot find marker {marker_id} in TF as "
-                f"{self.map_frame} -> {marker_frame}: {exc}"
+
+            position_error = None
+            yaw_error = None
+            if predicted_map_to_base is not None:
+                position_error, yaw_error = self.pose_delta(map_to_base, predicted_map_to_base)
+                if (
+                    position_error > self.max_position_jump
+                    or abs(yaw_error) > self.max_yaw_jump
+                ):
+                    rejected_for_gating += 1
+                    continue
+
+            candidates.append(
+                {
+                    "marker_id": marker_id,
+                    "map_to_base": map_to_base,
+                    "reprojection_error": float(reprojection_error),
+                    "position_error": position_error,
+                    "yaw_error": yaw_error,
+                }
             )
 
+        if not candidates:
             cv.putText(
                 annotated_frame,
-                f"{marker_frame} not found in TF",
+                "Markers seen, no accepted pose",
                 (10, 30),
                 cv.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
+                0.6,
+                (0, 255, 255),
                 2,
                 cv.LINE_AA,
             )
-
-            self.publish_debug_image(annotated_frame, capture_stamp)
-            return
-
-        # map -> base_link from vision:
-        # map -> marker @ marker -> camera @ camera -> base
-        map_to_base = compute_map_to_base_from_marker(
-            map_to_marker,
-            camera_to_marker,
-            self.t_camera_base,
-        )
-
-        translation = translation_from_matrix(map_to_base)
-        quaternion = quaternion_from_matrix(map_to_base)
-        _, _, yaw = euler_from_quaternion(quaternion)
-
-        planar_map_to_base = build_planar_transform(
-            translation[0],
-            translation[1],
-            yaw,
-        )
-
-        if self.publish_map_to_base:
-            localization_matrix = planar_map_to_base
             self.get_logger().info(
-                f"Camera-only localization update from marker {marker_id}: "
-                f"map->{self.base_frame} x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg | "
-                f"latency={(time.time_ns() - capture_timestamp_ns) / 1e6:.0f} ms"
+                "Markers detected, but no localization update accepted: "
+                f"reprojection={rejected_for_reprojection}, "
+                f"missing_tf={missing_marker_tf}, gating={rejected_for_gating}"
+            )
+            self.publish_debug_image(annotated_frame, capture_stamp)
+            return
+
+        measured_map_to_base = self.fuse_candidate_map_to_base(candidates)
+        if predicted_map_to_base is not None:
+            fused_map_to_base = self.smooth_map_to_base(
+                predicted_map_to_base,
+                measured_map_to_base,
             )
         else:
-            odom_translation = translation_from_matrix(odom_to_base)
-            odom_quaternion = quaternion_from_matrix(odom_to_base)
-            _, _, odom_yaw = euler_from_quaternion(odom_quaternion)
+            fused_map_to_base = measured_map_to_base
 
-            planar_odom_to_base = build_planar_transform(
-                odom_translation[0],
-                odom_translation[1],
-                odom_yaw,
+        if predicted_map_to_base is not None:
+            update_translation, update_yaw = self.pose_delta(
+                fused_map_to_base,
+                predicted_map_to_base,
             )
+            if (
+                update_translation < self.min_update_translation
+                and abs(update_yaw) < self.min_update_yaw
+            ):
+                self.publish_debug_image(annotated_frame, capture_stamp)
+                return
 
-            # Important:
-            # map -> odom = map -> base_link @ inverse(odom -> base_link)
-            # This replaces the helper so there is no ambiguity.
-            map_to_odom = concatenate_matrices(
-                planar_map_to_base,
-                inverse_matrix(planar_odom_to_base),
+        if self.publish_map_to_base:
+            localization_matrix = fused_map_to_base
+        else:
+            localization_matrix = compute_map_to_odom_from_map_to_base(
+                fused_map_to_base,
+                planar_odom_to_base,
             )
-
-            map_odom_translation = translation_from_matrix(map_to_odom)
-            map_odom_quaternion = quaternion_from_matrix(map_to_odom)
-            _, _, map_odom_yaw = euler_from_quaternion(map_odom_quaternion)
-
-            self.get_logger().info(
-                f"Localization update from marker {marker_id}: "
-                f"map->base x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg | "
-                f"odom->base x={odom_translation[0]:.3f}, "
-                f"y={odom_translation[1]:.3f}, "
-                f"yaw={math.degrees(odom_yaw):.1f} deg | "
-                f"map->odom x={map_odom_translation[0]:.3f}, "
-                f"y={map_odom_translation[1]:.3f}, "
-                f"yaw={math.degrees(map_odom_yaw):.1f} deg | "
-                f"latency={(time.time_ns() - capture_timestamp_ns) / 1e6:.0f} ms"
-            )
-
-            localization_matrix = map_to_odom
 
         self.last_localization_matrix = localization_matrix
+        self.has_localization_lock = True
         self.tf_broadcaster.sendTransform(
             build_transform(
                 self.map_frame,
                 self.localization_child_frame,
                 localization_matrix,
-                capture_stamp.to_msg(),
+                self.current_transform_stamp(),
             )
         )
 
@@ -494,40 +652,58 @@ class LocalizationNode(Node):
             self.vision_base_pose_pub.publish(
                 self.build_pose_stamped(
                     self.map_frame,
-                    planar_map_to_base,
+                    measured_map_to_base,
+                    capture_stamp.to_msg(),
+                )
+            )
+        if self.vision_camera_pose_pub is not None:
+            self.vision_camera_pose_pub.publish(
+                self.build_pose_stamped(
+                    self.map_frame,
+                    measured_map_to_base @ self.t_base_camera,
                     capture_stamp.to_msg(),
                 )
             )
 
+        update_time = self.get_clock().now()
+        if (update_time - self.last_update_log_time).nanoseconds > int(1e9):
+            marker_ids = ",".join(str(candidate["marker_id"]) for candidate in candidates)
+            measured_delta = (
+                self.pose_delta(measured_map_to_base, predicted_map_to_base)
+                if predicted_map_to_base is not None
+                else (0.0, 0.0)
+            )
+            self.get_logger().info(
+                f"Localization update from markers [{marker_ids}]: "
+                f"map->base x={fused_map_to_base[0, 3]:.3f}, "
+                f"y={fused_map_to_base[1, 3]:.3f}, "
+                f"yaw={math.degrees(yaw_from_matrix(fused_map_to_base)):.1f} deg | "
+                f"raw_delta={measured_delta[0]:.3f} m, "
+                f"{math.degrees(measured_delta[1]):.1f} deg | "
+                f"latency={capture_age_sec * 1000.0:.0f} ms | "
+                f"stamp={timestamp_source}"
+            )
+            self.last_update_log_time = update_time
+
         cv.putText(
             annotated_frame,
-            f"marker {marker_id} map->base "
-            f"x={translation[0]:.3f}, y={translation[1]:.3f}, "
-            f"yaw={math.degrees(yaw):.1f} deg",
+            f"accepted {len(candidates)}/{len(detections)} markers "
+            f"age={capture_age_sec * 1000.0:.0f} ms",
             (10, 30),
             cv.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            0.6,
             (0, 255, 0),
             2,
             cv.LINE_AA,
         )
-
         cv.putText(
             annotated_frame,
-            (
-                f"map->{self.base_frame} x={translation[0]:.3f}, "
-                f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg"
-                if self.publish_map_to_base
-                else (
-                    f"map->odom x={map_odom_translation[0]:.3f}, "
-                    f"y={map_odom_translation[1]:.3f}, "
-                    f"yaw={math.degrees(map_odom_yaw):.1f} deg"
-                )
-            ),
+            f"map->base x={fused_map_to_base[0, 3]:.3f}, "
+            f"y={fused_map_to_base[1, 3]:.3f}, "
+            f"yaw={math.degrees(yaw_from_matrix(fused_map_to_base)):.1f} deg",
             (10, 60),
             cv.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            0.6,
             (0, 255, 255),
             2,
             cv.LINE_AA,
@@ -541,7 +717,7 @@ class LocalizationNode(Node):
         source_frame,
         stamp,
         timeout_sec=0.5,
-        allow_latest_fallback=True,
+        allow_latest_fallback=False,
     ):
         try:
             transform = self.tf_buffer.lookup_transform(

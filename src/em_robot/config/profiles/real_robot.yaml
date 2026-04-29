@@ -41,8 +41,15 @@ localization:
   enabled: true
   camera_backend: picamera2
   source: 0
-  camera_rate_hz: 10.0
+  camera_rate_hz: 1.0
   processing_scale: 0.5
+  transform_tolerance_sec: 0.2
+  odom_lookup_timeout_sec: 0.3
+  max_capture_age_sec: 1.0
+  max_position_jump: 0.45
+  max_yaw_jump_deg: 35.0
+  position_smoothing_alpha: 0.35
+  yaw_smoothing_alpha: 0.35
   debug_image_rate_hz: 0.0
   map_odom_publish_rate_hz: 20.0
   diagnostics_rate_hz: 1.0
