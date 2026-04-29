@@ -276,10 +276,15 @@ class LocalizationNode(Node):
             )
             if captured_frame is None:
                 frame = self.camera.capture()
+                capture_timestamp_ns = time.time_ns()
                 capture_stamp = self.get_clock().now()
             else:
                 frame = captured_frame.frame
-                capture_stamp = Time(nanoseconds=int(captured_frame.timestamp_ns))
+                capture_timestamp_ns = int(captured_frame.timestamp_ns)
+                capture_stamp = Time(
+                    nanoseconds=capture_timestamp_ns,
+                    clock_type=self.get_clock().clock_type,
+                )
         except Exception as exc:
             self.get_logger().warn(f"Camera capture failed: {exc}")
             return
@@ -433,7 +438,7 @@ class LocalizationNode(Node):
                 f"map->{self.base_frame} x={translation[0]:.3f}, "
                 f"y={translation[1]:.3f}, "
                 f"yaw={math.degrees(yaw):.1f} deg | "
-                f"latency={(self.get_clock().now() - capture_stamp).nanoseconds / 1e6:.0f} ms"
+                f"latency={(time.time_ns() - capture_timestamp_ns) / 1e6:.0f} ms"
             )
         else:
             odom_translation = translation_from_matrix(odom_to_base)
@@ -469,7 +474,7 @@ class LocalizationNode(Node):
                 f"map->odom x={map_odom_translation[0]:.3f}, "
                 f"y={map_odom_translation[1]:.3f}, "
                 f"yaw={math.degrees(map_odom_yaw):.1f} deg | "
-                f"latency={(self.get_clock().now() - capture_stamp).nanoseconds / 1e6:.0f} ms"
+                f"latency={(time.time_ns() - capture_timestamp_ns) / 1e6:.0f} ms"
             )
 
             localization_matrix = map_to_odom
