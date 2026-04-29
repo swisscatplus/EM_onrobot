@@ -5,6 +5,16 @@ import time
 import cv2 as cv
 
 
+def normalize_to_bgr8(frame):
+    if frame is None:
+        return frame
+    if len(frame.shape) == 2:
+        return cv.cvtColor(frame, cv.COLOR_GRAY2BGR)
+    if len(frame.shape) == 3 and frame.shape[2] == 4:
+        return cv.cvtColor(frame, cv.COLOR_BGRA2BGR)
+    return frame
+
+
 class PicameraSource:
     def __init__(self, image_size, lens_position):
         from libcamera import controls
@@ -21,7 +31,7 @@ class PicameraSource:
         )
 
     def capture(self):
-        return self._camera.capture_array()
+        return normalize_to_bgr8(self._camera.capture_array())
 
     def close(self):
         self._camera.stop()

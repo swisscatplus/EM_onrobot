@@ -15,7 +15,7 @@ from em_robot.aruco_utils import (
     detect_aruco_markers,
     estimate_marker_pose,
 )
-from em_robot.camera_sources import create_camera_source
+from em_robot.camera_sources import create_camera_source, normalize_to_bgr8
 from em_robot.transform_utils import (
     build_planar_transform,
     build_transform,
@@ -527,11 +527,11 @@ class LocalizationNode(Node):
         if self.debug_image_pub is None:
             return
 
-        publish_frame = frame
+        publish_frame = normalize_to_bgr8(frame)
 
         if 0.0 < self.debug_image_scale < 1.0:
             publish_frame = cv.resize(
-                frame,
+                publish_frame,
                 None,
                 fx=self.debug_image_scale,
                 fy=self.debug_image_scale,

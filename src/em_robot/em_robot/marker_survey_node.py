@@ -32,7 +32,7 @@ from em_robot.aruco_utils import (
     detect_aruco_markers,
     estimate_marker_pose,
 )
-from em_robot.camera_sources import create_camera_source
+from em_robot.camera_sources import create_camera_source, normalize_to_bgr8
 from em_robot.marker_map_io import (
     load_raw_marker_map_file,
     merge_marker_entries,
@@ -228,15 +228,16 @@ class MarkerSurveyNode(Node):
         self.last_detection_summary = text
 
     def _publish_debug_image(self, frame, stamp):
+        publish_frame = normalize_to_bgr8(frame)
         msg = Image()
         msg.header.stamp = stamp.to_msg()
         msg.header.frame_id = self.camera_frame
-        msg.height = int(frame.shape[0])
-        msg.width = int(frame.shape[1])
+        msg.height = int(publish_frame.shape[0])
+        msg.width = int(publish_frame.shape[1])
         msg.encoding = "bgr8"
         msg.is_bigendian = 0
-        msg.step = int(frame.shape[1] * frame.shape[2])
-        msg.data = frame.tobytes()
+        msg.step = int(publish_frame.shape[1] * publish_frame.shape[2])
+        msg.data = publish_frame.tobytes()
         self.debug_image_pub.publish(msg)
 
     def _publish_measured_pose(self, transform_matrix, stamp):

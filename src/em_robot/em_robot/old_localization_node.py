@@ -16,7 +16,7 @@ from em_robot.aruco_utils import (
     estimate_marker_pose,
 )
 from em_robot_srv.srv import SetInitialPose
-from em_robot.camera_sources import create_camera_source
+from em_robot.camera_sources import create_camera_source, normalize_to_bgr8
 from em_robot.diagnostic_utils import build_diagnostic_array, build_diagnostic_status
 from em_robot.transform_utils import (
     blend_angles,
@@ -645,10 +645,10 @@ class LocalizationNode(Node):
                 cv.LINE_AA,
             )
 
-        publish_frame = frame
+        publish_frame = normalize_to_bgr8(frame)
         if 0.0 < self.debug_image_scale < 1.0:
             publish_frame = cv.resize(
-                frame,
+                publish_frame,
                 None,
                 fx=self.debug_image_scale,
                 fy=self.debug_image_scale,
