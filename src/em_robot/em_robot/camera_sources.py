@@ -29,7 +29,7 @@ class PicameraSource:
 
         self._camera = Picamera2()
         preview_config = self._camera.create_preview_configuration(
-            main={"format": "XRGB8888", "size": image_size},
+            main={"format": "BGR888", "size": image_size},
             buffer_count=1,
             queue=False,
         )

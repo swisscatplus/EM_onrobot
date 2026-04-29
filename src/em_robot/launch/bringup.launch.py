@@ -210,6 +210,9 @@ def _build_nodes(context):
                         "publish_map_to_base": bool(
                             localization_cfg.get("publish_map_to_base", False)
                         ),
+                        "processing_scale": float(
+                            localization_cfg.get("processing_scale", 1.0)
+                        ),
                         "debug_image_topic": str(
                             localization_cfg.get(
                                 "debug_image_topic", "/localization/debug_image"

@@ -61,6 +61,7 @@ class LocalizationNode(Node):
         self.declare_parameter("process_rate_hz", 5.0)
         self.declare_parameter("map_odom_publish_rate_hz", 20.0)
         self.declare_parameter("publish_map_to_base", False)
+        self.declare_parameter("processing_scale", 1.0)
 
         config_path = self.get_parameter("config_file").value or os.path.join(
             get_package_share_directory("em_robot"),
@@ -84,6 +85,7 @@ class LocalizationNode(Node):
             self.get_parameter("map_odom_publish_rate_hz").value
         )
         self.publish_map_to_base = bool(self.get_parameter("publish_map_to_base").value)
+        self.processing_scale = float(self.get_parameter("processing_scale").value)
 
         self.get_logger().info(f"Loading configuration: {config_path}")
         with open(config_path, "r", encoding="utf-8") as config_file:
@@ -98,6 +100,14 @@ class LocalizationNode(Node):
 
         self.marker_object_points = build_marker_object_points(self.marker_size)
         self.aruco_detector = create_aruco_detector()
+        self.processing_camera_matrix = self.camera_matrix.copy()
+        if self.processing_scale <= 0.0 or self.processing_scale > 1.0:
+            raise ValueError("processing_scale must be in the range (0.0, 1.0].")
+        if self.processing_scale != 1.0:
+            self.processing_camera_matrix[0, 0] *= self.processing_scale
+            self.processing_camera_matrix[1, 1] *= self.processing_scale
+            self.processing_camera_matrix[0, 2] *= self.processing_scale
+            self.processing_camera_matrix[1, 2] *= self.processing_scale
 
         camera_offset = config.get("camera_to_base", {})
 
@@ -131,6 +141,10 @@ class LocalizationNode(Node):
         self.get_logger().info(
             f"Camera backend '{self.camera_backend}' initialized with source '{self.camera_source}'"
         )
+        if self.processing_scale != 1.0:
+            self.get_logger().info(
+                f"Localization processing scale set to {self.processing_scale:.2f}"
+            )
 
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
@@ -270,9 +284,19 @@ class LocalizationNode(Node):
             self.get_logger().warn(f"Camera capture failed: {exc}")
             return
 
-        annotated_frame = frame.copy()
+        processing_frame = frame
+        if self.processing_scale != 1.0:
+            processing_frame = cv.resize(
+                frame,
+                None,
+                fx=self.processing_scale,
+                fy=self.processing_scale,
+                interpolation=cv.INTER_AREA,
+            )
 
-        detections = detect_aruco_markers(frame, detector=self.aruco_detector)
+        annotated_frame = processing_frame.copy()
+
+        detections = detect_aruco_markers(processing_frame, detector=self.aruco_detector)
 
         if not detections:
             if self.debug_image_pub:
@@ -317,7 +341,7 @@ class LocalizationNode(Node):
         camera_to_marker, reprojection_error = estimate_marker_pose(
             corners,
             self.marker_object_points,
-            self.camera_matrix,
+            self.processing_camera_matrix,
             self.dist_coeffs,
             self.max_reprojection_error,
             reference_transform=self.last_camera_to_marker_by_id.get(marker_id),
@@ -408,7 +432,8 @@ class LocalizationNode(Node):
                 f"Camera-only localization update from marker {marker_id}: "
                 f"map->{self.base_frame} x={translation[0]:.3f}, "
                 f"y={translation[1]:.3f}, "
-                f"yaw={math.degrees(yaw):.1f} deg"
+                f"yaw={math.degrees(yaw):.1f} deg | "
+                f"latency={(self.get_clock().now() - capture_stamp).nanoseconds / 1e6:.0f} ms"
             )
         else:
             odom_translation = translation_from_matrix(odom_to_base)
@@ -443,7 +468,8 @@ class LocalizationNode(Node):
                 f"yaw={math.degrees(odom_yaw):.1f} deg | "
                 f"map->odom x={map_odom_translation[0]:.3f}, "
                 f"y={map_odom_translation[1]:.3f}, "
-                f"yaw={math.degrees(map_odom_yaw):.1f} deg"
+                f"yaw={math.degrees(map_odom_yaw):.1f} deg | "
+                f"latency={(self.get_clock().now() - capture_stamp).nanoseconds / 1e6:.0f} ms"
             )
 
             localization_matrix = map_to_odom
@@ -463,7 +489,7 @@ class LocalizationNode(Node):
                 self.build_pose_stamped(
                     self.map_frame,
                     planar_map_to_base,
-                    self.get_clock().now().to_msg(),
+                    capture_stamp.to_msg(),
                 )
             )
 
