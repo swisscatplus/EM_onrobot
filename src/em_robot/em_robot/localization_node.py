@@ -52,6 +52,7 @@ class LocalizationNode(Node):
         self.declare_parameter("camera_loop", False)
         self.declare_parameter("debug_image_topic", "/localization/debug_image")
         self.declare_parameter("debug_image_scale", 1.0)
+        self.declare_parameter("debug_image_rate_hz", 0.0)
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
@@ -72,6 +73,7 @@ class LocalizationNode(Node):
         self.camera_loop = bool(self.get_parameter("camera_loop").value)
         self.debug_image_topic = str(self.get_parameter("debug_image_topic").value)
         self.debug_image_scale = float(self.get_parameter("debug_image_scale").value)
+        self.debug_image_rate_hz = float(self.get_parameter("debug_image_rate_hz").value)
         self.map_frame = str(self.get_parameter("map_frame").value)
         self.odom_frame = str(self.get_parameter("odom_frame").value)
         self.base_frame = str(self.get_parameter("base_frame").value)
@@ -141,6 +143,7 @@ class LocalizationNode(Node):
         self.odom_frame_available = False
         self.last_localization_transform = None
         self.last_camera_to_marker_by_id = {}
+        self.last_debug_image_publish_time = None
 
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
@@ -341,7 +344,7 @@ class LocalizationNode(Node):
                 self.map_frame,
                 marker_frame,
                 Time(),
-                timeout_sec=1.0,
+                timeout_sec=0.0,
                 allow_latest_fallback=False,
             )
         except Exception as exc:
@@ -526,6 +529,12 @@ class LocalizationNode(Node):
     def publish_debug_image(self, frame, stamp):
         if self.debug_image_pub is None:
             return
+        if self.debug_image_rate_hz > 0.0:
+            if self.last_debug_image_publish_time is not None:
+                elapsed = (stamp - self.last_debug_image_publish_time).nanoseconds / 1e9
+                if elapsed < (1.0 / self.debug_image_rate_hz):
+                    return
+            self.last_debug_image_publish_time = stamp
 
         publish_frame = normalize_to_bgr8(frame)
 

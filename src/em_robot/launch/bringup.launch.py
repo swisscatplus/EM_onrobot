@@ -199,7 +199,10 @@ def _build_nodes(context):
                             localization_cfg.get("camera_frame", "camera_frame")
                         ),
                         "process_rate_hz": float(
-                            localization_cfg.get("process_rate_hz", 5.0)
+                            localization_cfg.get(
+                                "camera_rate_hz",
+                                localization_cfg.get("process_rate_hz", 5.0),
+                            )
                         ),
                         "map_odom_publish_rate_hz": float(
                             localization_cfg.get("map_odom_publish_rate_hz", 20.0)
@@ -214,6 +217,9 @@ def _build_nodes(context):
                         ),
                         "debug_image_scale": float(
                             localization_cfg.get("debug_image_scale", 1.0)
+                        ),
+                        "debug_image_rate_hz": float(
+                            localization_cfg.get("debug_image_rate_hz", 0.0)
                         ),
                         "vision_base_pose_topic": str(
                             localization_cfg.get(
