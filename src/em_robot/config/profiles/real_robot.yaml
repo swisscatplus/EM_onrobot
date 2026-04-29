@@ -41,10 +41,10 @@ localization:
   enabled: true
   camera_backend: picamera2
   source: 0
-  diagnostics_rate_hz: 1.0
+  diagnostics_rate_hz: 10.0
   debug_image_topic: /localization/debug_image
   debug_image_scale: 0.5
-
+  
 marker_map:
   enabled: true
   config: marker_map.yaml
