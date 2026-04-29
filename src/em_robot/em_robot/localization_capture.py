@@ -103,6 +103,22 @@ def ensure_ros2_cli_available() -> None:
         raise RuntimeError("Could not find 'ros2' in PATH.")
 
 
+def ensure_ros2_bag_available() -> None:
+    result = subprocess.run(
+        ["ros2", "bag", "-h"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(
+            "This ROS 2 installation does not provide 'ros2 bag'. "
+            "Install rosbag2 for your distro, then try again. "
+            f"Underlying error: {stderr or 'ros2 bag unavailable'}"
+        )
+
+
 def snapshot_command(command: list[str], output_file: Path) -> None:
     try:
         result = subprocess.run(
@@ -136,6 +152,7 @@ def write_metadata(config: CaptureConfig, bag_dir: Path, started_at: float, ende
 
 def run_capture(config: CaptureConfig) -> int:
     ensure_ros2_cli_available()
+    ensure_ros2_bag_available()
 
     if config.duration_s <= 0.0:
         raise ValueError("Duration must be greater than zero.")

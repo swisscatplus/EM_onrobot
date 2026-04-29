@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from dataclasses import dataclass
 import threading
 import time
 
@@ -15,6 +16,12 @@ def normalize_to_bgr8(frame):
     return frame
 
 
+@dataclass(frozen=True)
+class CapturedFrame:
+    frame: object
+    timestamp_ns: int
+
+
 class PicameraSource:
     def __init__(self, image_size, lens_position):
         from libcamera import controls
@@ -22,7 +29,9 @@ class PicameraSource:
 
         self._camera = Picamera2()
         preview_config = self._camera.create_preview_configuration(
-            main={"format": "XRGB8888", "size": image_size}
+            main={"format": "XRGB8888", "size": image_size},
+            buffer_count=1,
+            queue=False,
         )
         self._camera.configure(preview_config)
         self._camera.start()
@@ -31,7 +40,11 @@ class PicameraSource:
         )
 
     def capture(self):
-        return normalize_to_bgr8(self._camera.capture_array())
+        return self.capture_with_timestamp().frame
+
+    def capture_with_timestamp(self):
+        frame = normalize_to_bgr8(self._camera.capture_array())
+        return CapturedFrame(frame=frame, timestamp_ns=time.time_ns())
 
     def close(self):
         self._camera.stop()
@@ -47,6 +60,7 @@ class OpenCVCameraSource:
             isinstance(source_value, int) or str(source).startswith("/dev/video")
         )
         self._latest_frame = None
+        self._latest_frame_timestamp_ns = None
         self._latest_error = None
         self._frame_lock = threading.Lock()
         self._stop_reader = threading.Event()
@@ -81,15 +95,22 @@ class OpenCVCameraSource:
 
             with self._frame_lock:
                 self._latest_frame = frame
+                self._latest_frame_timestamp_ns = time.time_ns()
                 self._latest_error = None
 
     def capture(self):
+        return self.capture_with_timestamp().frame
+
+    def capture_with_timestamp(self):
         if self._is_live_source:
             deadline = time.monotonic() + 2.0
             while not self._stop_reader.is_set():
                 with self._frame_lock:
                     if self._latest_frame is not None:
-                        return self._latest_frame.copy()
+                        return CapturedFrame(
+                            frame=self._latest_frame.copy(),
+                            timestamp_ns=int(self._latest_frame_timestamp_ns or time.time_ns()),
+                        )
                     latest_error = self._latest_error
 
                 if time.monotonic() >= deadline:
@@ -104,7 +125,7 @@ class OpenCVCameraSource:
             ok, frame = self._capture.read()
         if not ok:
             raise RuntimeError("Failed to read frame from OpenCV camera source")
-        return frame
+        return CapturedFrame(frame=frame, timestamp_ns=time.time_ns())
 
     def close(self):
         self._stop_reader.set()

@@ -141,7 +141,10 @@ class LocalizationNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         self.odom_frame_available = False
-        self.last_localization_transform = None
+        self.last_localization_matrix = None
+        self.localization_child_frame = (
+            self.base_frame if self.publish_map_to_base else self.odom_frame
+        )
         self.last_camera_to_marker_by_id = {}
         self.last_debug_image_publish_time = None
 
@@ -188,27 +191,33 @@ class LocalizationNode(Node):
         )
 
     def publish_initial_localization_transform(self):
-        child_frame = self.base_frame if self.publish_map_to_base else self.odom_frame
-        initial_transform = build_transform(
-            self.map_frame,
-            child_frame,
-            build_planar_transform(0.0, 0.0, 0.0),
-            self.get_clock().now().to_msg(),
+        initial_matrix = build_planar_transform(0.0, 0.0, 0.0)
+        self.last_localization_matrix = initial_matrix
+        self.tf_broadcaster.sendTransform(
+            build_transform(
+                self.map_frame,
+                self.localization_child_frame,
+                initial_matrix,
+                self.get_clock().now().to_msg(),
+            )
         )
 
-        self.last_localization_transform = initial_transform
-        self.tf_broadcaster.sendTransform(initial_transform)
-
         self.get_logger().info(
-            f"Published initial transform: {self.map_frame} -> {child_frame}"
+            f"Published initial transform: {self.map_frame} -> {self.localization_child_frame}"
         )
 
     def broadcast_last_localization_transform(self):
-        if self.last_localization_transform is None:
+        if self.last_localization_matrix is None:
             return
 
-        self.last_localization_transform.header.stamp = self.get_clock().now().to_msg()
-        self.tf_broadcaster.sendTransform(self.last_localization_transform)
+        self.tf_broadcaster.sendTransform(
+            build_transform(
+                self.map_frame,
+                self.localization_child_frame,
+                self.last_localization_matrix,
+                self.get_clock().now().to_msg(),
+            )
+        )
 
     def build_pose_stamped(self, frame_id, transform_matrix, stamp):
         from tf_transformations import translation_from_matrix
@@ -232,8 +241,6 @@ class LocalizationNode(Node):
     def process_frame(self):
         from tf_transformations import euler_from_quaternion, translation_from_matrix
 
-        capture_stamp = self.get_clock().now()
-
         if not self.publish_map_to_base and not self.odom_frame_available:
             try:
                 self.tf_buffer.lookup_transform(
@@ -248,7 +255,17 @@ class LocalizationNode(Node):
                 return
 
         try:
-            frame = self.camera.capture()
+            captured_frame = (
+                self.camera.capture_with_timestamp()
+                if hasattr(self.camera, "capture_with_timestamp")
+                else None
+            )
+            if captured_frame is None:
+                frame = self.camera.capture()
+                capture_stamp = self.get_clock().now()
+            else:
+                frame = captured_frame.frame
+                capture_stamp = Time(nanoseconds=int(captured_frame.timestamp_ns))
         except Exception as exc:
             self.get_logger().warn(f"Camera capture failed: {exc}")
             return
@@ -280,7 +297,7 @@ class LocalizationNode(Node):
                 odom_to_base = self.lookup_matrix(
                     self.odom_frame,
                     self.base_frame,
-                    Time(),
+                    capture_stamp,
                 )
             except Exception as exc:
                 self.get_logger().warn(
@@ -343,9 +360,9 @@ class LocalizationNode(Node):
             map_to_marker = self.lookup_matrix(
                 self.map_frame,
                 marker_frame,
-                Time(),
+                capture_stamp,
                 timeout_sec=0.0,
-                allow_latest_fallback=False,
+                allow_latest_fallback=True,
             )
         except Exception as exc:
             self.get_logger().warn(
@@ -386,12 +403,7 @@ class LocalizationNode(Node):
         )
 
         if self.publish_map_to_base:
-            localization_transform = build_transform(
-                self.map_frame,
-                self.base_frame,
-                planar_map_to_base,
-                self.get_clock().now().to_msg(),
-            )
+            localization_matrix = planar_map_to_base
             self.get_logger().info(
                 f"Camera-only localization update from marker {marker_id}: "
                 f"map->{self.base_frame} x={translation[0]:.3f}, "
@@ -434,15 +446,17 @@ class LocalizationNode(Node):
                 f"yaw={math.degrees(map_odom_yaw):.1f} deg"
             )
 
-            localization_transform = build_transform(
-                self.map_frame,
-                self.odom_frame,
-                map_to_odom,
-                self.get_clock().now().to_msg(),
-            )
+            localization_matrix = map_to_odom
 
-        self.last_localization_transform = localization_transform
-        self.tf_broadcaster.sendTransform(localization_transform)
+        self.last_localization_matrix = localization_matrix
+        self.tf_broadcaster.sendTransform(
+            build_transform(
+                self.map_frame,
+                self.localization_child_frame,
+                localization_matrix,
+                capture_stamp.to_msg(),
+            )
+        )
 
         if self.vision_base_pose_pub is not None:
             self.vision_base_pose_pub.publish(
