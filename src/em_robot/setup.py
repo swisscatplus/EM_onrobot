@@ -38,6 +38,7 @@ setup(
             'base_controller = em_robot.base_controller_node:main',
             'marker_map_publisher = em_robot.marker_map_publisher:main',
             'localization = em_robot.localization_node:main',
+            'localization_capture = em_robot.localization_capture:main',
             'aruco_camera_test = em_robot.aruco_camera_test_node:main',
             'marker_survey = em_robot.marker_survey_node:main',
             'imu_mock = em_robot.imu_mock_node:main',
