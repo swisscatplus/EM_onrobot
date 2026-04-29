@@ -219,6 +219,9 @@ def _build_nodes(context):
                         "odom_lookup_timeout_sec": float(
                             localization_cfg.get("odom_lookup_timeout_sec", 0.3)
                         ),
+                        "odom_future_tolerance_sec": float(
+                            localization_cfg.get("odom_future_tolerance_sec", 0.12)
+                        ),
                         "max_capture_age_sec": float(
                             localization_cfg.get("max_capture_age_sec", 1.0)
                         ),

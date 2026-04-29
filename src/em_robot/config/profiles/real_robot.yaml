@@ -45,6 +45,7 @@ localization:
   processing_scale: 0.5
   transform_tolerance_sec: 0.2
   odom_lookup_timeout_sec: 0.3
+  odom_future_tolerance_sec: 0.12
   max_capture_age_sec: 1.0
   max_position_jump: 0.45
   max_yaw_jump_deg: 35.0

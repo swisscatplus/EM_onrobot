@@ -70,6 +70,7 @@ class LocalizationNode(Node):
         self.declare_parameter("processing_scale", 1.0)
         self.declare_parameter("transform_tolerance_sec", 0.2)
         self.declare_parameter("odom_lookup_timeout_sec", 0.3)
+        self.declare_parameter("odom_future_tolerance_sec", 0.12)
         self.declare_parameter("max_capture_age_sec", 1.0)
         self.declare_parameter("max_position_jump", 0.45)
         self.declare_parameter("max_yaw_jump_deg", 35.0)
@@ -109,6 +110,9 @@ class LocalizationNode(Node):
         )
         self.odom_lookup_timeout_sec = float(
             self.get_parameter("odom_lookup_timeout_sec").value
+        )
+        self.odom_future_tolerance_sec = float(
+            self.get_parameter("odom_future_tolerance_sec").value
         )
         self.max_capture_age_sec = float(self.get_parameter("max_capture_age_sec").value)
         self.max_position_jump = float(self.get_parameter("max_position_jump").value)
@@ -207,6 +211,7 @@ class LocalizationNode(Node):
         self.last_camera_to_marker_by_id = {}
         self.last_debug_image_publish_time = None
         self.last_update_log_time = self.get_clock().now()
+        self.last_odom_fallback_log_time = self.get_clock().now()
 
         self.debug_image_pub = (
             self.create_publisher(Image, self.debug_image_topic, 10)
@@ -472,7 +477,8 @@ class LocalizationNode(Node):
                     self.base_frame,
                     capture_stamp,
                     timeout_sec=self.odom_lookup_timeout_sec,
-                    allow_latest_fallback=False,
+                    allow_latest_fallback=True,
+                    max_fallback_delta_sec=self.odom_future_tolerance_sec,
                 )
             except Exception as exc:
                 self.get_logger().warn(
@@ -718,6 +724,7 @@ class LocalizationNode(Node):
         stamp,
         timeout_sec=0.5,
         allow_latest_fallback=False,
+        max_fallback_delta_sec=None,
     ):
         try:
             transform = self.tf_buffer.lookup_transform(
@@ -742,9 +749,27 @@ class LocalizationNode(Node):
                 timeout=Duration(seconds=timeout_sec),
             )
 
-            self.get_logger().debug(
-                f"Using latest {target_frame} -> {source_frame} transform"
-            )
+            if max_fallback_delta_sec is not None and stamp.nanoseconds != 0:
+                latest_stamp = latest_transform.header.stamp
+                latest_ns = latest_stamp.sec * 1_000_000_000 + latest_stamp.nanosec
+                fallback_delta_sec = (stamp.nanoseconds - latest_ns) / 1e9
+                if (
+                    fallback_delta_sec < 0.0
+                    or fallback_delta_sec > max_fallback_delta_sec
+                ):
+                    raise exc
+
+                now = self.get_clock().now()
+                if (now - self.last_odom_fallback_log_time).nanoseconds > int(2e9):
+                    self.get_logger().warn(
+                        f"Using latest {target_frame} -> {source_frame} transform "
+                        f"{fallback_delta_sec * 1000.0:.0f} ms before camera stamp."
+                    )
+                    self.last_odom_fallback_log_time = now
+            else:
+                self.get_logger().debug(
+                    f"Using latest {target_frame} -> {source_frame} transform"
+                )
 
             return transform_to_matrix(latest_transform)
 
