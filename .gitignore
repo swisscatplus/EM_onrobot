@@ -6,3 +6,19 @@ log/
 **/__pycache__/
 .pytest_cache/
 *.py[cod]
+
+# Generated robot/runtime artifacts
+captures/
+*.bag
+*.db3
+*.mcap
+metadata.yaml
+data/replays/*
+!data/replays/.gitkeep
+src/em_robot/CameraCalibration/calibration_images/
+src/em_robot/CameraCalibration/validation_outputs/
+
+# Large hardware assets live outside the software repo.
+[C]AD/
+Electrical?Schematics/
+hardware_assets/

@@ -1,3 +1,9 @@
+# Copyright 2026 SwissCAT+
+#
+# Use of this source code is governed by an MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT.
+
 from em_robot.marker_map_io import merge_marker_entries, save_marker_map_config
 from em_robot.marker_map_loader import load_marker_map_config
 

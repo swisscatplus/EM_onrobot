@@ -8,7 +8,7 @@ COMPOSE_UBUNTU_FILE="$REPO_ROOT/docker/compose.ubuntu.yaml"
 DOCKER_DIR="$REPO_ROOT/docker"
 CONFIG_DIR="$REPO_ROOT/config"
 
-PROFILE="${1:-work_ubuntu}"
+PROFILE="${1:-work_ubuntu_localization_test}"
 SURVEY_MODE="${2:-single-shot}"
 KNOWN_X="${3:-0.0}"
 KNOWN_Y="${4:-0.0}"
@@ -24,32 +24,11 @@ FASTRTPS_PROFILE_PATH="${FASTRTPS_PROFILE_PATH:-/root/.ros/fastdds.xml}"
 FORCE_LOCAL_BASE_BUILD="${FORCE_LOCAL_BASE_BUILD:-0}"
 
 case "$PROFILE" in
-  work_ubuntu)
-    SERVICE="em_robot_work_ubuntu"
-    COMPOSE_ARGS=(-f "$COMPOSE_FILE" -f "$COMPOSE_UBUNTU_FILE" --profile work_ubuntu)
-    CAMERA_BACKEND="picamera2"
-    CAMERA_SOURCE="0"
-    DEFAULT_CALIBRATION_FILE="/ros2_ws/src/em_robot/config/calibration.yaml"
-    ;;
-  work_ubuntu_aruco_test)
-    SERVICE="em_robot_work_ubuntu_aruco_test"
-    COMPOSE_ARGS=(-f "$COMPOSE_FILE" -f "$COMPOSE_UBUNTU_FILE" --profile work_ubuntu_aruco_test)
-    CAMERA_BACKEND="opencv"
-    CAMERA_SOURCE="${EM_ROBOT_CAMERA_DEVICE:-0}"
-    DEFAULT_CALIBRATION_FILE="/ros2_ws/src/em_robot/config/calibration_ubuntu_test.yaml"
-    ;;
   work_ubuntu_localization_test)
     SERVICE="em_robot_work_ubuntu_localization_test"
     COMPOSE_ARGS=(-f "$COMPOSE_FILE" -f "$COMPOSE_UBUNTU_FILE" --profile work_ubuntu_localization_test)
     CAMERA_BACKEND="opencv"
     CAMERA_SOURCE="${EM_ROBOT_CAMERA_DEVICE:-0}"
-    DEFAULT_CALIBRATION_FILE="/ros2_ws/src/em_robot/config/calibration_ubuntu_test.yaml"
-    ;;
-  home_windows)
-    SERVICE="em_robot_home_windows"
-    COMPOSE_ARGS=(-f "$COMPOSE_FILE" --profile home_windows)
-    CAMERA_BACKEND="opencv"
-    CAMERA_SOURCE="0"
     DEFAULT_CALIBRATION_FILE="/ros2_ws/src/em_robot/config/calibration_ubuntu_test.yaml"
     ;;
   real_robot)
@@ -60,7 +39,7 @@ case "$PROFILE" in
     ;;
   *)
     echo "Unsupported profile: $PROFILE"
-    echo "Use one of: real_robot, work_ubuntu, work_ubuntu_aruco_test, work_ubuntu_localization_test, home_windows"
+    echo "Use one of: real_robot, work_ubuntu_localization_test"
     exit 1
     ;;
 esac

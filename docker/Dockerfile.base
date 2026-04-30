@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ninja-build \
     pkg-config \
     cmake \
+    ros-${ROS_DISTRO}-dynamixel-sdk \
     ros-${ROS_DISTRO}-tf-transformations \
     ros-${ROS_DISTRO}-diagnostic-msgs \
     ros-${ROS_DISTRO}-robot-localization \
@@ -30,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 2. Upgrade pip and install Python dependencies
 ##############################
 RUN pip3 install --upgrade pip && \
-    pip3 install dynamixel_sdk meson
+    pip3 install meson
 
 ##############################
 # 3. Clone and build libcamera with Python support

@@ -1,3 +1,9 @@
+# Copyright 2026 SwissCAT+
+#
+# Use of this source code is governed by an MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT.
+
 from pathlib import Path
 
 from em_robot.profile_loader import load_profile, resolve_profile_path

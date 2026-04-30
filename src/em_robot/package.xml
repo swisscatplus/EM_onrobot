@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>em_robot</name>
-  <version>0.0.0</version>
+  <version>0.1.0</version>
   <description>On-robot localization and base control for EM Robot</description>
   <maintainer email="edy.mariano@epfl.com">mariano</maintainer>
   <license>MIT</license>
@@ -25,9 +25,11 @@
   <build_depend>robot_state_publisher</build_depend>
   <build_depend>robot_localization</build_depend>
   <depend>em_robot_srv</depend>
+  <depend>python3-numpy</depend>
+  <depend>python3-opencv</depend>
   <depend>python3-transforms3d</depend>
-  <depend>python3-libcamera</depend>
-  <depend>python3-picamera2</depend>
+  <depend>python3-yaml</depend>
+  <depend>dynamixel_sdk</depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>

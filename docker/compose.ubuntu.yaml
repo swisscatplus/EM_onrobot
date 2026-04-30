@@ -1,24 +1,4 @@
 services:
-  em_robot_work_ubuntu:
-    network_mode: host
-    environment:
-      DISPLAY: ${DISPLAY}
-      QT_X11_NO_MITSHM: "1"
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    devices:
-      - ${EM_ROBOT_CAMERA_DEVICE:-/dev/video0}:${EM_ROBOT_CAMERA_DEVICE:-/dev/video0}
-
-  em_robot_work_ubuntu_aruco_test:
-    network_mode: host
-    environment:
-      DISPLAY: ${DISPLAY}
-      QT_X11_NO_MITSHM: "1"
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-    devices:
-      - ${EM_ROBOT_CAMERA_DEVICE:-/dev/video0}:${EM_ROBOT_CAMERA_DEVICE:-/dev/video0}
-
   em_robot_work_ubuntu_localization_test:
     network_mode: host
     environment:

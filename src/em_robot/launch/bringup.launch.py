@@ -1,3 +1,9 @@
+# Copyright 2026 SwissCAT+
+#
+# Use of this source code is governed by an MIT-style
+# license that can be found in the LICENSE file or at
+# https://opensource.org/licenses/MIT.
+
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -37,40 +43,16 @@ def _resolve_package_config_path(package_name, config_subdir, value):
     return os.path.join(get_package_share_directory(package_name), config_subdir, value)
 
 
-def _find_repo_root(start_path):
-    current = os.path.abspath(start_path)
-    while current and current != os.path.dirname(current):
-        if os.path.isdir(os.path.join(current, "CAD")) and os.path.isdir(
-            os.path.join(current, "src")
-        ):
-            return current
-        current = os.path.dirname(current)
-    return None
-
-
 def _load_robot_description(profile):
     robot_model_cfg = profile.get("robot_model", {})
     if not robot_model_cfg.get("enabled", True):
         return None
 
     pkg_share = get_package_share_directory("em_robot")
-    repo_root = _find_repo_root(pkg_share)
-    if repo_root is None:
-        raise FileNotFoundError(
-            f"Could not locate the workspace root from package share path {pkg_share}"
-        )
-
-    default_urdf = os.path.join(
-        repo_root,
-        "CAD",
-        "EdyMobile_URDF_screencast_ROS",
-        "URDF_screencast_ROS",
-        "urdf",
-        "simple_box_robot.urdf",
-    )
+    default_urdf = os.path.join(pkg_share, "urdf", "simple_box_robot.urdf")
     urdf_path = str(robot_model_cfg.get("urdf", default_urdf))
     if not os.path.isabs(urdf_path):
-        urdf_path = os.path.join(repo_root, urdf_path)
+        urdf_path = os.path.join(pkg_share, "urdf", urdf_path)
 
     with open(urdf_path, "r", encoding="utf-8") as urdf_file:
         return urdf_file.read()
@@ -264,52 +246,6 @@ def _build_nodes(context):
                                 "vision_camera_pose_topic",
                                 "/localization/vision_camera_pose",
                             )
-                        ),
-                    }
-                ],
-                output="screen",
-            )
-        )
-
-    aruco_test_cfg = profile.get("aruco_test", {})
-    if aruco_test_cfg.get("enabled", False):
-        nodes.append(
-            Node(
-                package="em_robot",
-                executable="aruco_camera_test",
-                parameters=[
-                    {
-                        "config_file": _resolve_config_path(
-                            config_dir,
-                            aruco_test_cfg.get("config", "calibration_ubuntu_test.yaml"),
-                        ),
-                        "marker_map_file": _resolve_config_path(
-                            config_dir,
-                            aruco_test_cfg.get("marker_map_config", ""),
-                        ),
-                        "camera_backend": aruco_test_cfg.get("camera_backend", "opencv"),
-                        "camera_source": str(aruco_test_cfg.get("source", "0")),
-                        "camera_loop": bool(aruco_test_cfg.get("loop", False)),
-                        "diagnostics_rate_hz": float(
-                            aruco_test_cfg.get("diagnostics_rate_hz", 1.0)
-                        ),
-                        "camera_frame": str(
-                            aruco_test_cfg.get("camera_frame", "camera_frame")
-                        ),
-                        "map_camera_frame": str(
-                            aruco_test_cfg.get("map_camera_frame", "camera_test")
-                        ),
-                        "debug_image_topic": str(
-                            aruco_test_cfg.get("debug_image_topic", "/aruco_test/debug_image")
-                        ),
-                        "marker_pose_topic": str(
-                            aruco_test_cfg.get("marker_pose_topic", "/aruco_test/marker_poses")
-                        ),
-                        "camera_pose_topic": str(
-                            aruco_test_cfg.get("camera_pose_topic", "/aruco_test/camera_pose")
-                        ),
-                        "summary_topic": str(
-                            aruco_test_cfg.get("summary_topic", "/aruco_test/summary")
                         ),
                     }
                 ],

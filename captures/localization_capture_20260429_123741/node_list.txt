@@ -1,3 +1,0 @@
-/rviz
-/teleop_twist_keyboard
-/transform_listener_impl_5b85f7d907a0
