@@ -1,5 +1,6 @@
 venv/
 .idea/
+.codex
 build/
 install/
 log/
@@ -17,6 +18,9 @@ data/replays/*
 !data/replays/.gitkeep
 src/em_robot/CameraCalibration/calibration_images/
 src/em_robot/CameraCalibration/validation_outputs/
+calibration_images/
+calib_env/
+base_link/
 
 # Large hardware assets live outside the software repo.
 [C]AD/
