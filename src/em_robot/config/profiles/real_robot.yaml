@@ -9,7 +9,7 @@ movement:
   backend: real
   max_speed: 1000.0
   odom_rate: 30.0
-  cmd_vel_timeout: 2.0 # 0.25
+  cmd_vel_timeout: 1.0 # 0.25
   device_name: /dev/dynamixel
   baudrate: 57600
   right_motor_id: 2
