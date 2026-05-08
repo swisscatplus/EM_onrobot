@@ -11,6 +11,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import QoSProfile
 from sensor_msgs.msg import Imu
 
 from em_robot.differential_drive import (
@@ -37,6 +38,7 @@ except ImportError:  # pragma: no cover - depends on runtime image
 
 ADDR_TORQUE_ENABLE = 64
 ADDR_GOAL_VELOCITY = 104
+ADDR_PROFILE_ACCELERATION = 108
 ADDR_PRESENT_POSITION = 132
 TORQUE_ENABLE = 1
 
@@ -49,6 +51,7 @@ class BaseControllerNode(Node):
         self.declare_parameter("backend", "real")
         self.declare_parameter("max_speed", 1000.0)
         self.declare_parameter("odom_rate", 30.0)
+        self.declare_parameter("motor_command_rate", 50.0)
         self.declare_parameter("cmd_vel_timeout", 0.25)
         self.declare_parameter("device_name", "/dev/dynamixel")
         self.declare_parameter("baudrate", 57600)
@@ -59,6 +62,7 @@ class BaseControllerNode(Node):
         self.declare_parameter("encoder_resolution", 4096)
         self.declare_parameter("right_wheel_odom_scale", 1.0)
         self.declare_parameter("left_wheel_odom_scale", 1.0)
+        self.declare_parameter("motor_profile_acceleration", 0)
         self.declare_parameter("imu_topic", "/bno055/imu")
         self.declare_parameter("startup_motion_gate_enabled", False)
         self.declare_parameter("startup_motion_gate_confirmation_time", 0.2)
@@ -71,6 +75,7 @@ class BaseControllerNode(Node):
         self.backend = self.get_parameter("backend").value
         self.max_speed = float(self.get_parameter("max_speed").value)
         self.odom_rate = float(self.get_parameter("odom_rate").value)
+        self.motor_command_rate = float(self.get_parameter("motor_command_rate").value)
         self.cmd_vel_timeout = float(self.get_parameter("cmd_vel_timeout").value)
         self.device_name = self.get_parameter("device_name").value
         self.baudrate = int(self.get_parameter("baudrate").value)
@@ -84,6 +89,9 @@ class BaseControllerNode(Node):
         )
         self.left_wheel_odom_scale = float(
             self.get_parameter("left_wheel_odom_scale").value
+        )
+        self.motor_profile_acceleration = int(
+            self.get_parameter("motor_profile_acceleration").value
         )
         self.imu_topic = self.get_parameter("imu_topic").value
         self.startup_motion_gate_enabled = bool(
@@ -108,8 +116,11 @@ class BaseControllerNode(Node):
             self.get_parameter("startup_motion_gate_imu_timeout").value
         )
         self.max_pos_step = self.max_speed / self.odom_rate
+        self.motor_command_rate = max(self.motor_command_rate, 1.0)
 
-        self.subscription = self.create_subscription(Twist, "cmd_vel", self.cmd_vel_callback, 10)
+        self.subscription = self.create_subscription(
+            Twist, "cmd_vel", self.cmd_vel_callback, QoSProfile(depth=1)
+        )
         self.odom_pub = self.create_publisher(Odometry, "odomWheel", 10)
         self.odom_timer = self.create_timer(1.0 / self.odom_rate, self.odom_callback)
 
@@ -125,6 +136,8 @@ class BaseControllerNode(Node):
         self.encoder_glitch_count = 0
         self.port_handler = None
         self.packet_handler = None
+        self.motor_command_timer = None
+        self.last_motor_command = None
         self.imu_subscription = None
         self.last_imu_time = None
         self.last_imu_linear_accel_x = 0.0
@@ -143,6 +156,9 @@ class BaseControllerNode(Node):
 
         if self.backend == "real":
             self._setup_real_backend()
+            self.motor_command_timer = self.create_timer(
+                1.0 / self.motor_command_rate, self.motor_command_callback
+            )
         elif self.backend == "fake":
             self.get_logger().info("Using fake movement backend")
         else:
@@ -161,6 +177,18 @@ class BaseControllerNode(Node):
             raise RuntimeError(f"Failed to set Dynamixel baudrate: {self.baudrate}")
 
         for motor_id in [self.right_motor_id, self.left_motor_id]:
+            if self.motor_profile_acceleration >= 0:
+                result, error = self.packet_handler.write4ByteTxRx(
+                    self.port_handler,
+                    motor_id,
+                    ADDR_PROFILE_ACCELERATION,
+                    self.motor_profile_acceleration,
+                )
+                if result != COMM_SUCCESS or error != 0:
+                    raise RuntimeError(
+                        f"Profile acceleration setup failed on motor ID={motor_id}"
+                    )
+
             result, error = self.packet_handler.write1ByteTxRx(
                 self.port_handler, motor_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE
             )
@@ -168,6 +196,29 @@ class BaseControllerNode(Node):
                 raise RuntimeError(f"Torque enable failed on motor ID={motor_id}")
 
         self.get_logger().info(f"Using real movement backend on {self.device_name}")
+
+    def _write_motor_speed(self, motor_id, motor_speed):
+        result, error = self.packet_handler.write4ByteTxRx(
+            self.port_handler, motor_id, ADDR_GOAL_VELOCITY, motor_speed
+        )
+        if result != COMM_SUCCESS:
+            message = self.packet_handler.getTxRxResult(result)
+            self.get_logger().warn(
+                f"Failed to write goal velocity for motor ID={motor_id}: {message}"
+            )
+            return False
+        if error != 0:
+            message = self.packet_handler.getRxPacketError(error)
+            self.get_logger().warn(
+                f"Dynamixel reported a hardware error while writing motor ID={motor_id}: {message}"
+            )
+            return False
+        return True
+
+    def _write_motor_speeds(self, motor_speed_r, motor_speed_l):
+        right_ok = self._write_motor_speed(self.right_motor_id, motor_speed_r)
+        left_ok = self._write_motor_speed(self.left_motor_id, motor_speed_l)
+        return right_ok and left_ok
 
     def _read_present_position(self, motor_id):
         present_position, comm_result, error = self.packet_handler.read4ByteTxRx(
@@ -203,7 +254,8 @@ class BaseControllerNode(Node):
             self.get_logger().info("cmd_vel resumed; base controller watchdog cleared")
             self.cmd_vel_stale = False
 
-        if self.backend != "real":
+    def motor_command_callback(self):
+        if self.backend != "real" or self.last_cmd_time is None:
             return
 
         motor_speed_r, motor_speed_l = cmd_vel_to_motor_speeds(
@@ -214,12 +266,12 @@ class BaseControllerNode(Node):
             wheel_radius=self.wheel_radius,
         )
 
-        self.packet_handler.write4ByteTxRx(
-            self.port_handler, self.right_motor_id, ADDR_GOAL_VELOCITY, motor_speed_r
-        )
-        self.packet_handler.write4ByteTxRx(
-            self.port_handler, self.left_motor_id, ADDR_GOAL_VELOCITY, motor_speed_l
-        )
+        motor_command = (motor_speed_r, motor_speed_l)
+        if motor_command == self.last_motor_command:
+            return
+
+        if self._write_motor_speeds(motor_speed_r, motor_speed_l):
+            self.last_motor_command = motor_command
 
     def apply_cmd_vel_watchdog(self, now):
         if self.cmd_vel_timeout <= 0.0 or self.last_cmd_time is None:
@@ -421,8 +473,13 @@ class BaseControllerNode(Node):
         if self.backend != "real" or self.packet_handler is None or self.port_handler is None:
             return
 
-        self.packet_handler.write4ByteTxRx(self.port_handler, self.right_motor_id, ADDR_GOAL_VELOCITY, 0)
-        self.packet_handler.write4ByteTxRx(self.port_handler, self.left_motor_id, ADDR_GOAL_VELOCITY, 0)
+        self.packet_handler.write4ByteTxRx(
+            self.port_handler, self.right_motor_id, ADDR_GOAL_VELOCITY, 0
+        )
+        self.packet_handler.write4ByteTxRx(
+            self.port_handler, self.left_motor_id, ADDR_GOAL_VELOCITY, 0
+        )
+        self.last_motor_command = (0, 0)
 
 
 def main(args=None):
