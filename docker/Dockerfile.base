@@ -67,6 +67,11 @@ RUN ninja -C build install && ldconfig
 RUN pip3 install picamera2 opencv-python pyserial dynamixel-sdk smbus2
 RUN pip3 install 'numpy<1.24.0'
 
+# Picamera2 imports DRM preview support eagerly, even when the robot only uses
+# headless capture. Provide a small shim instead of building fragile kmsxx/pykms.
+COPY docker/pykms_stub.py /usr/local/lib/python3.10/dist-packages/pykms.py
+COPY docker/pykms_stub.py /usr/local/lib/python3.10/dist-packages/kms.py
+
 ##############################
 # 5. Python and library paths
 ##############################

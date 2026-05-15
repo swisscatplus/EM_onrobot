@@ -17,17 +17,12 @@ from launch.actions import (
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
+import yaml
 
 from em_robot.profile_loader import load_profile
 
 
 GLOBAL_FRAMES = {"map", "world"}
-TF_REMAPS = [
-    ("tf", "/tf"),
-    ("tf_static", "/tf_static"),
-    ("/tf", "/tf"),
-    ("/tf_static", "/tf_static"),
-]
 
 
 def _clean_namespace(value):
@@ -72,7 +67,6 @@ def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
         executable="static_transform_publisher",
         name=name,
         arguments=values + [parent_frame, child_frame],
-        remappings=TF_REMAPS,
         output="screen",
     )
 
@@ -91,6 +85,14 @@ def _resolve_package_config_path(package_name, config_subdir, value):
     if os.path.isabs(value):
         return value
     return os.path.join(get_package_share_directory(package_name), config_subdir, value)
+
+
+def _load_node_parameters(params_file, node_name):
+    if not params_file:
+        return {}
+    with open(params_file, "r", encoding="utf-8") as file:
+        data = yaml.safe_load(file) or {}
+    return dict(data.get(node_name, {}).get("ros__parameters", {}))
 
 
 def _load_robot_description(profile):
@@ -140,7 +142,6 @@ def _build_nodes(context):
                         "frame_prefix": f"{namespace}/" if namespace else "",
                     }
                 ],
-                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -192,14 +193,16 @@ def _build_nodes(context):
                 "config",
                 imu_cfg.get("params_file", "bno055_params_i2c.yaml"),
             )
+            bno055_params = _load_node_parameters(config_imu, "bno055")
+            bno055_params["frame_id"] = _robot_frame(
+                imu_cfg.get("static_tf_child", "bno055"),
+                namespace,
+            )
             nodes.append(
                 Node(
                     package="bno055",
                     executable="bno055",
-                    parameters=[
-                        config_imu,
-                        {"frame_id": _robot_frame(imu_cfg.get("static_tf_child", "bno055"), namespace)},
-                    ],
+                    parameters=[bno055_params],
                     output="screen",
                 )
             )
@@ -244,7 +247,6 @@ def _build_nodes(context):
                         ),
                     }
                 ],
-                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -354,7 +356,6 @@ def _build_nodes(context):
                         ),
                     }
                 ],
-                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -376,7 +377,6 @@ def _build_nodes(context):
                         "imu0": _robot_topic("/bno055/imu", namespace),
                     },
                 ],
-                remappings=TF_REMAPS,
                 output="screen",
             )
         )
