@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 2. Upgrade pip and install Python dependencies
 ##############################
 RUN pip3 install --upgrade pip && \
-    pip3 install meson
+    pip3 install meson toml tomli
 
 ##############################
 # 3. Clone and build libcamera with Python support
@@ -78,10 +78,12 @@ RUN ninja -C build && ninja -C build install && ldconfig
 ##############################
 RUN pip3 install picamera2 opencv-python pyserial dynamixel-sdk
 
-ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH:-}"
+ENV PYTHONPATH=""
+ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:/usr/local/lib/python3.10/dist-packages:/usr/local/lib/python3/dist-packages:${PYTHONPATH}"
 ENV PYTHONPATH="/usr/lib/python3/dist-packages:/usr/lib/python3.10/site-packages:${PYTHONPATH}"
 ENV PYTHONPATH="/usr/lib/aarch64-linux-gnu/python3.10/site-packages:${PYTHONPATH}"
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}
+ENV LD_LIBRARY_PATH=""
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH}
 
 RUN apt-get update && apt-get install -y --no-install-recommends python3-smbus i2c-tools && \
     rm -rf /var/lib/apt/lists/*

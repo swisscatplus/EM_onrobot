@@ -25,20 +25,42 @@ FASTRTPS_PROFILE_PATH="${FASTRTPS_PROFILE_PATH:-/root/.ros/fastdds.xml}"
 EM_ROBOT_PROFILE_VALUE="${EM_ROBOT_PROFILE_VALUE:-real_robot}"
 ROBOT_NAMESPACE_VALUE="${ROBOT_NAMESPACE_VALUE:-${ROBOT_NAMESPACE:-robot1}}"
 FORCE_LOCAL_BASE_BUILD="${FORCE_LOCAL_BASE_BUILD:-0}"
+ALLOW_LOCAL_BASE_BUILD="${ALLOW_LOCAL_BASE_BUILD:-0}"
+PREFER_LOCAL_BASE_IMAGE="${PREFER_LOCAL_BASE_IMAGE:-1}"
+
+build_local_base_image() {
+  echo "Building local base image: $LOCAL_BASE_IMAGE"
+  docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$LOCAL_BASE_IMAGE" "$WORKSPACE_DIR"
+}
 
 if [ "$FORCE_LOCAL_BASE_BUILD" = "1" ]; then
   echo "FORCE_LOCAL_BASE_BUILD=1, building local base image: $LOCAL_BASE_IMAGE"
-  docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$LOCAL_BASE_IMAGE" "$WORKSPACE_DIR"
+  build_local_base_image
+  RUN_IMAGE="$LOCAL_BASE_IMAGE"
+elif [ "$PREFER_LOCAL_BASE_IMAGE" = "1" ] && docker image inspect "$LOCAL_BASE_IMAGE" >/dev/null 2>&1; then
+  echo "Using existing local base image: $LOCAL_BASE_IMAGE"
   RUN_IMAGE="$LOCAL_BASE_IMAGE"
 else
   echo "Pulling base image..."
   if docker pull "$BASE_IMAGE"; then
     RUN_IMAGE="$BASE_IMAGE"
+  elif docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
+    echo "Registry pull failed, using cached base image: $BASE_IMAGE"
+    RUN_IMAGE="$BASE_IMAGE"
+  elif [ "$ALLOW_LOCAL_BASE_BUILD" = "1" ]; then
+    echo "Registry pull failed for $BASE_IMAGE."
+    echo "ALLOW_LOCAL_BASE_BUILD=1, falling back to a local base image build."
+    build_local_base_image
+    RUN_IMAGE="$LOCAL_BASE_IMAGE"
   else
     echo "Registry pull failed for $BASE_IMAGE."
-    echo "Falling back to a local base image build: $LOCAL_BASE_IMAGE"
-    docker build -f "$DOCKER_DIR/Dockerfile.base" -t "$LOCAL_BASE_IMAGE" "$WORKSPACE_DIR"
-    RUN_IMAGE="$LOCAL_BASE_IMAGE"
+    echo
+    echo "The base image is probably private or your GHCR login expired."
+    echo "Fix one of these, then run this script again:"
+    echo "  1. docker login ghcr.io"
+    echo "  2. Use an existing local image tagged as $LOCAL_BASE_IMAGE"
+    echo "  3. Rebuild explicitly with ALLOW_LOCAL_BASE_BUILD=1 ./scripts/deploy_dev.sh"
+    exit 1
   fi
 fi
 
