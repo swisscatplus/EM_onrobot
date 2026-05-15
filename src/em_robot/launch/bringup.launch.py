@@ -22,6 +22,12 @@ from em_robot.profile_loader import load_profile
 
 
 GLOBAL_FRAMES = {"map", "world"}
+TF_REMAPS = [
+    ("tf", "/tf"),
+    ("tf_static", "/tf_static"),
+    ("/tf", "/tf"),
+    ("/tf_static", "/tf_static"),
+]
 
 
 def _clean_namespace(value):
@@ -57,6 +63,7 @@ def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
         executable="static_transform_publisher",
         name=name,
         arguments=values + [parent_frame, child_frame],
+        remappings=TF_REMAPS,
         output="screen",
     )
 
@@ -124,6 +131,7 @@ def _build_nodes(context):
                         "frame_prefix": f"{namespace}/" if namespace else "",
                     }
                 ],
+                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -227,6 +235,7 @@ def _build_nodes(context):
                         ),
                     }
                 ],
+                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -336,6 +345,7 @@ def _build_nodes(context):
                         ),
                     }
                 ],
+                remappings=TF_REMAPS,
                 output="screen",
             )
         )
@@ -357,6 +367,7 @@ def _build_nodes(context):
                         "imu0": _robot_topic("/bno055/imu", namespace),
                     },
                 ],
+                remappings=TF_REMAPS,
                 output="screen",
             )
         )
