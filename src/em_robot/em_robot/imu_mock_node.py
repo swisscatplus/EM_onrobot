@@ -26,13 +26,17 @@ class ImuMockNode(Node):
         self.declare_parameter("yaw_rate", 0.0)
         self.declare_parameter("frame_id", "bno055")
         self.declare_parameter("follow_cmd_vel", False)
+        self.declare_parameter("imu_topic", "bno055/imu")
+        self.declare_parameter("cmd_vel_topic", "cmd_vel")
 
         self.rate_hz = float(self.get_parameter("rate_hz").value)
         self.current_yaw_rate = float(self.get_parameter("yaw_rate").value)
         self.frame_id = self.get_parameter("frame_id").value
         self.follow_cmd_vel = bool(self.get_parameter("follow_cmd_vel").value)
+        self.imu_topic = str(self.get_parameter("imu_topic").value)
+        self.cmd_vel_topic = str(self.get_parameter("cmd_vel_topic").value)
 
-        self.publisher = self.create_publisher(Imu, "/bno055/imu", 10)
+        self.publisher = self.create_publisher(Imu, self.imu_topic, 10)
         self.cmd_vel_subscription = None
         self.last_time = self.get_clock().now()
         self.current_yaw = 0.0
@@ -40,7 +44,7 @@ class ImuMockNode(Node):
         if self.follow_cmd_vel:
             self.cmd_vel_subscription = self.create_subscription(
                 Twist,
-                "/cmd_vel",
+                self.cmd_vel_topic,
                 self.cmd_vel_callback,
                 10,
             )

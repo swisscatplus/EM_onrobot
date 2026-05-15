@@ -22,6 +22,9 @@ calibration_images/
 calib_env/
 base_link/
 
+# Local per-robot identity. Copy config/robot.local.env.example on each robot.
+config/robot.local.env
+
 # Large hardware assets live outside the software repo.
 [C]AD/
 Electrical?Schematics/

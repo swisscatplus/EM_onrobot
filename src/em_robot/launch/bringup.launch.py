@@ -8,12 +8,46 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    GroupAction,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+)
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, PushRosNamespace
 
 from em_robot.profile_loader import load_profile
+
+
+GLOBAL_FRAMES = {"map", "world"}
+
+
+def _clean_namespace(value):
+    return str(value or "").strip().strip("/")
+
+
+def _robot_topic(topic, namespace):
+    topic = str(topic)
+    if not namespace:
+        return topic
+    return topic.lstrip("/")
+
+
+def _robot_frame(frame, namespace):
+    frame = str(frame).strip().strip("/")
+    if not namespace or not frame or frame in GLOBAL_FRAMES:
+        return frame
+    if frame == namespace or frame.startswith(f"{namespace}/"):
+        return frame
+    return f"{namespace}/{frame}"
+
+
+def _with_namespace(nodes, namespace):
+    if not namespace:
+        return nodes
+    return [GroupAction([PushRosNamespace(namespace), *nodes])]
 
 
 def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
@@ -62,6 +96,7 @@ def _build_nodes(context):
     profile_name = LaunchConfiguration("profile").perform(context)
     profile_path = LaunchConfiguration("profile_path").perform(context)
     profile_path = profile_path or None
+    namespace = _clean_namespace(LaunchConfiguration("namespace").perform(context))
 
     profile, resolved_profile_path = load_profile(
         profile_name=profile_name,
@@ -83,12 +118,29 @@ def _build_nodes(context):
             Node(
                 package="robot_state_publisher",
                 executable="robot_state_publisher",
-                parameters=[{"robot_description": robot_description}],
+                parameters=[
+                    {
+                        "robot_description": robot_description,
+                        "frame_prefix": f"{namespace}/" if namespace else "",
+                    }
+                ],
                 output="screen",
             )
         )
 
-    movement_cfg = profile.get("movement", {})
+    movement_cfg = dict(profile.get("movement", {}))
+    movement_cfg["imu_topic"] = _robot_topic(
+        movement_cfg.get("imu_topic", "/bno055/imu"),
+        namespace,
+    )
+    movement_cfg["odom_frame"] = _robot_frame(
+        movement_cfg.get("odom_frame", "odom"),
+        namespace,
+    )
+    movement_cfg["base_frame"] = _robot_frame(
+        movement_cfg.get("base_frame", "base_link"),
+        namespace,
+    )
     if movement_cfg.get("enabled", True):
         nodes.append(
             Node(
@@ -105,8 +157,14 @@ def _build_nodes(context):
         nodes.append(
             _static_tf_node(
                 name="imu_static_tf",
-                parent_frame=imu_cfg.get("static_tf_parent", "base_link"),
-                child_frame=imu_cfg.get("static_tf_child", "bno055"),
+                parent_frame=_robot_frame(
+                    imu_cfg.get("static_tf_parent", "base_link"),
+                    namespace,
+                ),
+                child_frame=_robot_frame(
+                    imu_cfg.get("static_tf_child", "bno055"),
+                    namespace,
+                ),
                 xyzrpy=imu_cfg.get("static_tf_xyzrpy", [0, 0, 0, 0, 0, 0]),
             )
         )
@@ -121,16 +179,32 @@ def _build_nodes(context):
                 Node(
                     package="bno055",
                     executable="bno055",
-                    parameters=[config_imu],
+                    parameters=[
+                        config_imu,
+                        {"frame_id": _robot_frame(imu_cfg.get("static_tf_child", "bno055"), namespace)},
+                    ],
                     output="screen",
                 )
             )
         elif backend == "fake":
+            fake_imu_cfg = dict(imu_cfg)
+            fake_imu_cfg["frame_id"] = _robot_frame(
+                fake_imu_cfg.get("frame_id", fake_imu_cfg.get("static_tf_child", "bno055")),
+                namespace,
+            )
+            fake_imu_cfg["imu_topic"] = _robot_topic(
+                fake_imu_cfg.get("imu_topic", "/bno055/imu"),
+                namespace,
+            )
+            fake_imu_cfg["cmd_vel_topic"] = _robot_topic(
+                fake_imu_cfg.get("cmd_vel_topic", "/cmd_vel"),
+                namespace,
+            )
             nodes.append(
                 Node(
                     package="em_robot",
                     executable="imu_mock",
-                    parameters=[imu_cfg],
+                    parameters=[fake_imu_cfg],
                     output="screen",
                 )
             )
@@ -174,11 +248,21 @@ def _build_nodes(context):
                         "diagnostics_rate_hz": float(
                             localization_cfg.get("diagnostics_rate_hz", 1.0)
                         ),
-                        "map_frame": str(localization_cfg.get("map_frame", "map")),
-                        "odom_frame": str(localization_cfg.get("odom_frame", "odom")),
-                        "base_frame": str(localization_cfg.get("base_frame", "base_link")),
-                        "camera_frame": str(
-                            localization_cfg.get("camera_frame", "camera_frame")
+                        "map_frame": _robot_frame(
+                            localization_cfg.get("map_frame", "map"),
+                            namespace,
+                        ),
+                        "odom_frame": _robot_frame(
+                            localization_cfg.get("odom_frame", "odom"),
+                            namespace,
+                        ),
+                        "base_frame": _robot_frame(
+                            localization_cfg.get("base_frame", "base_link"),
+                            namespace,
+                        ),
+                        "camera_frame": _robot_frame(
+                            localization_cfg.get("camera_frame", "camera_frame"),
+                            namespace,
                         ),
                         "process_rate_hz": float(
                             localization_cfg.get(
@@ -225,10 +309,11 @@ def _build_nodes(context):
                         "min_update_yaw_deg": float(
                             localization_cfg.get("min_update_yaw_deg", 0.5)
                         ),
-                        "debug_image_topic": str(
+                        "debug_image_topic": _robot_topic(
                             localization_cfg.get(
                                 "debug_image_topic", "/localization/debug_image"
-                            )
+                            ),
+                            namespace,
                         ),
                         "debug_image_scale": float(
                             localization_cfg.get("debug_image_scale", 1.0)
@@ -236,16 +321,18 @@ def _build_nodes(context):
                         "debug_image_rate_hz": float(
                             localization_cfg.get("debug_image_rate_hz", 0.0)
                         ),
-                        "vision_base_pose_topic": str(
+                        "vision_base_pose_topic": _robot_topic(
                             localization_cfg.get(
                                 "vision_base_pose_topic", "/localization/vision_base_pose"
-                            )
+                            ),
+                            namespace,
                         ),
-                        "vision_camera_pose_topic": str(
+                        "vision_camera_pose_topic": _robot_topic(
                             localization_cfg.get(
                                 "vision_camera_pose_topic",
                                 "/localization/vision_camera_pose",
-                            )
+                            ),
+                            namespace,
                         ),
                     }
                 ],
@@ -261,7 +348,14 @@ def _build_nodes(context):
                 executable="ekf_node",
                 name="ekf_filter_node",
                 parameters=[
-                    _resolve_config_path(config_dir, ekf_cfg.get("config", "ekf_real.yaml"))
+                    _resolve_config_path(config_dir, ekf_cfg.get("config", "ekf_real.yaml")),
+                    {
+                        "odom_frame": _robot_frame("odom", namespace),
+                        "base_link_frame": _robot_frame("base_link", namespace),
+                        "world_frame": _robot_frame("odom", namespace),
+                        "odom0": _robot_topic("odomWheel", namespace),
+                        "imu0": _robot_topic("/bno055/imu", namespace),
+                    },
                 ],
                 output="screen",
             )
@@ -291,6 +385,33 @@ def _build_nodes(context):
                         ),
                         "localization_expected": bool(localization_cfg.get("enabled", False)),
                         "filtered_odom_expected": bool(ekf_cfg.get("enabled", False)),
+                        "cmd_vel_topic": _robot_topic(
+                            diagnostics_cfg.get("cmd_vel_topic", "/cmd_vel"),
+                            namespace,
+                        ),
+                        "odom_topic": _robot_topic(
+                            diagnostics_cfg.get("odom_topic", "/odomWheel"),
+                            namespace,
+                        ),
+                        "imu_topic": _robot_topic(
+                            diagnostics_cfg.get("imu_topic", "/bno055/imu"),
+                            namespace,
+                        ),
+                        "filtered_odom_topic": _robot_topic(
+                            diagnostics_cfg.get(
+                                "filtered_odom_topic",
+                                "/odometry/filtered",
+                            ),
+                            namespace,
+                        ),
+                        "calib_status_topic": _robot_topic(
+                            diagnostics_cfg.get("calib_status_topic", "/bno055/calib_status"),
+                            namespace,
+                        ),
+                        "diagnostics_topic": _robot_topic(
+                            diagnostics_cfg.get("diagnostics_topic", "/diagnostics"),
+                            namespace,
+                        ),
                     }
                 ],
                 output="screen",
@@ -309,13 +430,22 @@ def _build_nodes(context):
                         "active_low": bool(led_cfg.get("active_low", False)),
                         "brightness": float(led_cfg.get("brightness", 1.0)),
                         "diagnostics_rate_hz": float(led_cfg.get("diagnostics_rate_hz", 1.0)),
-                        "all_topic": str(led_cfg.get("all_topic", "/leds/all/color")),
+                        "all_topic": _robot_topic(
+                            led_cfg.get("all_topic", "/leds/all/color"),
+                            namespace,
+                        ),
                         "front_name": str(led_cfg.get("front_name", "front")),
-                        "front_topic": str(led_cfg.get("front_topic", "/leds/front/color")),
+                        "front_topic": _robot_topic(
+                            led_cfg.get("front_topic", "/leds/front/color"),
+                            namespace,
+                        ),
                         "front_pins": [int(pin) for pin in led_cfg.get("front_pins", [23, 24, 25])],
                         "front_color_order": str(led_cfg.get("front_color_order", "rgb")),
                         "rear_name": str(led_cfg.get("rear_name", "rear")),
-                        "rear_topic": str(led_cfg.get("rear_topic", "/leds/rear/color")),
+                        "rear_topic": _robot_topic(
+                            led_cfg.get("rear_topic", "/leds/rear/color"),
+                            namespace,
+                        ),
                         "rear_pins": [int(pin) for pin in led_cfg.get("rear_pins", [4, 17, 27])],
                         "rear_color_order": str(led_cfg.get("rear_color_order", "rgb")),
                     }
@@ -350,29 +480,57 @@ def _build_nodes(context):
                             state_manager_cfg.get("moving_angular_threshold", 0.1)
                         ),
                         "filtered_odom_expected": bool(ekf_cfg.get("enabled", False)),
-                        "cmd_vel_topic": str(state_manager_cfg.get("cmd_vel_topic", "/cmd_vel")),
-                        "odom_topic": str(state_manager_cfg.get("odom_topic", "/odomWheel")),
-                        "imu_topic": str(state_manager_cfg.get("imu_topic", "/bno055/imu")),
-                        "filtered_odom_topic": str(
-                            state_manager_cfg.get("filtered_odom_topic", "/odometry/filtered")
+                        "cmd_vel_topic": _robot_topic(
+                            state_manager_cfg.get("cmd_vel_topic", "/cmd_vel"),
+                            namespace,
                         ),
-                        "diagnostics_topic": str(
-                            state_manager_cfg.get("diagnostics_topic", "/diagnostics")
+                        "odom_topic": _robot_topic(
+                            state_manager_cfg.get("odom_topic", "/odomWheel"),
+                            namespace,
                         ),
-                        "front_led_topic": str(
-                            state_manager_cfg.get("front_led_topic", "/leds/front/color")
+                        "imu_topic": _robot_topic(
+                            state_manager_cfg.get("imu_topic", "/bno055/imu"),
+                            namespace,
                         ),
-                        "rear_led_topic": str(
-                            state_manager_cfg.get("rear_led_topic", "/leds/rear/color")
+                        "filtered_odom_topic": _robot_topic(
+                            state_manager_cfg.get(
+                                "filtered_odom_topic",
+                                "/odometry/filtered",
+                            ),
+                            namespace,
                         ),
-                        "mobility_state_topic": str(
-                            state_manager_cfg.get("mobility_state_topic", "/robot_state/mobility")
+                        "diagnostics_topic": _robot_topic(
+                            state_manager_cfg.get("diagnostics_topic", "/diagnostics"),
+                            namespace,
                         ),
-                        "health_state_topic": str(
-                            state_manager_cfg.get("health_state_topic", "/robot_state/health")
+                        "front_led_topic": _robot_topic(
+                            state_manager_cfg.get("front_led_topic", "/leds/front/color"),
+                            namespace,
                         ),
-                        "overall_state_topic": str(
-                            state_manager_cfg.get("overall_state_topic", "/robot_state/overall")
+                        "rear_led_topic": _robot_topic(
+                            state_manager_cfg.get("rear_led_topic", "/leds/rear/color"),
+                            namespace,
+                        ),
+                        "mobility_state_topic": _robot_topic(
+                            state_manager_cfg.get(
+                                "mobility_state_topic",
+                                "/robot_state/mobility",
+                            ),
+                            namespace,
+                        ),
+                        "health_state_topic": _robot_topic(
+                            state_manager_cfg.get(
+                                "health_state_topic",
+                                "/robot_state/health",
+                            ),
+                            namespace,
+                        ),
+                        "overall_state_topic": _robot_topic(
+                            state_manager_cfg.get(
+                                "overall_state_topic",
+                                "/robot_state/overall",
+                            ),
+                            namespace,
                         ),
                     }
                 ],
@@ -408,8 +566,12 @@ def _build_nodes(context):
             )
         )
 
-    print(f"Launching em_robot profile '{profile.get('profile_name', profile_name)}' from {resolved_profile_path}")
-    return nodes
+    namespace_label = f" namespace '/{namespace}'" if namespace else " without namespace"
+    print(
+        f"Launching em_robot profile '{profile.get('profile_name', profile_name)}'"
+        f"{namespace_label} from {resolved_profile_path}"
+    )
+    return _with_namespace(nodes, namespace)
 
 
 def generate_launch_description():
@@ -424,6 +586,11 @@ def generate_launch_description():
                 "profile_path",
                 default_value="",
                 description="Optional explicit path to a runtime profile YAML file.",
+            ),
+            DeclareLaunchArgument(
+                "namespace",
+                default_value=os.environ.get("ROBOT_NAMESPACE", ""),
+                description="Optional ROS namespace for this robot, for example robot1.",
             ),
             OpaqueFunction(function=_build_nodes),
         ]

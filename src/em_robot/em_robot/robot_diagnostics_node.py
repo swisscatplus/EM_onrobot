@@ -29,6 +29,7 @@ class RobotDiagnosticsNode(Node):
         self.declare_parameter("imu_topic", "/bno055/imu")
         self.declare_parameter("filtered_odom_topic", "/odometry/filtered")
         self.declare_parameter("calib_status_topic", "/bno055/calib_status")
+        self.declare_parameter("diagnostics_topic", "/diagnostics")
         self.declare_parameter("localization_expected", False)
         self.declare_parameter("filtered_odom_expected", True)
         self.declare_parameter("expected_odom_rate", 30.0)
@@ -50,6 +51,7 @@ class RobotDiagnosticsNode(Node):
         imu_topic = str(self.get_parameter("imu_topic").value)
         filtered_odom_topic = str(self.get_parameter("filtered_odom_topic").value)
         calib_status_topic = str(self.get_parameter("calib_status_topic").value)
+        diagnostics_topic = str(self.get_parameter("diagnostics_topic").value)
 
         self.last_cmd_vel_time = None
         self.last_cmd_vel = None
@@ -71,7 +73,7 @@ class RobotDiagnosticsNode(Node):
             10,
         )
         self.create_subscription(String, calib_status_topic, self.calib_status_callback, 10)
-        self.diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self.diagnostics_pub = self.create_publisher(DiagnosticArray, diagnostics_topic, 10)
 
         timer_period = 1.0 / publish_rate_hz if publish_rate_hz > 0.0 else 1.0
         self.timer = self.create_timer(timer_period, self.publish_diagnostics)

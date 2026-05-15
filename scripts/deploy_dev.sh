@@ -5,6 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKSPACE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DOCKER_DIR="$WORKSPACE_DIR/docker"
 CONFIG_DIR="$WORKSPACE_DIR/config"
+LOCAL_ROBOT_CONFIG="${LOCAL_ROBOT_CONFIG:-$CONFIG_DIR/robot.local.env}"
+
+if [ -f "$LOCAL_ROBOT_CONFIG" ]; then
+  # shellcheck source=/dev/null
+  source "$LOCAL_ROBOT_CONFIG"
+  echo "Loaded local robot config: $LOCAL_ROBOT_CONFIG"
+else
+  echo "No local robot config found at $LOCAL_ROBOT_CONFIG"
+  echo "Create it from config/robot.local.env.example to set this robot's namespace."
+fi
 
 CONTAINER_NAME="${CONTAINER_NAME:-em_robot_dev}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/swisscatplus/em_onrobot/em_robot_base:latest}"
@@ -13,6 +23,7 @@ ROS_DOMAIN_ID_VALUE="${ROS_DOMAIN_ID_VALUE:-10}"
 RMW_IMPLEMENTATION_VALUE="${RMW_IMPLEMENTATION_VALUE:-rmw_fastrtps_cpp}"
 FASTRTPS_PROFILE_PATH="${FASTRTPS_PROFILE_PATH:-/root/.ros/fastdds.xml}"
 EM_ROBOT_PROFILE_VALUE="${EM_ROBOT_PROFILE_VALUE:-real_robot}"
+ROBOT_NAMESPACE_VALUE="${ROBOT_NAMESPACE_VALUE:-${ROBOT_NAMESPACE:-robot1}}"
 FORCE_LOCAL_BASE_BUILD="${FORCE_LOCAL_BASE_BUILD:-0}"
 
 if [ "$FORCE_LOCAL_BASE_BUILD" = "1" ]; then
@@ -47,6 +58,7 @@ docker run -d \
   -e RMW_IMPLEMENTATION="$RMW_IMPLEMENTATION_VALUE" \
   -e FASTRTPS_DEFAULT_PROFILES_FILE="$FASTRTPS_PROFILE_PATH" \
   -e EM_ROBOT_PROFILE="$EM_ROBOT_PROFILE_VALUE" \
+  -e ROBOT_NAMESPACE="$ROBOT_NAMESPACE_VALUE" \
   -v "$WORKSPACE_DIR:/ros2_ws" \
   -v "$CONFIG_DIR/fastdds.xml:$FASTRTPS_PROFILE_PATH:ro" \
   -v /run/udev:/run/udev:ro \
@@ -62,8 +74,9 @@ docker run -d \
   --device /dev/dri/card0 \
   --group-add video \
   "$RUN_IMAGE" \
-  -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && cd /ros2_ws && colcon build --symlink-install --packages-select em_robot bno055 em_robot_srv && source /ros2_ws/install/setup.bash && ros2 launch em_robot bringup.launch.py profile:=\$EM_ROBOT_PROFILE"
+  -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && cd /ros2_ws && colcon build --symlink-install --packages-select em_robot bno055 em_robot_srv && source /ros2_ws/install/setup.bash && ros2 launch em_robot bringup.launch.py profile:=\$EM_ROBOT_PROFILE namespace:=\$ROBOT_NAMESPACE"
 
 echo "Dev container started."
+echo "Robot namespace: $ROBOT_NAMESPACE_VALUE"
 echo "Use: docker logs -f $CONTAINER_NAME"
 echo "Shell in with: docker exec -it $CONTAINER_NAME bash"

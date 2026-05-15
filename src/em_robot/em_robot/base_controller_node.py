@@ -64,6 +64,8 @@ class BaseControllerNode(Node):
         self.declare_parameter("left_wheel_odom_scale", 1.0)
         self.declare_parameter("motor_profile_acceleration", 0)
         self.declare_parameter("imu_topic", "/bno055/imu")
+        self.declare_parameter("odom_frame", "odom")
+        self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("startup_motion_gate_enabled", False)
         self.declare_parameter("startup_motion_gate_confirmation_time", 0.2)
         self.declare_parameter("startup_motion_gate_linear_velocity_threshold", 0.05)
@@ -94,6 +96,8 @@ class BaseControllerNode(Node):
             self.get_parameter("motor_profile_acceleration").value
         )
         self.imu_topic = self.get_parameter("imu_topic").value
+        self.odom_frame = str(self.get_parameter("odom_frame").value)
+        self.base_frame = str(self.get_parameter("base_frame").value)
         self.startup_motion_gate_enabled = bool(
             self.get_parameter("startup_motion_gate_enabled").value
         )
@@ -439,8 +443,8 @@ class BaseControllerNode(Node):
     def publish_odom(self, now, vx, vth):
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
-        odom_msg.header.frame_id = "odom"
-        odom_msg.child_frame_id = "base_link"
+        odom_msg.header.frame_id = self.odom_frame
+        odom_msg.child_frame_id = self.base_frame
 
         odom_msg.pose.pose.position.x = self.pose_state.x
         odom_msg.pose.pose.position.y = self.pose_state.y
