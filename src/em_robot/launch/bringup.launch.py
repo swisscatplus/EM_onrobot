@@ -16,7 +16,7 @@ from launch.actions import (
 )
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.actions import Node, PushRosNamespace, SetRemap
 
 from em_robot.profile_loader import load_profile
 
@@ -53,7 +53,16 @@ def _robot_frame(frame, namespace):
 def _with_namespace(nodes, namespace):
     if not namespace:
         return nodes
-    return [GroupAction([PushRosNamespace(namespace), *nodes])]
+    return [
+        GroupAction(
+            [
+                PushRosNamespace(namespace),
+                SetRemap(src="tf", dst="/tf"),
+                SetRemap(src="tf_static", dst="/tf_static"),
+                *nodes,
+            ]
+        )
+    ]
 
 
 def _static_tf_node(name, parent_frame, child_frame, xyzrpy):
