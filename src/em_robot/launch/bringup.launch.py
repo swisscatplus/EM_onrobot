@@ -362,21 +362,25 @@ def _build_nodes(context):
 
     ekf_cfg = profile.get("ekf", {})
     if ekf_cfg.get("enabled", True):
+        ekf_params = _load_node_parameters(
+            _resolve_config_path(config_dir, ekf_cfg.get("config", "ekf_real.yaml")),
+            "ekf_filter_node",
+        )
+        ekf_params.update(
+            {
+                "odom_frame": _robot_frame("odom", namespace),
+                "base_link_frame": _robot_frame("base_link", namespace),
+                "world_frame": _robot_frame("odom", namespace),
+                "odom0": _robot_topic("odomWheel", namespace),
+                "imu0": _robot_topic("/bno055/imu", namespace),
+            }
+        )
         nodes.append(
             Node(
                 package="robot_localization",
                 executable="ekf_node",
                 name="ekf_filter_node",
-                parameters=[
-                    _resolve_config_path(config_dir, ekf_cfg.get("config", "ekf_real.yaml")),
-                    {
-                        "odom_frame": _robot_frame("odom", namespace),
-                        "base_link_frame": _robot_frame("base_link", namespace),
-                        "world_frame": _robot_frame("odom", namespace),
-                        "odom0": _robot_topic("odomWheel", namespace),
-                        "imu0": _robot_topic("/bno055/imu", namespace),
-                    },
-                ],
+                parameters=[ekf_params],
                 output="screen",
             )
         )

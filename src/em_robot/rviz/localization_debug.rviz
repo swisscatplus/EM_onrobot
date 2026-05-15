@@ -47,7 +47,7 @@ Visualization Manager:
         Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /robot_description
+        Value: /robot1/robot_description
       Enabled: true
       Name: Robot Model
       TF Prefix: ""
@@ -66,21 +66,21 @@ Visualization Manager:
       Length: 0.2
       Name: Base Axes
       Radius: 0.02
-      Reference Frame: base_link
+      Reference Frame: robot1/base_link
       Value: true
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 0.2
       Name: Camera Axes
       Radius: 0.02
-      Reference Frame: camera_frame
+      Reference Frame: robot1/camera_frame
       Value: true
     - Class: rviz_default_plugins/Axes
       Enabled: true
       Length: 0.2
       Name: Odom Axes
       Radius: 0.02
-      Reference Frame: odom
+      Reference Frame: robot1/odom
       Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
@@ -94,7 +94,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /localization/debug_image
+        Value: /robot1/localization/debug_image
       Value: true
   Enabled: true
   Fixed Frame: map
