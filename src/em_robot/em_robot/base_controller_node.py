@@ -208,13 +208,15 @@ class BaseControllerNode(Node):
         if result != COMM_SUCCESS:
             message = self.packet_handler.getTxRxResult(result)
             self.get_logger().warn(
-                f"Failed to write goal velocity for motor ID={motor_id}: {message}"
+                f"Failed to write goal velocity for motor ID={motor_id}: {message}",
+                throttle_duration_sec=2.0,
             )
             return False
         if error != 0:
             message = self.packet_handler.getRxPacketError(error)
             self.get_logger().warn(
-                f"Dynamixel reported a hardware error while writing motor ID={motor_id}: {message}"
+                f"Dynamixel reported a hardware error while writing motor ID={motor_id}: {message}",
+                throttle_duration_sec=2.0,
             )
             return False
         return True
@@ -231,13 +233,17 @@ class BaseControllerNode(Node):
 
         if comm_result != COMM_SUCCESS:
             message = self.packet_handler.getTxRxResult(comm_result)
-            self.get_logger().warn(f"Failed to read present position for motor ID={motor_id}: {message}")
+            self.get_logger().warn(
+                f"Failed to read present position for motor ID={motor_id}: {message}",
+                throttle_duration_sec=2.0,
+            )
             return None
 
         if error != 0:
             message = self.packet_handler.getRxPacketError(error)
             self.get_logger().warn(
-                f"Dynamixel reported a hardware error while reading motor ID={motor_id}: {message}"
+                f"Dynamixel reported a hardware error while reading motor ID={motor_id}: {message}",
+                throttle_duration_sec=2.0,
             )
             return None
 
@@ -406,7 +412,8 @@ class BaseControllerNode(Node):
                 f"raw=({delta_r_ticks}, {delta_l_ticks}), "
                 f"normalized=({normalized_delta_r}, {normalized_delta_l}), "
                 f"limit={delta_limit_ticks:.1f} ticks "
-                f"(glitch #{self.encoder_glitch_count})"
+                f"(glitch #{self.encoder_glitch_count})",
+                throttle_duration_sec=2.0,
             )
             return None
 

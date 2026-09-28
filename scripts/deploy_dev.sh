@@ -64,18 +64,35 @@ else
   fi
 fi
 
+# Build once per deploy in a throwaway container, instead of on every container
+# start: with --restart, a crashing node used to trigger a full rebuild (and SD
+# writes) every few seconds. colcon's own logs are discarded (--log-base /dev/null).
+echo "Building workspace (colcon build)..."
+docker run --rm \
+  --entrypoint /bin/bash \
+  -v "$WORKSPACE_DIR:/ros2_ws" \
+  "$RUN_IMAGE" \
+  -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && cd /ros2_ws && colcon --log-base /dev/null build --symlink-install --packages-select em_robot bno055 em_robot_srv"
+
 echo "Stopping old dev container..."
 docker stop "$CONTAINER_NAME" 2>/dev/null || true
 
 echo "Removing old dev container..."
 docker rm "$CONTAINER_NAME" 2>/dev/null || true
 
+# Keep --restart unless-stopped: it is what relaunches the robot after a power cycle.
+# Docker logs are capped, and ROS file logs and /tmp live in RAM (tmpfs) to spare the SD card.
 echo "Starting dev container with bind-mounted workspace..."
 docker run -d \
   --restart unless-stopped \
   --network host \
   --name "$CONTAINER_NAME" \
   --entrypoint /bin/bash \
+  --log-driver local \
+  --log-opt max-size=10m \
+  --log-opt max-file=2 \
+  --tmpfs /root/.ros/log:size=64m \
+  --tmpfs /tmp:size=128m \
   -e ROS_DOMAIN_ID="$ROS_DOMAIN_ID_VALUE" \
   -e RMW_IMPLEMENTATION="$RMW_IMPLEMENTATION_VALUE" \
   -e FASTRTPS_DEFAULT_PROFILES_FILE="$FASTRTPS_PROFILE_PATH" \
@@ -96,9 +113,10 @@ docker run -d \
   --device /dev/dri/card0 \
   --group-add video \
   "$RUN_IMAGE" \
-  -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && cd /ros2_ws && colcon build --symlink-install --packages-select em_robot bno055 em_robot_srv && source /ros2_ws/install/setup.bash && ros2 launch em_robot bringup.launch.py profile:=\$EM_ROBOT_PROFILE namespace:=\$ROBOT_NAMESPACE"
+  -lc "source /opt/ros/\$ROS_DISTRO/setup.bash && source /ros2_ws/install/setup.bash && cd /ros2_ws && ros2 launch em_robot bringup.launch.py profile:=\$EM_ROBOT_PROFILE namespace:=\$ROBOT_NAMESPACE"
 
 echo "Dev container started."
 echo "Robot namespace: $ROBOT_NAMESPACE_VALUE"
 echo "Use: docker logs -f $CONTAINER_NAME"
 echo "Shell in with: docker exec -it $CONTAINER_NAME bash"
+echo "After editing code on the robot, rerun this script to rebuild (docker restart does not rebuild)."

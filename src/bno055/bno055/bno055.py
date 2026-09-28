@@ -104,7 +104,8 @@ def main(args=None):
             if lock.locked():
                 # critical area still locked
                 # that means that the previous data query is still being processed
-                node.get_logger().warn('Message communication in progress - skipping query cycle')
+                node.get_logger().warn('Message communication in progress - skipping query cycle',
+                                       throttle_duration_sec=2.0)
                 return
 
             # Acquire lock before entering critical area to prevent overlapping data queries
@@ -120,7 +121,8 @@ def main(args=None):
                 return
             except Exception as e:  # noqa: B902
                 node.get_logger().warn('Receiving sensor data failed with %s:"%s"'
-                                       % (type(e).__name__, e))
+                                       % (type(e).__name__, e),
+                                       throttle_duration_sec=2.0)
             finally:
                 lock.release()
 
@@ -129,7 +131,8 @@ def main(args=None):
             if lock.locked():
                 # critical area still locked
                 # that means that the previous data query is still being processed
-                node.get_logger().warn('Message communication in progress - skipping query cycle')
+                node.get_logger().warn('Message communication in progress - skipping query cycle',
+                                       throttle_duration_sec=2.0)
                 # traceback.print_exc()
                 return
 
@@ -140,7 +143,8 @@ def main(args=None):
                 node.sensor.get_calib_status()
             except Exception as e:  # noqa: B902
                 node.get_logger().warn('Receiving calibration status failed with %s:"%s"'
-                                       % (type(e).__name__, e))
+                                       % (type(e).__name__, e),
+                                       throttle_duration_sec=2.0)
                 # traceback.print_exc()
             finally:
                 lock.release()

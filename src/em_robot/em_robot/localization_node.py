@@ -429,7 +429,7 @@ class LocalizationNode(Node):
                     clock_type=self.get_clock().clock_type,
                 )
         except Exception as exc:
-            self.get_logger().warn(f"Camera capture failed: {exc}")
+            self.get_logger().warn(f"Camera capture failed: {exc}", throttle_duration_sec=2.0)
             return
 
         now = self.get_clock().now()
@@ -440,7 +440,8 @@ class LocalizationNode(Node):
         ):
             self.get_logger().warn(
                 f"Skipping stale camera frame: age={capture_age_sec:.3f}s "
-                f"source={timestamp_source}"
+                f"source={timestamp_source}",
+                throttle_duration_sec=2.0,
             )
             return
 
@@ -490,7 +491,8 @@ class LocalizationNode(Node):
                 self.get_logger().warn(
                     f"Skipping vision update: no exact-enough {self.odom_frame} -> "
                     f"{self.base_frame} transform at camera stamp "
-                    f"{capture_stamp.nanoseconds}: {exc}"
+                    f"{capture_stamp.nanoseconds}: {exc}",
+                    throttle_duration_sec=2.0,
                 )
                 self.odom_frame_available = False
                 return
@@ -615,7 +617,8 @@ class LocalizationNode(Node):
             self.get_logger().info(
                 "Markers detected, but no localization update accepted: "
                 f"reprojection={rejected_for_reprojection}, "
-                f"missing_tf={missing_marker_tf}, gating={rejected_for_gating}"
+                f"missing_tf={missing_marker_tf}, gating={rejected_for_gating}",
+                throttle_duration_sec=2.0,
             )
             self.publish_debug_image(annotated_frame, capture_stamp)
             return
